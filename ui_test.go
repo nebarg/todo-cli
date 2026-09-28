@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image/color"
 	"os"
 	"path/filepath"
 	"strings"
@@ -321,5 +322,98 @@ func TestEditorCommandUsesLineNumber(t *testing.T) {
 	cmd = editorProcess("/tmp/TODO.md", 12)
 	if got := strings.Join(cmd.Args, " "); got != "code --wait --goto /tmp/TODO.md:12" {
 		t.Fatalf("code command = %q", got)
+	}
+}
+
+func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "TODO.md")
+	content := "## General\n\n- [ ] Plain task\n\n### @zeta\n\n- [ ] Medium task\n  - Priority: Medium\n\n  More context\n  on another line.\n\n## Branches\n\n### feature/z\n\n#### @alpha\n\n- [ ] Low task\n  - Priority: Low\n\n### feature/a\n\n- [x] High task\n  - Priority: High\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	m = updated.(model)
+	if !m.indexMode || m.indexSort != "priority" {
+		t.Fatalf("index opened with sort %q", m.indexSort)
+	}
+	if got := indexTitles(m.indexTasks()); got != "High task,Medium task,Low task,Plain task" {
+		t.Fatalf("priority order = %q", got)
+	}
+	for _, size := range [][2]int{{120, 35}, {78, 16}, {60, 20}, {56, 19}} {
+		m.width, m.height = size[0], size[1]
+		view := m.View().Content
+		if lipgloss.Width(view) != size[0] || lipgloss.Height(view) != size[1] {
+			t.Errorf("index size at %dx%d = %dx%d", size[0], size[1], lipgloss.Width(view), lipgloss.Height(view))
+		}
+		plain := ansi.Strip(view)
+		for _, want := range []string{"All tasks  4", "!!!", "!!", "!", "@zeta", "feature/a", "High task", "More context on another line."} {
+			if !strings.Contains(plain, want) && size[0] == 120 {
+				t.Errorf("index missing %q: %s", want, plain)
+			}
+		}
+		if strings.Contains(plain, "File TODOs") {
+			t.Error("source TODOs appeared in Markdown index")
+		}
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
+	m = updated.(model)
+	if got := indexTitles(m.indexTasks()); got != "High task,Low task,Medium task,Plain task" {
+		t.Fatalf("branch order = %q", got)
+	}
+	if selected, _ := m.selectedTask(); selected.text != "High task" {
+		t.Fatal("sort lost selected task")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	m = updated.(model)
+	if got := indexTitles(m.indexTasks()); got != "Low task,Medium task,High task,Plain task" {
+		t.Fatalf("label order = %q", got)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	m = updated.(model)
+	if m.indexMode {
+		t.Fatal("Escape did not return to dashboard")
+	}
+}
+
+func indexTitles(tasks []task) string {
+	names := make([]string, len(tasks))
+	for i, t := range tasks {
+		names[i] = t.text
+	}
+	return strings.Join(names, ",")
+}
+
+func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "TODO.md")
+	if err := os.WriteFile(path, []byte("## General\n\n- [ ] First\n  - Priority: High\n\n- [ ] Second\n  - Priority: Low\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.indexMode = true
+	m.indexSort = "priority"
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	m = updated.(model)
+	if selected, ok := m.selectedTask(); !ok || selected.text != "First" || !selected.done {
+		t.Fatal("Space did not complete the selected indexed task")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	m = updated.(model)
+	if m.modal == nil || m.modal.title.Value() != "First" {
+		t.Fatal("Edit did not open the indexed task")
+	}
+	if priorityMarker("high") != "!!!" || priorityMarker("medium") != "!!" || priorityMarker("low") != "!" || priorityMarker("") != "-" {
+		t.Fatal("wrong priority markers")
+	}
+	for priority, want := range map[string]color.Color{"high": colorHigh, "medium": colorMedium, "low": colorLow} {
+		if got := priorityStyle(priority).GetForeground(); got != want {
+			t.Errorf("%s priority color = %v, want %v", priority, got, want)
+		}
 	}
 }

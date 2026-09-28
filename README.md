@@ -27,12 +27,17 @@ Inside a Git repository, the default file is `TODO.md` at the repository root. O
 
 The dashboard shows **General**, **Branches**, and **File TODOs** together. General groups labeled tasks beneath their `@label` headings, followed by unlabeled general tasks. Open a label to see every matching task, including tasks from other branches. The Branches panel lists every branch with TODOs, with the current branch selected when it has tasks. Open a branch to see its tasks grouped beneath any label headings. Press `←` to return to the label or branch list. Markdown checkbox markers are hidden in the dashboard; completed tasks use a checkmark.
 
+Press `i` for a full-screen list of every task in the Markdown file. Each row shows priority, label, branch, and task with its details on one line. The list opens sorted by priority, highest first. Press `p`, `b`, or `l` there to sort by priority, branch, or label. Unlabeled and general tasks come after named groups when sorting by label or branch. Priority markers are `!!!` red for high, `!!` orange for medium, `!` yellow for low, and `-` for none; the same markers and colours appear in the dashboard. File TODOs from source scanning are not included in this Markdown task list.
+
 The right pane puts the selected task's title and description first, with status, scope, priority, and label below. For a file TODO it shows nearby source lines. File scanning starts in the background when the dashboard opens, so task navigation remains available while the scan runs. Source matches are read only.
 
 | Key | Action |
 | --- | --- |
 | `Tab` / `Shift+Tab` | Move between panels |
 | `1` / `2` / `3` | Focus General / Branches / File TODOs |
+| `i` | Open the full-screen Markdown task list; press `i`, `Esc`, or `←` to return |
+| `p` / `b` / `l` in the full-screen list | Sort by priority / branch / label |
+| `↑` / `↓`, `Space` / `Enter`, `e` in the full-screen list | Move, complete or reopen, edit a task |
 | `Enter` / `→` on a label or branch | Open its matching tasks |
 | `←` inside a label or branch | Return to its list |
 | `→` / `←` on a task | Focus the detail pane / return to the task list |

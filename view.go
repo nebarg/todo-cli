@@ -19,6 +19,9 @@ var (
 	colorBlue      = lipgloss.Color("#2457A6")
 	colorGreen     = lipgloss.Color("#80C99B")
 	colorPurple    = lipgloss.Color("#B7A4EB")
+	colorHigh      = lipgloss.Color("#F07777")
+	colorMedium    = lipgloss.Color("#F4A261")
+	colorLow       = lipgloss.Color("#F4D35E")
 	titleStyle     = lipgloss.NewStyle().Bold(true).Foreground(colorFocus)
 	taskTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF"))
 	mutedStyle     = lipgloss.NewStyle().Foreground(colorMuted)
@@ -42,9 +45,11 @@ func (m model) View() tea.View {
 	header := m.renderHeader(width)
 	footer := m.renderFooter(width)
 	bodyHeight := height - 2
-	generalRows, branchRows := m.generalRows(), m.branchRows()
 	var body string
-	if width >= 78 {
+	if m.indexMode {
+		body = m.renderIndex(width, bodyHeight)
+	} else if width >= 78 {
+		generalRows, branchRows := m.generalRows(), m.branchRows()
 		leftWidth := width * 36 / 100
 		if leftWidth < 33 {
 			leftWidth = 33
@@ -62,6 +67,7 @@ func (m model) View() tea.View {
 		right := m.renderDetailPane(rightWidth, bodyHeight)
 		body = lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
 	} else {
+		generalRows, branchRows := m.generalRows(), m.branchRows()
 		generalHeight, branchHeight := 4, 4
 		sourceHeight := 4
 		detailHeight := bodyHeight - generalHeight - branchHeight - sourceHeight
@@ -175,14 +181,24 @@ func (m model) renderFooter(width int) string {
 	if m.inputMode != "" {
 		return ansi.Truncate(m.input.View()+"  Enter save · Esc cancel", width, "…")
 	}
-	hints := "1 General · 2 Branches · 3 File TODOs · → Open/Details · ← Back · a/b Add · q Quit"
+	if m.indexMode {
+		hints := "i/Esc Back · ↑/↓ Move · p Priority · b Branch · l Label · Space/Enter Done · e Edit · r Reload · q Quit"
+		if width < 96 {
+			hints = "i Back · p/b/l Sort · ↑/↓ Move · Space Done · e Edit"
+		}
+		if m.status != "" {
+			return mutedStyle.Render(ansi.Truncate(m.status, width, "…"))
+		}
+		return mutedStyle.Render(ansi.Truncate(hints, width, "…"))
+	}
+	hints := "1 General · 2 Branches · 3 File TODOs · i All tasks · → Open/Details · ← Back · a/b Add · q Quit"
 	if width < 80 {
-		hints = "1 General · 2 Branches · 3 Files · → Open · ← Back"
+		hints = "1 General · 2 Branches · 3 Files · i All · → Open · ← Back"
 	}
 	if m.status != "" {
 		statusHints := hints
 		if width < 100 {
-			statusHints = "1 General · 2 Branches · 3 Files"
+			statusHints = "1 General · 2 Branches · 3 Files · i All"
 		}
 		available := max(0, width-ansi.StringWidth(statusHints)-3)
 		if available > 5 {
@@ -257,8 +273,8 @@ func (m model) renderNavigationPane(title string, rows []navigationRow, cursor i
 				mark = "✓ "
 			}
 			prefix := ""
-			if item.todo.priority == "high" {
-				prefix = "! "
+			if item.todo.priority != "" {
+				prefix = priorityStyle(item.todo.priority).Render(priorityMarker(item.todo.priority)) + " "
 			}
 			if (kind == generalPane || kind == branchPane) && taskLabel(item.todo) != "" {
 				prefix = "  " + prefix
@@ -419,7 +435,7 @@ func (m model) taskDetails(width int) []string {
 	}
 	priority := "None"
 	if t.priority != "" {
-		priority = strings.ToUpper(t.priority[:1]) + t.priority[1:]
+		priority = priorityStyle(t.priority).Render(priorityMarker(t.priority) + " " + strings.ToUpper(t.priority[:1]) + t.priority[1:])
 	}
 	label := "None"
 	if len(t.labels) > 0 {
@@ -434,7 +450,7 @@ func (m model) taskDetails(width int) []string {
 		}
 	}
 	result = append(result, "", mutedStyle.Render("Status    "+status), mutedStyle.Render("Scope     "+taskLocation(t)),
-		mutedStyle.Render("Priority  "+priority), mutedStyle.Render("Label     "+label))
+		mutedStyle.Render("Priority  ")+priority, mutedStyle.Render("Label     "+label))
 	return wrapLines(result, width)
 }
 
