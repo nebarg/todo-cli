@@ -51,7 +51,7 @@ The right pane puts the selected task's title and description first, with status
 | `r` | Reload the Markdown file and rescan source files |
 | `q` or `Ctrl+C` | Quit |
 
-The add and edit form has a title and a multiline details field. Press `Tab`, `↓`, or `Enter` from the title to reach details. Press `Ctrl+S` to save or `Esc` to cancel. The app adds the Markdown indentation for details. Adding from a label group applies that label; adding from a selected branch puts the task under that branch. Label editing uses a one-line prompt with `Enter` to save; clearing it makes the task unlabeled. File TODOs open at the selected line in Vim, Neovim, VS Code, Codium, or Cursor; other editors open the file normally. VS Code-style editors use `--wait` so the dashboard reloads when editing finishes.
+The add and edit form has a title and a multiline details field. Press `Tab`, `↓`, or `Enter` from the title to reach details; press `↑` on the first details line to return to the title. Press `Ctrl+Enter` to save or `Esc` to cancel. The app adds the Markdown indentation for details. Adding from a label group applies that label; adding from a selected branch puts the task under that branch. Label editing uses a one-line prompt with `Enter` to save; clearing it makes the task unlabeled. File TODOs open at the selected line in Vim, Neovim, VS Code, Codium, or Cursor; other editors open the file normally. VS Code-style editors use `--wait` so the dashboard reloads when editing finishes.
 
 ## Markdown format
 

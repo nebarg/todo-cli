@@ -219,7 +219,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 		t.Fatal("add form did not inherit selected label")
 	}
 	m.modal.title.SetValue("New auth task")
-	updated, _ := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(model)
 	if len(m.generalRows()) != 2 || !taskHasLabel(m.generalRows()[1].todo, "auth") || m.generalRows()[1].todo.text != "New auth task" || m.generalCursor != 1 {
 		t.Fatalf("new task was not added to label: %+v", m.generalRows())
@@ -231,7 +231,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 		t.Fatalf("add form chose %q instead of selected branch", m.modal.addBranch)
 	}
 	m.modal.title.SetValue("New branch task")
-	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(model)
 	if m.branchFilter != "feature/login" || len(m.branchRows()) != 2 || m.branchRows()[1].todo.text != "New branch task" {
 		t.Fatalf("new task was not added to branch: %+v", m.branchRows())
@@ -248,7 +248,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 		t.Fatal("add form did not inherit branch label")
 	}
 	m.modal.title.SetValue("Another auth task")
-	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(model)
 	if m.branchLabel != "auth" || len(m.branchRows()) != 2 || m.branchRows()[m.branchCursor].todo.text != "Another auth task" {
 		t.Fatalf("new task was not added inside branch label: %+v", m.branchRows())
@@ -271,6 +271,9 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if m.modal == nil || m.modal.field != 0 {
 		t.Fatal("add did not open the title field")
 	}
+	if help := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(help, "↓/Tab Details · Ctrl+Enter Save · Esc Cancel") {
+		t.Fatalf("title help has wrong shortcuts or separators: %s", help)
+	}
 	for _, size := range [][2]int{{120, 35}, {78, 16}, {60, 20}, {56, 19}} {
 		m.width, m.height = size[0], size[1]
 		m.modal.resize(m.width, m.height)
@@ -282,7 +285,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 			t.Error("modal heading missing")
 		}
 	}
-	opened, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = opened.(model)
 	if m.modal == nil || m.modal.err == "" {
 		t.Fatal("empty title should keep the form open with an error")
@@ -298,13 +301,34 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if m.modal.field != 1 {
 		t.Fatal("down arrow did not focus details")
 	}
+	if help := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(help, "↑/Tab Title · Ctrl+Enter Save · Esc Cancel") {
+		t.Fatalf("details help has wrong shortcuts or separators: %s", help)
+	}
+	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	m = opened.(model)
+	if m.modal.field != 0 {
+		t.Fatal("up arrow on the first details line did not focus title")
+	}
+	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	m = opened.(model)
+	if m.modal.field != 1 {
+		t.Fatal("down arrow did not return to details")
+	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: 'X', Text: "X"})
 	m = opened.(model)
 	if m.modal.details.Value() != "X" {
 		t.Fatalf("details field ignored typing: %q", m.modal.details.Value())
 	}
 	m.modal.details.SetValue("Added in modal.\n- [ ] Nested step")
-	opened, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	if m.modal.details.Line() != 1 {
+		t.Fatalf("details cursor should start on the final line, got %d", m.modal.details.Line())
+	}
+	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	m = opened.(model)
+	if m.modal.field != 1 || m.modal.details.Line() != 0 {
+		t.Fatal("up arrow should move within multiline details before returning to title")
+	}
+	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = opened.(model)
 	if m.modal != nil || len(m.general) != 1 || m.general[0].details != "Added in modal.\n- [ ] Nested step" {
 		t.Fatalf("task was not saved: %+v", m.general)
@@ -316,7 +340,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	}
 	m.modal.title.SetValue("Renamed task")
 	m.modal.details.SetValue("Revised details.")
-	opened, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = opened.(model)
 	if len(m.general) != 1 || m.general[0].text != "Renamed task" || m.general[0].details != "Revised details." {
 		t.Fatalf("edit was not saved: %+v", m.general)

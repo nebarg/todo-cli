@@ -90,7 +90,7 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		modal.details.Blur()
 		m.modal = nil
 		return m, nil
-	case "ctrl+s", "ctrl+enter":
+	case "ctrl+enter":
 		if err := modal.save(m.file); err != nil {
 			modal.err = err.Error()
 			return m, nil
@@ -157,6 +157,10 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if modal.field == 0 {
 			return m, modal.focusField(1)
 		}
+	case "up":
+		if modal.field == 1 && modal.details.Line() == 0 {
+			return m, modal.focusField(0)
+		}
 	}
 	modal.err = ""
 	var cmd tea.Cmd
@@ -219,9 +223,9 @@ func (f *taskModal) render(width, height int) string {
 	} else {
 		detailsLabel = titleStyle.Render("Details")
 	}
-	help := "Tab / ↓  details   Ctrl+S  save   Esc  cancel"
+	help := "↓/Tab Details · Ctrl+Enter Save · Esc Cancel"
 	if f.field == 1 {
-		help = "Tab  title   Ctrl+S  save   Esc  cancel"
+		help = "↑/Tab Title · Ctrl+Enter Save · Esc Cancel"
 	}
 	if f.err != "" {
 		help = f.err
