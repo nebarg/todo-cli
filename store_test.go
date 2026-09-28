@@ -91,6 +91,54 @@ func TestLabelPrefixesAreNormalized(t *testing.T) {
 	}
 }
 
+func TestLabelsRequireOneAlphanumericWord(t *testing.T) {
+	for _, label := range []string{"two words", "bug-fix", "under_score", "a?", "@", "@@auth", "emoji🙂"} {
+		path := filepath.Join(t.TempDir(), "TODO.md")
+		if err := addTaskWithOptions(path, "Task", "", []string{label}, ""); err == nil || !strings.Contains(err.Error(), "one word") {
+			t.Errorf("label %q was accepted or gave an unclear error: %v", label, err)
+		}
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("invalid label %q changed the file: %v", label, err)
+		}
+	}
+	for _, label := range []string{"auth", "A1", "@tests2", "#café3"} {
+		path := filepath.Join(t.TempDir(), "TODO.md")
+		if err := addTaskWithOptions(path, "Task", "", []string{label}, ""); err != nil {
+			t.Fatalf("valid label %q rejected: %v", label, err)
+		}
+		tasks, err := loadTasks(path)
+		if err != nil || len(tasks) != 1 || taskLabel(tasks[0]) != normalizeLabelInput(label) {
+			t.Fatalf("label %q was not saved correctly: %v, %+v", label, err, tasks)
+		}
+	}
+}
+
+func TestLegacySpacedLabelCanBeRenamed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "TODO.md")
+	old := "## General\n\n### @a label?\n\n- [ ] Existing task\n"
+	if err := os.WriteFile(path, []byte(old), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := loadTasks(path)
+	if err != nil || len(tasks) != 1 || taskLabel(tasks[0]) != "a label?" {
+		t.Fatalf("legacy label was not readable: %v, %+v", err, tasks)
+	}
+	if err := setTaskLabel(path, tasks[0], "bad label"); err == nil {
+		t.Fatal("invalid edit was accepted")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != old {
+		t.Fatalf("invalid edit changed the file: %v, %q", err, data)
+	}
+	if err := setTaskLabel(path, tasks[0], "clean2"); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err = loadTasks(path)
+	if err != nil || len(tasks) != 1 || taskLabel(tasks[0]) != "clean2" {
+		t.Fatalf("legacy label could not be renamed: %v, %+v", err, tasks)
+	}
+}
+
 func TestSingleLabelHeadingsAndMoves(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
 	if err := addTaskWithDetails(path, "Auth task", "Keep this detail.", "high", []string{"auth"}, ""); err != nil {

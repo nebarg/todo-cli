@@ -19,7 +19,7 @@ todo -p high -l tests Fix flaky login test
 todo -b Fix the bug on this branch
 ```
 
-Flags go before the task text. `-p` accepts `high`, `medium`, or `low`; `-l` or `-label` assigns one label. `-b` puts the task under the current Git branch. Use `-branch-name feature/login` to name a branch explicitly. `todo add scan` adds a task literally named “scan”.
+Flags go before the task text. `-p` accepts `high`, `medium`, or `low`; `-l` or `-label` assigns one label. Labels are a single word of letters and numbers, with an optional `@` or `#` prefix when entering them. `-b` puts the task under the current Git branch. Use `-branch-name feature/login` to name a branch explicitly. `todo add scan` adds a task literally named “scan”.
 
 Inside a Git repository, the default file is `TODO.md` at the repository root. Outside Git, it is `TODO.md` in the current directory. Use `-file path/to/tasks.md` to choose another file. The file is created when you add the first task.
 
@@ -51,7 +51,7 @@ The right pane puts the selected task's title and description first, with status
 | `r` | Reload the Markdown file and rescan source files |
 | `q` or `Ctrl+C` | Quit |
 
-The add and edit form has a title and a multiline details field. Press `Tab`, `↓`, or `Enter` from the title to reach details; press `↑` on the first details line to return to the title. Press `Ctrl+Enter` to save or `Esc` to cancel. The app adds the Markdown indentation for details. Adding from a label group applies that label; adding from a selected branch puts the task under that branch. Label editing uses a one-line prompt with `Enter` to save; clearing it makes the task unlabeled. File TODOs open at the selected line in Vim, Neovim, VS Code, Codium, or Cursor; other editors open the file normally. VS Code-style editors use `--wait` so the dashboard reloads when editing finishes.
+The add and edit form has a title and a multiline details field. Press `Tab`, `↓`, or `Enter` from the title to reach details; press `↑` on the first details line to return to the title. Press `Ctrl+Enter` to save or `Esc` to cancel. The app adds the Markdown indentation for details. Adding from a label group applies that label; adding from a selected branch puts the task under that branch. Label editing uses a one-line prompt with `Enter` to save; clearing it makes the task unlabeled. Spaces are ignored in the label input, including pasted spaces. File TODOs open at the selected line in Vim, Neovim, VS Code, Codium, or Cursor; other editors open the file normally. VS Code-style editors use `--wait` so the dashboard reloads when editing finishes.
 
 ## Markdown format
 
@@ -77,7 +77,7 @@ The add and edit form has a title and a multiline details field. Press `Tab`, `�
 - [ ] Fix the flaky login test
 ```
 
-General tasks stay in the General panel; branch tasks stay under their branch. The full-screen list includes both. Each task has at most one label. A General label is a `### @label` heading; a branch label is a `#### @label` heading below its `### branch-name`. Labels can be entered as `auth`, `@auth`, or `#auth`; the dashboard shows them as `@auth`. Indent description paragraphs, lists, or code blocks by two spaces beneath a task; they appear in the dashboard's detail pane. Keep priority directly below the checkbox, before the description. Indented checkboxes are treated as part of the description, not separate tasks. Older `- Labels:` metadata remains readable; changing a task's label moves it to a heading. Other Markdown is preserved when tasks are changed.
+General tasks stay in the General panel; branch tasks stay under their branch. The full-screen list includes both. Each task has at most one label. A General label is a `### @label` heading; a branch label is a `#### @label` heading below its `### branch-name`. Labels can be entered as `auth`, `@auth`, or `#auth`; the dashboard shows them as `@auth`. New labels may contain only letters and numbers, without spaces or punctuation. Existing labels in older files remain readable and can be renamed. Indent description paragraphs, lists, or code blocks by two spaces beneath a task; they appear in the dashboard's detail pane. Keep priority directly below the checkbox, before the description. Indented checkboxes are treated as part of the description, not separate tasks. Older `- Labels:` metadata remains readable; changing a task's label moves it to a heading. Other Markdown is preserved when tasks are changed.
 
 ## TODOs in source files
 

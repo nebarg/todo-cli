@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 var taskLine = regexp.MustCompile(`^(\s*[-*+] \[)([ xX])(\] +)(.*)$`)
@@ -169,7 +170,7 @@ func addTaskWithDetails(path, title, details, priority string, labels []string, 
 	}
 	label := ""
 	if len(labels) > 0 {
-		label = strings.TrimSpace(strings.TrimLeft(labels[0], "#@"))
+		label = normalizeLabelInput(labels[0])
 		if err := validateLabel(label); err != nil {
 			return err
 		}
@@ -260,10 +261,23 @@ func editTaskContent(path string, selected task, title, details string) error {
 }
 
 func validateLabel(label string) error {
-	if label == "" || strings.ContainsAny(label, ",\r\n") || strings.Contains(label, "#") {
-		return errors.New("enter one label without commas or heading markers")
+	if label == "" {
+		return errors.New("label must be one word of letters and numbers")
+	}
+	for _, r := range label {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return errors.New("label must be one word of letters and numbers")
+		}
 	}
 	return nil
+}
+
+func normalizeLabelInput(raw string) string {
+	label := strings.TrimSpace(raw)
+	if strings.HasPrefix(label, "@") || strings.HasPrefix(label, "#") {
+		label = label[1:]
+	}
+	return label
 }
 
 func metadataLines(priority string) []string {
@@ -469,8 +483,9 @@ func setTaskPriority(path string, selected task, priority string) error {
 }
 
 func setTaskLabel(path string, selected task, label string) error {
-	label = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(label), "#@"))
-	if label != "" {
+	blank := strings.TrimSpace(label) == ""
+	label = normalizeLabelInput(label)
+	if !blank {
 		if err := validateLabel(label); err != nil {
 			return err
 		}

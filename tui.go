@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -164,6 +165,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.sourceLoading = true
 		return m, m.scanCmd()
+	case tea.PasteMsg:
+		if m.inputMode == "labels" {
+			msg.Content = stripLabelSpaces(msg.Content)
+			var cmd tea.Cmd
+			m.input, cmd = m.input.Update(msg)
+			return m, cmd
+		}
 	case tea.KeyPressMsg:
 		key := msg.String()
 		if key == "ctrl+c" {
@@ -361,7 +369,7 @@ func (m model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		mode := m.inputMode
 		oldTask := m.editTask
-		newLabel := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(m.input.Value()), "#@"))
+		newLabel := normalizeLabelInput(m.input.Value())
 		var err error
 		switch mode {
 		case "labels":
@@ -430,9 +438,24 @@ func (m model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		return m, nil
 	}
+	if m.inputMode == "labels" {
+		if msg.Code == tea.KeySpace {
+			return m, nil
+		}
+		msg.Text = stripLabelSpaces(msg.Text)
+	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd
+}
+
+func stripLabelSpaces(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, value)
 }
 
 func (m *model) toggleSelected() {

@@ -202,6 +202,35 @@ func TestChangingLabelKeepsTaskSelected(t *testing.T) {
 	}
 }
 
+func TestLabelInputBlocksSpaces(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "TODO.md")
+	if err := os.WriteFile(path, []byte("## General\n\n- [ ] Task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, _ := m.startInput("labels")
+	m = opened.(model)
+	m.input.SetValue("a")
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
+	m = updated.(model)
+	if got := m.input.Value(); got != "a" {
+		t.Fatalf("space key changed label input to %q", got)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: " category"})
+	m = updated.(model)
+	if got := m.input.Value(); got != "acategory" {
+		t.Fatalf("multi-character input kept a space: %q", got)
+	}
+	updated, _ = m.Update(tea.PasteMsg{Content: " more words"})
+	m = updated.(model)
+	if got := m.input.Value(); got != "acategorymorewords" {
+		t.Fatalf("pasted input kept spaces: %q", got)
+	}
+}
+
 func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
 	content := "## General\n\n### @auth\n\n- [ ] Existing\n\n## Branches\n\n### feature/login\n\n#### @auth\n\n- [ ] Branch task\n"
