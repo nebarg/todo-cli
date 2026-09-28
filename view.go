@@ -432,7 +432,7 @@ func (m model) taskDetails(width int) []string {
 	if t.done {
 		status = "Complete"
 	}
-	priority := "None"
+	priority := mutedStyle.Render("None")
 	if t.priority != "" {
 		priority = priorityStyle(t.priority).Render(priorityMarker(t.priority) + " " + strings.ToUpper(t.priority[:1]) + t.priority[1:])
 	}
