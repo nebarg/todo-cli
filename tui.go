@@ -34,39 +34,41 @@ type sourcePreviewMsg struct {
 type editorFinishedMsg struct{ err error }
 
 type model struct {
-	file              string
-	project           projectContext
-	allTasks          []task
-	indexMode         bool
-	indexSort         string
-	indexCursor       int
-	general           []task
-	branches          []task
-	source            []sourceTodo
-	focus             pane
-	detailFrom        pane
-	detailScroll      int
-	generalCursor     int
-	generalRootCursor int
-	generalLabel      string
-	branchCursor      int
-	branchRootCursor  int
-	branchFilter      string
-	sourceCursor      int
-	sourceLoading     bool
-	sourceScanned     bool
-	sourceError       string
-	preview           []previewLine
-	previewPath       string
-	previewLine       int
-	previewError      string
-	input             textinput.Model
-	inputMode         string
-	editTask          task
-	modal             *taskModal
-	status            string
-	width             int
-	height            int
+	file                  string
+	project               projectContext
+	allTasks              []task
+	indexMode             bool
+	indexSort             string
+	indexCursor           int
+	general               []task
+	branches              []task
+	source                []sourceTodo
+	focus                 pane
+	detailFrom            pane
+	detailScroll          int
+	generalCursor         int
+	generalRootCursor     int
+	generalLabel          string
+	branchCursor          int
+	branchRootCursor      int
+	branchFilter          string
+	branchLabel           string
+	branchLabelRootCursor int
+	sourceCursor          int
+	sourceLoading         bool
+	sourceScanned         bool
+	sourceError           string
+	preview               []previewLine
+	previewPath           string
+	previewLine           int
+	previewError          string
+	input                 textinput.Model
+	inputMode             string
+	editTask              task
+	modal                 *taskModal
+	status                string
+	width                 int
+	height                int
 }
 
 func newModel(file string, project projectContext) (model, error) {
@@ -260,7 +262,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "v":
 			m.focus = branchPane
-			m.leaveGroup()
+			m.branchFilter = ""
+			m.branchLabel = ""
+			m.branchCursor = m.branchRootCursor
 			m.status = ""
 		case "r":
 			m.project = currentProject()
@@ -370,9 +374,15 @@ func (m model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.inputMode = ""
 		m.input.Blur()
 		m.input.SetValue("")
-		if mode == "labels" && !m.indexMode && m.activePane() == generalPane {
-			m.generalLabel = newLabel
-			m.generalCursor = 0
+		if mode == "labels" && !m.indexMode {
+			switch m.activePane() {
+			case generalPane:
+				m.generalLabel = newLabel
+				m.generalCursor = 0
+			case branchPane:
+				m.branchLabel = newLabel
+				m.branchCursor = 0
+			}
 		}
 		if err := m.reload(); err != nil {
 			m.status = err.Error()
@@ -382,6 +392,16 @@ func (m model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.selectIndexTask(oldTask)
 		} else if mode == "labels" {
 			if m.activePane() == generalPane {
+				if newLabel != "" {
+					root := m
+					root.generalLabel = ""
+					for i, row := range root.generalRows() {
+						if row.kind == rowLabel && strings.EqualFold(row.name, newLabel) {
+							m.generalRootCursor = i
+							break
+						}
+					}
+				}
 				for i, row := range m.generalRows() {
 					if row.kind == rowTask && row.todo.text == oldTask.text && row.todo.branch == oldTask.branch && strings.EqualFold(taskLabel(row.todo), newLabel) {
 						m.generalCursor = i
@@ -389,6 +409,16 @@ func (m model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 					}
 				}
 			} else if m.activePane() == branchPane {
+				if newLabel != "" {
+					root := m
+					root.branchLabel = ""
+					for i, row := range root.branchRows() {
+						if row.kind == rowBranchLabel && strings.EqualFold(row.name, newLabel) {
+							m.branchLabelRootCursor = i
+							break
+						}
+					}
+				}
 				for i, row := range m.branchRows() {
 					if row.kind == rowTask && row.todo.text == oldTask.text && row.todo.branch == oldTask.branch && strings.EqualFold(taskLabel(row.todo), newLabel) {
 						m.branchCursor = i
@@ -491,7 +521,7 @@ func (m *model) reload() error {
 	m.partitionTasks()
 	if m.generalLabel != "" {
 		found := false
-		for _, t := range m.allTasks {
+		for _, t := range m.general {
 			if taskHasLabel(t, m.generalLabel) {
 				found = true
 				break
@@ -512,7 +542,21 @@ func (m *model) reload() error {
 		}
 		if !found {
 			m.branchFilter = ""
+			m.branchLabel = ""
 			m.branchCursor = m.branchRootCursor
+		}
+	}
+	if m.branchLabel != "" {
+		found := false
+		for _, t := range m.branches {
+			if t.branch == m.branchFilter && taskHasLabel(t, m.branchLabel) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.branchLabel = ""
+			m.branchCursor = m.branchLabelRootCursor
 		}
 	}
 	m.generalCursor = min(m.generalCursor, max(0, len(m.generalRows())-1))

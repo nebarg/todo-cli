@@ -26,7 +26,7 @@ func (m model) generalRows() []navigationRow {
 	if m.generalLabel == "" {
 		counts := make(map[string]int)
 		display := make(map[string]string)
-		for _, t := range m.allTasks {
+		for _, t := range m.general {
 			if label := taskLabel(t); label != "" {
 				key := strings.ToLower(label)
 				counts[key]++
@@ -38,11 +38,6 @@ func (m model) generalRows() []navigationRow {
 		for _, key := range sortedNames(counts) {
 			label := display[key]
 			rows = append(rows, navigationRow{kind: rowLabel, name: label, count: counts[key]})
-			for _, t := range m.allTasks {
-				if taskHasLabel(t, label) {
-					rows = append(rows, navigationRow{kind: rowTask, todo: t})
-				}
-			}
 		}
 		for _, t := range m.general {
 			if taskLabel(t) == "" {
@@ -51,7 +46,7 @@ func (m model) generalRows() []navigationRow {
 		}
 		return rows
 	}
-	for _, t := range m.allTasks {
+	for _, t := range m.general {
 		if taskHasLabel(t, m.generalLabel) {
 			rows = append(rows, navigationRow{kind: rowTask, todo: t})
 		}
@@ -62,6 +57,14 @@ func (m model) generalRows() []navigationRow {
 func (m model) branchRows() []navigationRow {
 	var rows []navigationRow
 	if m.branchFilter != "" {
+		if m.branchLabel != "" {
+			for _, t := range m.branches {
+				if t.branch == m.branchFilter && taskHasLabel(t, m.branchLabel) {
+					rows = append(rows, navigationRow{kind: rowTask, todo: t})
+				}
+			}
+			return rows
+		}
 		counts := make(map[string]int)
 		display := make(map[string]string)
 		for _, t := range m.branches {
@@ -77,11 +80,6 @@ func (m model) branchRows() []navigationRow {
 		for _, key := range sortedNames(counts) {
 			label := display[key]
 			rows = append(rows, navigationRow{kind: rowBranchLabel, name: label, count: counts[key]})
-			for _, t := range m.branches {
-				if t.branch == m.branchFilter && taskHasLabel(t, label) {
-					rows = append(rows, navigationRow{kind: rowTask, todo: t})
-				}
-			}
 		}
 		for _, t := range m.branches {
 			if t.branch == m.branchFilter && taskLabel(t) == "" {
@@ -159,11 +157,12 @@ func (m *model) enterSelectedGroup() bool {
 	case rowBranch:
 		m.branchRootCursor = m.branchCursor
 		m.branchFilter = row.name
+		m.branchLabel = ""
 		m.branchCursor = 0
 	case rowBranchLabel:
-		if m.branchCursor+1 < len(m.branchRows()) {
-			m.branchCursor++
-		}
+		m.branchLabelRootCursor = m.branchCursor
+		m.branchLabel = row.name
+		m.branchCursor = 0
 	default:
 		return false
 	}
@@ -181,6 +180,11 @@ func (m *model) leaveGroup() bool {
 		m.generalLabel = ""
 		m.generalCursor = m.generalRootCursor
 	case branchPane:
+		if m.branchLabel != "" {
+			m.branchLabel = ""
+			m.branchCursor = m.branchLabelRootCursor
+			break
+		}
 		if m.branchFilter == "" {
 			return false
 		}

@@ -114,20 +114,23 @@ func TestLabelsAndBranchesDrillDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	general := m.generalRows()
-	if len(general) != 6 || general[0].kind != rowLabel || general[0].name != "auth" || general[1].kind != rowTask || general[1].todo.text != "Login task" || general[3].name != "tests" {
+	if len(general) != 3 || general[0].kind != rowLabel || general[0].name != "auth" || general[0].count != 1 || general[1].kind != rowLabel || general[1].name != "tests" || general[2].todo.text != "Unlabeled" {
 		t.Fatalf("general rows = %+v", general)
 	}
 	list := ansi.Strip(m.renderNavigationPane(m.generalTitle(), general, 0, generalPane, 50, 18))
-	if strings.Contains(list, "[ ]") || !strings.Contains(list, "@auth") || !strings.Contains(list, "  Login task") {
-		t.Fatalf("tasks were not visually nested beneath labels: %s", list)
+	if strings.Contains(list, "[ ]") || !strings.Contains(list, "@auth") || strings.Contains(list, "Login task") || strings.Contains(list, "Branch login") {
+		t.Fatalf("root General list showed labeled or branch tasks: %s", list)
 	}
 	if _, ok := m.selectedTask(); ok {
 		t.Fatal("label row selected a task")
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(model)
-	if m.generalLabel != "auth" || m.generalTitle() != "General · @auth" || len(m.generalRows()) != 2 || m.generalRows()[0].todo.text != "Login task" || m.generalRows()[1].todo.branch != "feature/login" {
+	if m.generalLabel != "auth" || m.generalTitle() != "General · @auth" || len(m.generalRows()) != 1 || m.generalRows()[0].todo.text != "Login task" {
 		t.Fatalf("label did not filter general tasks: %+v", m.generalRows())
+	}
+	if opened := ansi.Strip(m.renderNavigationPane(m.generalTitle(), m.generalRows(), 0, generalPane, 50, 12)); strings.Contains(opened, "  Login task") || !strings.Contains(opened, "Login task") {
+		t.Fatalf("label contents were indented: %s", opened)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	m = updated.(model)
@@ -161,9 +164,20 @@ func TestLabelsAndBranchesDrillDown(t *testing.T) {
 		t.Fatal("left arrow did not return to selected branch")
 	}
 	m.branchFilter = "feature/login"
+	m.branchCursor = 0
 	branchList := ansi.Strip(m.renderNavigationPane(m.branchTitle(), m.branchRows(), 0, branchPane, 50, 12))
-	if strings.Contains(branchList, "[ ]") || !strings.Contains(branchList, "@auth") || !strings.Contains(branchList, "  Branch login") {
-		t.Fatalf("branch tasks were not nested beneath the label: %s", branchList)
+	if strings.Contains(branchList, "[ ]") || !strings.Contains(branchList, "@auth") || strings.Contains(branchList, "Branch login") {
+		t.Fatalf("branch root showed labeled tasks: %s", branchList)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(model)
+	if m.branchLabel != "auth" || len(m.branchRows()) != 1 || m.branchRows()[0].todo.text != "Branch login" {
+		t.Fatalf("branch label did not open: %+v", m.branchRows())
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	m = updated.(model)
+	if m.branchLabel != "" || m.branchFilter != "feature/login" || m.branchCursor != 0 {
+		t.Fatal("left arrow did not return to branch labels")
 	}
 }
 
@@ -176,7 +190,7 @@ func TestChangingLabelKeepsTaskSelected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.generalCursor = 1
+	m.enterSelectedGroup()
 	opened, _ := m.startInput("labels")
 	m = opened.(model)
 	m.input.SetValue("backend")
@@ -207,7 +221,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	m.modal.title.SetValue("New auth task")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	m = updated.(model)
-	if len(m.generalRows()) != 3 || !taskHasLabel(m.generalRows()[1].todo, "auth") || m.generalRows()[1].todo.text != "New auth task" || m.generalCursor != 1 {
+	if len(m.generalRows()) != 2 || !taskHasLabel(m.generalRows()[1].todo, "auth") || m.generalRows()[1].todo.text != "New auth task" || m.generalCursor != 1 {
 		t.Fatalf("new task was not added to label: %+v", m.generalRows())
 	}
 	m.focus = branchPane
@@ -219,8 +233,30 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	m.modal.title.SetValue("New branch task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	m = updated.(model)
-	if m.branchFilter != "feature/login" || len(m.branchRows()) != 3 || m.branchRows()[2].todo.text != "New branch task" {
+	if m.branchFilter != "feature/login" || len(m.branchRows()) != 2 || m.branchRows()[1].todo.text != "New branch task" {
 		t.Fatalf("new task was not added to branch: %+v", m.branchRows())
+	}
+	m.branchCursor = 0
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(model)
+	if m.branchLabel != "auth" {
+		t.Fatal("branch label did not open before adding")
+	}
+	opened, _ = m.startTaskModal("add-branch")
+	m = opened.(model)
+	if m.modal.addLabel != "auth" {
+		t.Fatal("add form did not inherit branch label")
+	}
+	m.modal.title.SetValue("Another auth task")
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	m = updated.(model)
+	if m.branchLabel != "auth" || len(m.branchRows()) != 2 || m.branchRows()[m.branchCursor].todo.text != "Another auth task" {
+		t.Fatalf("new task was not added inside branch label: %+v", m.branchRows())
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
+	m = updated.(model)
+	if m.branchLabel != "" || m.branchFilter != "" || m.branchRows()[m.branchCursor].name != "feature/login" {
+		t.Fatal("v did not return to the branch list")
 	}
 }
 

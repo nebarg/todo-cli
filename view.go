@@ -217,6 +217,9 @@ func (m model) generalTitle() string {
 
 func (m model) branchTitle() string {
 	if m.branchFilter != "" {
+		if m.branchLabel != "" {
+			return "Branch · " + m.branchFilter + " · @" + m.branchLabel
+		}
 		return "Branch · " + m.branchFilter
 	}
 	return "Branches"
@@ -234,10 +237,12 @@ func (m model) panelStyle(focused bool, width, height int) lipgloss.Style {
 func (m model) renderNavigationPane(title string, rows []navigationRow, cursor int, kind pane, width, height int) string {
 	innerWidth := max(1, width-4)
 	count := len(rows)
-	if (kind == generalPane && m.generalLabel == "") || (kind == branchPane && m.branchFilter != "") {
+	if kind == generalPane && m.generalLabel == "" {
+		count = len(m.general)
+	} else if kind == branchPane && m.branchFilter != "" && m.branchLabel == "" {
 		count = 0
-		for _, row := range rows {
-			if row.kind == rowTask {
+		for _, t := range m.branches {
+			if t.branch == m.branchFilter {
 				count++
 			}
 		}
@@ -260,7 +265,7 @@ func (m model) renderNavigationPane(title string, rows []navigationRow, cursor i
 		case rowLabel:
 			row = fmt.Sprintf("@%s  %d ›", item.name, item.count)
 		case rowBranchLabel:
-			row = fmt.Sprintf("@%s  %d", item.name, item.count)
+			row = fmt.Sprintf("@%s  %d ›", item.name, item.count)
 		case rowBranch:
 			marker := "  "
 			if item.name == m.project.branch {
@@ -276,13 +281,7 @@ func (m model) renderNavigationPane(title string, rows []navigationRow, cursor i
 			if item.todo.priority != "" {
 				prefix = priorityStyle(item.todo.priority).Render(priorityMarker(item.todo.priority)) + " "
 			}
-			if (kind == generalPane || kind == branchPane) && taskLabel(item.todo) != "" {
-				prefix = "  " + prefix
-			}
 			row = mark + prefix + cleanDisplay(item.todo.text)
-			if kind == generalPane && item.todo.branch != "" {
-				row += "  (" + item.todo.branch + ")"
-			}
 		}
 		row = ansi.Truncate(row, innerWidth, "…")
 		if i == cursor && (m.focus == kind || (m.focus == detailPane && m.detailFrom == kind)) {
@@ -415,7 +414,7 @@ func groupName(row navigationRow) string {
 }
 
 func (m model) groupDetails(row navigationRow, width int) []string {
-	scope := "tasks across General and branches"
+	scope := "general tasks"
 	if row.kind == rowBranch {
 		scope = "branch tasks"
 	} else if row.kind == rowBranchLabel {

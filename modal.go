@@ -40,6 +40,7 @@ func (m model) startTaskModal(mode string) (tea.Model, tea.Cmd) {
 		if m.activePane() == branchPane {
 			if m.branchFilter != "" {
 				modal.addBranch = m.branchFilter
+				modal.addLabel = m.branchLabel
 				if row, ok := m.selectedNavigationRow(); ok {
 					if row.kind == rowBranchLabel {
 						modal.addLabel = row.name
@@ -102,6 +103,17 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		if mode == "add-general" {
 			m.focus = generalPane
+			m.generalLabel = modal.addLabel
+			if modal.addLabel != "" {
+				root := m
+				root.generalLabel = ""
+				for i, row := range root.generalRows() {
+					if row.kind == rowLabel && strings.EqualFold(row.name, modal.addLabel) {
+						m.generalRootCursor = i
+						break
+					}
+				}
+			}
 			for i, row := range m.generalRows() {
 				if row.kind == rowTask && row.todo.branch == "" && row.todo.text == strings.TrimSpace(modal.title.Value()) && strings.EqualFold(taskLabel(row.todo), modal.addLabel) {
 					m.generalCursor = i
@@ -109,15 +121,27 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		} else if mode == "add-branch" {
 			m.focus = branchPane
-			if m.branchFilter == "" {
-				for i, row := range m.branchRows() {
-					if row.name == modal.addBranch {
-						m.branchRootCursor = i
+			branchRoot := m
+			branchRoot.branchFilter = ""
+			branchRoot.branchLabel = ""
+			for i, row := range branchRoot.branchRows() {
+				if row.name == modal.addBranch {
+					m.branchRootCursor = i
+					break
+				}
+			}
+			m.branchFilter = modal.addBranch
+			m.branchLabel = modal.addLabel
+			if modal.addLabel != "" {
+				root := m
+				root.branchLabel = ""
+				for i, row := range root.branchRows() {
+					if row.kind == rowBranchLabel && strings.EqualFold(row.name, modal.addLabel) {
+						m.branchLabelRootCursor = i
 						break
 					}
 				}
 			}
-			m.branchFilter = modal.addBranch
 			for i, row := range m.branchRows() {
 				if row.kind == rowTask && row.todo.text == strings.TrimSpace(modal.title.Value()) && strings.EqualFold(taskLabel(row.todo), modal.addLabel) {
 					m.branchCursor = i
