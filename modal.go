@@ -40,14 +40,6 @@ func (m model) startTaskModal(mode string) (tea.Model, tea.Cmd) {
 		if m.activePane() == branchPane {
 			if m.branchFilter != "" {
 				modal.addBranch = m.branchFilter
-				modal.addLabel = m.branchLabel
-				if row, ok := m.selectedNavigationRow(); ok {
-					if row.kind == rowBranchLabel {
-						modal.addLabel = row.name
-					} else if row.kind == rowTask {
-						modal.addLabel = taskLabel(row.todo)
-					}
-				}
 			} else if row, ok := m.selectedNavigationRow(); ok && row.kind == rowBranch {
 				modal.addBranch = row.name
 			}
@@ -97,7 +89,7 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		mode := modal.mode
 		m.modal = nil
-		if err := m.reload(); err != nil {
+		if err := m.refresh(); err != nil {
 			m.status = err.Error()
 			return m, nil
 		}
@@ -123,7 +115,6 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.focus = branchPane
 			branchRoot := m
 			branchRoot.branchFilter = ""
-			branchRoot.branchLabel = ""
 			for i, row := range branchRoot.branchRows() {
 				if row.name == modal.addBranch {
 					m.branchRootCursor = i
@@ -131,19 +122,8 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.branchFilter = modal.addBranch
-			m.branchLabel = modal.addLabel
-			if modal.addLabel != "" {
-				root := m
-				root.branchLabel = ""
-				for i, row := range root.branchRows() {
-					if row.kind == rowBranchLabel && strings.EqualFold(row.name, modal.addLabel) {
-						m.branchLabelRootCursor = i
-						break
-					}
-				}
-			}
 			for i, row := range m.branchRows() {
-				if row.kind == rowTask && row.todo.text == strings.TrimSpace(modal.title.Value()) && strings.EqualFold(taskLabel(row.todo), modal.addLabel) {
+				if row.kind == rowTask && row.todo.text == strings.TrimSpace(modal.title.Value()) {
 					m.branchCursor = i
 				}
 			}
@@ -187,7 +167,7 @@ func (f *taskModal) save(path string) error {
 		return editTaskContent(path, f.selected, f.title.Value(), f.details.Value())
 	}
 	var labels []string
-	if f.addLabel != "" {
+	if f.mode == "add-general" && f.addLabel != "" {
 		labels = []string{f.addLabel}
 	}
 	return addTaskWithDetails(path, f.title.Value(), f.details.Value(), "", labels, f.addBranch)
@@ -223,9 +203,9 @@ func (f *taskModal) render(width, height int) string {
 	} else {
 		detailsLabel = titleStyle.Render("Details")
 	}
-	help := "↓/Tab Details · Ctrl+Enter Save · Esc Cancel"
+	help := "↓/tab details · ctrl+enter save · esc cancel"
 	if f.field == 1 {
-		help = "↑/Tab Title · Ctrl+Enter Save · Esc Cancel"
+		help = "↑/tab title · ctrl+enter save · esc cancel"
 	}
 	if f.err != "" {
 		help = f.err

@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	fileFlag := flag.String("file", "", "markdown file (default: repository root/TODO.md)")
+	fileFlag := flag.String("file", "", "markdown file (default: repository root/todo.md)")
 	priority := flag.String("priority", "", "high, medium, or low for a new task")
 	labelsFlag := flag.String("label", "", "one label for a new task")
 	onBranch := flag.Bool("branch", false, "put a new task under the current Git branch")

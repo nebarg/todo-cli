@@ -40,6 +40,7 @@ type model struct {
 	allTasks              []task
 	indexMode             bool
 	indexSort             string
+	indexPriorityExplicit bool
 	indexCursor           int
 	general               []task
 	branches              []task
@@ -53,8 +54,6 @@ type model struct {
 	branchCursor          int
 	branchRootCursor      int
 	branchFilter          string
-	branchLabel           string
-	branchLabelRootCursor int
 	sourceCursor          int
 	sourceLoading         bool
 	sourceScanned         bool
@@ -192,6 +191,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "i":
 			m.indexMode = true
 			m.indexSort = "priority"
+			m.indexPriorityExplicit = false
 			m.indexCursor = 0
 			m.status = ""
 		case "tab":
@@ -220,14 +220,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "right":
 			if m.focus != detailPane {
 				if !m.enterSelectedGroup() {
-					if _, ok := m.selectedTask(); ok || m.focus == sourcePane {
+					_, taskSelected := m.selectedTask()
+					if taskSelected || (m.focus == sourcePane && m.sourceCursor < len(m.source)) {
 						m.detailFrom = m.focus
 						m.focus = detailPane
 						m.detailScroll = 0
 					}
 				}
 			}
-		case "left":
+		case "left", "esc":
 			if m.focus == detailPane {
 				m.focus = m.detailFrom
 				m.detailScroll = 0
@@ -259,19 +260,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.startTaskModal("edit")
 		case "p":
 			m.cyclePriority()
-		case "space":
+		case "space", "d":
 			m.toggleSelected()
 		case "enter":
 			if m.activePane() == sourcePane {
 				return m, m.openSource()
 			}
 			if !m.enterSelectedGroup() {
-				m.toggleSelected()
+				return m.startTaskModal("edit")
 			}
 		case "v":
 			m.focus = branchPane
 			m.branchFilter = ""
-			m.branchLabel = ""
 			m.branchCursor = m.branchRootCursor
 			m.status = ""
 		case "r":
@@ -349,6 +349,10 @@ func (m model) startInput(mode string) (tea.Model, tea.Cmd) {
 			m.status = "Select a Markdown task to edit its label"
 			return m, nil
 		}
+		if selected.branch != "" {
+			m.status = "Categories are only for general tasks"
+			return m, nil
+		}
 		m.editTask = selected
 		m.input.Prompt = "Label: "
 		m.input.SetValue(taskLabel(selected))
@@ -387,12 +391,9 @@ func (m model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			case generalPane:
 				m.generalLabel = newLabel
 				m.generalCursor = 0
-			case branchPane:
-				m.branchLabel = newLabel
-				m.branchCursor = 0
 			}
 		}
-		if err := m.reload(); err != nil {
+		if err := m.refresh(); err != nil {
 			m.status = err.Error()
 			return m, nil
 		}
@@ -413,23 +414,6 @@ func (m model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				for i, row := range m.generalRows() {
 					if row.kind == rowTask && row.todo.text == oldTask.text && row.todo.branch == oldTask.branch && strings.EqualFold(taskLabel(row.todo), newLabel) {
 						m.generalCursor = i
-						break
-					}
-				}
-			} else if m.activePane() == branchPane {
-				if newLabel != "" {
-					root := m
-					root.branchLabel = ""
-					for i, row := range root.branchRows() {
-						if row.kind == rowBranchLabel && strings.EqualFold(row.name, newLabel) {
-							m.branchLabelRootCursor = i
-							break
-						}
-					}
-				}
-				for i, row := range m.branchRows() {
-					if row.kind == rowTask && row.todo.text == oldTask.text && row.todo.branch == oldTask.branch && strings.EqualFold(taskLabel(row.todo), newLabel) {
-						m.branchCursor = i
 						break
 					}
 				}
@@ -472,7 +456,7 @@ func (m *model) toggleSelected() {
 		m.status = err.Error()
 		return
 	}
-	if err := m.reload(); err != nil {
+	if err := m.refresh(); err != nil {
 		m.status = err.Error()
 		return
 	}
@@ -490,7 +474,7 @@ func (m *model) cyclePriority() {
 		m.status = err.Error()
 		return
 	}
-	if err := m.reload(); err != nil {
+	if err := m.refresh(); err != nil {
 		m.status = err.Error()
 		return
 	}
@@ -535,12 +519,26 @@ func editorProcess(path string, line int) *exec.Cmd {
 }
 
 func (m *model) reload() error {
+	return m.readTasks(true)
+}
+
+func (m *model) refresh() error {
+	return m.readTasks(false)
+}
+
+func (m *model) readTasks(sortByPriority bool) error {
 	previous, hadSelection := m.selectedTask()
+	previousTasks := m.allTasks
 	tasks, err := loadTasks(m.file)
 	if err != nil {
 		return err
 	}
-	m.allTasks = tasks
+	if sortByPriority {
+		m.allTasks = sortedTasksByPriority(tasks)
+		m.indexPriorityExplicit = false
+	} else {
+		m.allTasks = preserveTaskOrder(previousTasks, tasks)
+	}
 	m.partitionTasks()
 	if m.generalLabel != "" {
 		found := false
@@ -565,21 +563,7 @@ func (m *model) reload() error {
 		}
 		if !found {
 			m.branchFilter = ""
-			m.branchLabel = ""
 			m.branchCursor = m.branchRootCursor
-		}
-	}
-	if m.branchLabel != "" {
-		found := false
-		for _, t := range m.branches {
-			if t.branch == m.branchFilter && taskHasLabel(t, m.branchLabel) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			m.branchLabel = ""
-			m.branchCursor = m.branchLabelRootCursor
 		}
 	}
 	m.generalCursor = min(m.generalCursor, max(0, len(m.generalRows())-1))
@@ -591,6 +575,77 @@ func (m *model) reload() error {
 		}
 	}
 	return nil
+}
+
+func preserveTaskOrder(previous, loaded []task) []task {
+	if len(previous) == 0 || len(loaded) == 0 {
+		return loaded
+	}
+	type key struct{ text, branch, label string }
+	identity := func(item task) key {
+		return key{item.text, item.branch, strings.ToLower(taskLabel(item))}
+	}
+	positions := make(map[key][]int, len(loaded))
+	for i, item := range loaded {
+		positions[identity(item)] = append(positions[identity(item)], i)
+	}
+	assigned := make([]int, len(previous))
+	for i := range assigned {
+		assigned[i] = -1
+	}
+	used := make([]bool, len(loaded))
+	for oldIndex, old := range previous {
+		candidates := positions[identity(old)]
+		best, bestOffset, distance := -1, -1, int(^uint(0)>>1)
+		for offset, i := range candidates {
+			d := loaded[i].line - old.line
+			if d < 0 {
+				d = -d
+			}
+			if d < distance {
+				best, bestOffset, distance = i, offset, d
+			}
+		}
+		if best >= 0 {
+			assigned[oldIndex] = best
+			used[best] = true
+			positions[identity(old)] = append(candidates[:bestOffset], candidates[bestOffset+1:]...)
+		}
+	}
+	for oldIndex, old := range previous {
+		if assigned[oldIndex] >= 0 {
+			continue
+		}
+		best, distance := -1, int(^uint(0)>>1)
+		for i, candidate := range loaded {
+			if used[i] || candidate.branch != old.branch || !strings.EqualFold(taskLabel(candidate), taskLabel(old)) {
+				continue
+			}
+			d := candidate.line - old.line
+			if d < 0 {
+				d = -d
+			}
+			if d < distance {
+				best, distance = i, d
+			}
+		}
+		if best >= 0 {
+			assigned[oldIndex] = best
+			used[best] = true
+		}
+	}
+	ordered := make([]task, 0, len(loaded))
+	for _, index := range assigned {
+		if index >= 0 {
+			ordered = append(ordered, loaded[index])
+		}
+	}
+	for i, item := range loaded {
+		if !used[i] {
+			ordered = append(ordered, item)
+		}
+	}
+	return ordered
 }
 
 func (m model) indexTasks() []task {
@@ -606,8 +661,12 @@ func (m model) indexTasks() []task {
 			if c := compareIndexGroup(taskLabel(a), taskLabel(b)); c != 0 {
 				return c < 0
 			}
+		case "priority":
+			if m.indexPriorityExplicit {
+				return priorityRank(a.priority) < priorityRank(b.priority)
+			}
 		}
-		return priorityRank(a.priority) < priorityRank(b.priority)
+		return false
 	})
 	return tasks
 }
@@ -677,12 +736,13 @@ func (m model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "p", "b", "l":
 		selected, ok := m.selectedTask()
 		m.indexSort = map[string]string{"p": "priority", "b": "branch", "l": "label"}[msg.String()]
+		m.indexPriorityExplicit = msg.String() == "p"
 		if ok {
 			m.selectIndexTask(selected)
 		}
-	case "space", "enter":
+	case "space", "d":
 		m.toggleSelected()
-	case "e":
+	case "enter", "e":
 		return m.startTaskModal("edit")
 	case "r":
 		m.project = currentProject()

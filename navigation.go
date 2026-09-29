@@ -11,25 +11,39 @@ const (
 	rowTask navigationKind = iota
 	rowLabel
 	rowBranch
-	rowBranchLabel
 )
 
 type navigationRow struct {
-	kind  navigationKind
-	name  string
-	count int
-	todo  task
+	kind      navigationKind
+	name      string
+	count     int
+	completed int
+	todo      task
+}
+
+func completedCount(tasks []task) int {
+	count := 0
+	for _, t := range tasks {
+		if t.done {
+			count++
+		}
+	}
+	return count
 }
 
 func (m model) generalRows() []navigationRow {
 	var rows []navigationRow
 	if m.generalLabel == "" {
 		counts := make(map[string]int)
+		completed := make(map[string]int)
 		display := make(map[string]string)
 		for _, t := range m.general {
 			if label := taskLabel(t); label != "" {
 				key := strings.ToLower(label)
 				counts[key]++
+				if t.done {
+					completed[key]++
+				}
 				if display[key] == "" {
 					display[key] = label
 				}
@@ -37,7 +51,7 @@ func (m model) generalRows() []navigationRow {
 		}
 		for _, key := range sortedNames(counts) {
 			label := display[key]
-			rows = append(rows, navigationRow{kind: rowLabel, name: label, count: counts[key]})
+			rows = append(rows, navigationRow{kind: rowLabel, name: label, count: counts[key], completed: completed[key]})
 		}
 		for _, t := range m.general {
 			if taskLabel(t) == "" {
@@ -57,43 +71,23 @@ func (m model) generalRows() []navigationRow {
 func (m model) branchRows() []navigationRow {
 	var rows []navigationRow
 	if m.branchFilter != "" {
-		if m.branchLabel != "" {
-			for _, t := range m.branches {
-				if t.branch == m.branchFilter && taskHasLabel(t, m.branchLabel) {
-					rows = append(rows, navigationRow{kind: rowTask, todo: t})
-				}
-			}
-			return rows
-		}
-		counts := make(map[string]int)
-		display := make(map[string]string)
 		for _, t := range m.branches {
-			if t.branch == m.branchFilter && taskLabel(t) != "" {
-				label := taskLabel(t)
-				key := strings.ToLower(label)
-				counts[key]++
-				if display[key] == "" {
-					display[key] = label
-				}
-			}
-		}
-		for _, key := range sortedNames(counts) {
-			label := display[key]
-			rows = append(rows, navigationRow{kind: rowBranchLabel, name: label, count: counts[key]})
-		}
-		for _, t := range m.branches {
-			if t.branch == m.branchFilter && taskLabel(t) == "" {
+			if t.branch == m.branchFilter {
 				rows = append(rows, navigationRow{kind: rowTask, todo: t})
 			}
 		}
 		return rows
 	}
 	counts := make(map[string]int)
+	completed := make(map[string]int)
 	for _, t := range m.branches {
 		counts[t.branch]++
+		if t.done {
+			completed[t.branch]++
+		}
 	}
 	for _, name := range sortedNames(counts) {
-		rows = append(rows, navigationRow{kind: rowBranch, name: name, count: counts[name]})
+		rows = append(rows, navigationRow{kind: rowBranch, name: name, count: counts[name], completed: completed[name]})
 	}
 	return rows
 }
@@ -111,6 +105,14 @@ func sortedNames(counts map[string]int) []string {
 		return a < b
 	})
 	return names
+}
+
+func sortedTasksByPriority(tasks []task) []task {
+	sorted := append([]task(nil), tasks...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return priorityRank(sorted[i].priority) < priorityRank(sorted[j].priority)
+	})
+	return sorted
 }
 
 func taskHasLabel(t task, label string) bool {
@@ -157,11 +159,6 @@ func (m *model) enterSelectedGroup() bool {
 	case rowBranch:
 		m.branchRootCursor = m.branchCursor
 		m.branchFilter = row.name
-		m.branchLabel = ""
-		m.branchCursor = 0
-	case rowBranchLabel:
-		m.branchLabelRootCursor = m.branchCursor
-		m.branchLabel = row.name
 		m.branchCursor = 0
 	default:
 		return false
@@ -180,11 +177,6 @@ func (m *model) leaveGroup() bool {
 		m.generalLabel = ""
 		m.generalCursor = m.generalRootCursor
 	case branchPane:
-		if m.branchLabel != "" {
-			m.branchLabel = ""
-			m.branchCursor = m.branchLabelRootCursor
-			break
-		}
 		if m.branchFilter == "" {
 			return false
 		}

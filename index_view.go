@@ -10,11 +10,7 @@ import (
 
 func priorityMarker(priority string) string {
 	switch priority {
-	case "high":
-		return "!!!"
-	case "medium":
-		return "!!"
-	case "low":
+	case "high", "medium", "low":
 		return "!"
 	default:
 		return "-"
@@ -45,7 +41,7 @@ func (m model) renderIndex(width, height int) string {
 	labelWidth := min(18, max(8, (innerWidth-22)/4))
 	branchWidth := min(26, max(10, (innerWidth-22)/3))
 	taskWidth := max(1, innerWidth-3-6-labelWidth-branchWidth)
-	heading := fmt.Sprintf("All tasks  %d · Sort: %s", len(tasks), m.indexSort)
+	heading := fmt.Sprintf("All tasks  %d / %d · Sort: %s", completedCount(tasks), len(tasks), m.indexSort)
 	lines := []string{titleStyle.Render(ansi.Truncate(heading, innerWidth, "…"))}
 	columns := indexColumn("PRI", 3) + "  " + indexColumn("LABEL", labelWidth) + "  " + indexColumn("BRANCH", branchWidth) + "  " + indexColumn("TASK: DETAILS", taskWidth)
 	lines = append(lines, mutedStyle.Render(columns))
@@ -63,10 +59,11 @@ func (m model) renderIndex(width, height int) string {
 		if t.branch != "" {
 			branch = t.branch
 		}
-		title := cleanDisplay(t.text)
+		mark := "○ "
 		if t.done {
-			title = "✓ " + title
+			mark = "✓ "
 		}
+		title := mark + cleanDisplay(t.text)
 		if details := strings.Join(strings.Fields(cleanDisplay(t.details)), " "); details != "" {
 			title += ": " + details
 		}

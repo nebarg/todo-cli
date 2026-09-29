@@ -13,8 +13,8 @@ import (
 )
 
 func TestDashboardFitsTerminal(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "TODO.md")
-	content := "## General\n\n- [ ] Fix failing tests\n\n## Branches\n\n### feature/login\n\n- [ ] Add login check\n"
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "- [ ] Fix failing tests\n\n# Branches\n\n## feature/login\n\n- [ ] Add login check\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -26,19 +26,55 @@ func TestDashboardFitsTerminal(t *testing.T) {
 	m.sourceLoading = false
 	for _, size := range [][2]int{{120, 35}, {80, 24}, {78, 16}, {60, 20}, {56, 19}} {
 		m.width, m.height = size[0], size[1]
-		view := m.View()
-		if got := lipgloss.Width(view.Content); got != size[0] {
-			t.Errorf("width at %dx%d = %d", size[0], size[1], got)
-		}
-		if got := lipgloss.Height(view.Content); got != size[1] {
-			t.Errorf("height at %dx%d = %d", size[0], size[1], got)
-		}
-		plain := ansi.Strip(view.Content)
-		for _, want := range []string{"General", "Branch", "File TODOs", "Details"} {
-			if !strings.Contains(plain, want) {
-				t.Errorf("missing %q at %dx%d", want, size[0], size[1])
+		for _, page := range []struct {
+			name  string
+			focus pane
+			want  string
+			hide  string
+		}{
+			{"general", generalPane, "Fix failing tests", "main.go:12"},
+			{"branches", branchPane, "feature/login", "Fix failing tests"},
+			{"files", sourcePane, "main.go:12", "Fix failing tests"},
+			{"details", detailPane, "Status", "main.go:12"},
+		} {
+			m.focus = page.focus
+			m.detailFrom = generalPane
+			view := m.View()
+			if got := lipgloss.Width(view.Content); got != size[0] {
+				t.Errorf("%s width at %dx%d = %d", page.name, size[0], size[1], got)
+			}
+			if got := lipgloss.Height(view.Content); got != size[1] {
+				t.Errorf("%s height at %dx%d = %d", page.name, size[0], size[1], got)
+			}
+			plain := ansi.Strip(view.Content)
+			lines := strings.Split(plain, "\n")
+			if len(lines) < 5 || lines[2] == "" {
+				t.Errorf("%s has an unexpected gap below tabs at %dx%d", page.name, size[0], size[1])
+			}
+			if len(lines) < 6 || strings.Trim(lines[4], " │") != "" {
+				t.Errorf("%s has no gap below its heading at %dx%d", page.name, size[0], size[1])
+			}
+			if !strings.Contains(plain, page.want) || strings.Contains(plain, page.hide) {
+				t.Errorf("%s content at %dx%d: %s", page.name, size[0], size[1], plain)
+			}
+			if !strings.Contains(plain, "1 General") || !strings.Contains(plain, "3 Files") {
+				t.Errorf("%s tabs missing at %dx%d", page.name, size[0], size[1])
 			}
 		}
+	}
+}
+
+func TestInactiveTabsShareTheBarBackground(t *testing.T) {
+	m := model{focus: sourcePane}
+	tabs := m.renderTabs(80)
+	inactive := lipgloss.NewStyle().Foreground(colorMuted).Background(lipgloss.Color("#17253A"))
+	for _, label := range []string{" 1 General ", " 2 Branches "} {
+		if !strings.Contains(tabs, inactive.Render(label)) {
+			t.Errorf("inactive tab %q has the wrong background: %q", label, tabs)
+		}
+	}
+	if ansi.StringWidth(tabs) != 80 {
+		t.Errorf("tab bar width = %d, want 80", ansi.StringWidth(tabs))
 	}
 }
 
@@ -50,30 +86,7 @@ func TestScanErrorVisibleInDetails(t *testing.T) {
 	}
 }
 
-func TestLeftPaneHeights(t *testing.T) {
-	tests := []struct {
-		name   string
-		total  int
-		counts [3]int
-		want   [3]int
-	}{
-		{"all occupied", 30, [3]int{15, 1, 1}, [3]int{10, 10, 10}},
-		{"empty but everything fits", 31, [3]int{0, 1, 2}, [3]int{11, 10, 10}},
-		{"one empty lends space", 30, [3]int{15, 1, 0}, [3]int{16, 10, 4}},
-		{"two empty lend space", 30, [3]int{15, 0, 0}, [3]int{22, 4, 4}},
-		{"two busy lists share space", 30, [3]int{12, 12, 0}, [3]int{13, 13, 4}},
-		{"small terminal", 16, [3]int{9, 0, 0}, [3]int{8, 4, 4}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := leftPaneHeights(tt.total, tt.counts); got != tt.want {
-				t.Errorf("leftPaneHeights(%d, %v) = %v, want %v", tt.total, tt.counts, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestTaskDetailsShownInDashboard(t *testing.T) {
+func TestTaskDetailsShownOnDetailPage(t *testing.T) {
 	if taskTitleStyle.GetForeground() != lipgloss.Color("#FFFFFF") {
 		t.Fatal("task title is not styled with the white text color")
 	}
@@ -92,20 +105,92 @@ func TestTaskDetailsShownInDashboard(t *testing.T) {
 	}
 	for _, size := range [][2]int{{120, 35}, {60, 20}} {
 		m.width, m.height = size[0], size[1]
+		list := ansi.Strip(m.View().Content)
+		if strings.Contains(list, "When a session expires") {
+			t.Errorf("description visible in %dx%d task list", size[0], size[1])
+		}
+		m.focus, m.detailFrom = detailPane, generalPane
 		view := ansi.Strip(m.View().Content)
 		if !strings.Contains(view, "When a session expires") {
-			t.Errorf("description missing from %dx%d dashboard", size[0], size[1])
+			t.Errorf("description missing from %dx%d detail page", size[0], size[1])
 		}
+		m.focus = generalPane
 	}
 	m.focus, m.detailFrom = detailPane, generalPane
-	if view := ansi.Strip(m.renderDetailPane(60, 20)); !strings.Contains(view, "Space/Enter: done") || !strings.Contains(view, "(e)dit") || !strings.Contains(view, "(p)riority") || !strings.Contains(view, "(l)abel") {
-		t.Error("focused details do not show edit shortcut")
+	if footer := ansi.Strip(m.renderFooter(120)); !strings.Contains(footer, "esc back") || !strings.Contains(footer, "(d)one/space · (e)dit/enter") || !strings.Contains(footer, "(p)riority") || !strings.Contains(footer, "(l)abel") {
+		t.Error("detail footer does not show navigation and edit shortcuts")
+	}
+	if footer := ansi.Strip(m.renderFooter(56)); !strings.Contains(footer, "(d)one/space · (e)dit/enter") || !strings.Contains(footer, "(p)riority") || !strings.Contains(footer, "(l)abel") {
+		t.Errorf("narrow detail footer lost task shortcuts: %q", footer)
 	}
 }
 
-func TestLabelsAndBranchesDrillDown(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "TODO.md")
-	content := "## General\n\n- [ ] Unlabeled\n\n### @auth\n\n- [ ] Login task\n\n### @tests\n\n- [ ] Another test\n\n## Branches\n\n### feature/login\n\n#### @auth\n\n- [ ] Branch login\n\n### fix/api\n\n- [ ] Branch API\n"
+func TestTaskRowsKeepTitlesAlignedAndShowDetails(t *testing.T) {
+	for priority, foreground := range map[string]string{
+		"high": "240;119;119", "medium": "244;162;97", "low": "244;211;94",
+	} {
+		selected := renderTaskRow(task{text: "Highlighted title", priority: priority, details: "Extra context"}, 30, true)
+		unselected := renderTaskRow(task{text: "Highlighted title", priority: priority, details: "Extra context"}, 30, false)
+		if ansi.StringWidth(selected) != 30 || !strings.Contains(ansi.Strip(selected), "○ Highlighted title  ⋯") || !strings.Contains(selected, "38;2;"+foreground+";48;2;36;87;166mHighlighted title") {
+			t.Fatalf("%s selected task is not fully highlighted and coloured: %q", priority, selected)
+		}
+		if ansi.Strip(unselected) != "○ Highlighted title  ⋯" || !strings.Contains(unselected, "38;2;"+foreground+"mHighlighted title") {
+			t.Fatalf("%s unselected task is not coloured: %q", priority, unselected)
+		}
+		done := renderTaskRow(task{text: "Highlighted title", priority: priority, done: true}, 30, false)
+		if ansi.Strip(done) != "✓ Highlighted title" || strings.Contains(done, "38;2;"+foreground) {
+			t.Fatalf("%s done task is not muted: %q", priority, done)
+		}
+	}
+	open := ansi.Strip(renderTaskRow(task{text: "Same title"}, 24, false))
+	done := ansi.Strip(renderTaskRow(task{text: "Same title", done: true}, 24, false))
+	if strings.Index(open, "Same title") != strings.Index(done, "Same title") || strings.Contains(open, "⋯") || strings.Contains(done, "⋯") {
+		t.Fatalf("completion changed title alignment or added details marker: %q / %q", open, done)
+	}
+	truncated := ansi.Strip(renderTaskRow(task{text: strings.Repeat("x", 50), details: "More"}, 24, false))
+	if ansi.StringWidth(truncated) != 24 || !strings.HasSuffix(truncated, "  ⋯") {
+		t.Fatalf("long task lost its details marker: %q", truncated)
+	}
+}
+
+func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "- [x] Generic done\n- [ ] Generic open\n\n# Docs\n\n- [x] Documented\n- [ ] Needs docs\n\n# Branches\n\n## main\n\n- [x] Branch done\n- [ ] Branch open\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{branch: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header := ansi.Strip(m.renderHeader(100)); !strings.Contains(header, "2 / 4 general · 1 / 2 branch") {
+		t.Fatalf("header counts = %q", header)
+	}
+	general := ansi.Strip(m.renderNavigationPane(m.generalTitle(), m.generalRows(), 0, generalPane, 60, 20))
+	if !strings.Contains(general, "General  2 / 4") || !strings.Contains(general, "@Docs  1 / 2 ›") {
+		t.Fatalf("general counts = %s", general)
+	}
+	branches := ansi.Strip(m.renderNavigationPane(m.branchTitle(), m.branchRows(), 0, branchPane, 60, 20))
+	if !strings.Contains(branches, "Git Branches  1 / 2") || !strings.Contains(branches, "main  1 / 2 ›") {
+		t.Fatalf("branch counts = %s", branches)
+	}
+	m.generalLabel = "Docs"
+	if label := ansi.Strip(m.renderNavigationPane(m.generalTitle(), m.generalRows(), 0, generalPane, 60, 20)); !strings.Contains(label, "General · @Docs  1 / 2") {
+		t.Fatalf("label count = %s", label)
+	}
+	m.branchFilter = "main"
+	if branch := ansi.Strip(m.renderNavigationPane(m.branchTitle(), m.branchRows(), 0, branchPane, 60, 20)); !strings.Contains(branch, "Git Branches · main  1 / 2") {
+		t.Fatalf("selected branch count = %s", branch)
+	}
+	m.indexMode = true
+	if index := ansi.Strip(m.renderIndex(100, 20)); !strings.Contains(index, "All tasks  3 / 6") {
+		t.Fatalf("all tasks count = %s", index)
+	}
+}
+
+func TestCategoriesAndBranchesDrillDown(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "- [ ] Unlabeled\n\n# auth\n\n- [ ] Login task\n\n# tests\n\n- [ ] Another test\n\n# Branches\n\n## feature/login\n\n- [ ] Branch login\n\n## fix/api\n\n- [ ] Branch API\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -166,18 +251,13 @@ func TestLabelsAndBranchesDrillDown(t *testing.T) {
 	m.branchFilter = "feature/login"
 	m.branchCursor = 0
 	branchList := ansi.Strip(m.renderNavigationPane(m.branchTitle(), m.branchRows(), 0, branchPane, 50, 12))
-	if strings.Contains(branchList, "[ ]") || !strings.Contains(branchList, "@auth") || strings.Contains(branchList, "Branch login") {
-		t.Fatalf("branch root showed labeled tasks: %s", branchList)
-	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(model)
-	if m.branchLabel != "auth" || len(m.branchRows()) != 1 || m.branchRows()[0].todo.text != "Branch login" {
-		t.Fatalf("branch label did not open: %+v", m.branchRows())
+	if strings.Contains(branchList, "[ ]") || strings.Contains(branchList, "@auth") || !strings.Contains(branchList, "Branch login") {
+		t.Fatalf("branch tasks were not shown directly: %s", branchList)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
 	m = updated.(model)
-	if m.branchLabel != "" || m.branchFilter != "feature/login" || m.branchCursor != 0 {
-		t.Fatal("left arrow did not return to branch labels")
+	if m.branchFilter != "" || m.branchCursor != 1 {
+		t.Fatal("left arrow did not return to branches")
 	}
 }
 
@@ -204,7 +284,7 @@ func TestChangingLabelKeepsTaskSelected(t *testing.T) {
 
 func TestLabelInputBlocksSpaces(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	if err := os.WriteFile(path, []byte("## General\n\n- [ ] Task\n"), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("- [ ] Task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	m, err := newModel(path, projectContext{})
@@ -232,8 +312,8 @@ func TestLabelInputBlocksSpaces(t *testing.T) {
 }
 
 func TestAddingWithinGroupsKeepsScope(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "TODO.md")
-	content := "## General\n\n### @auth\n\n- [ ] Existing\n\n## Branches\n\n### feature/login\n\n#### @auth\n\n- [ ] Branch task\n"
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "# auth\n\n- [ ] Existing\n\n# Branches\n\n## feature/login\n\n- [ ] Branch task\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -265,26 +345,20 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	if m.branchFilter != "feature/login" || len(m.branchRows()) != 2 || m.branchRows()[1].todo.text != "New branch task" {
 		t.Fatalf("new task was not added to branch: %+v", m.branchRows())
 	}
-	m.branchCursor = 0
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(model)
-	if m.branchLabel != "auth" {
-		t.Fatal("branch label did not open before adding")
-	}
 	opened, _ = m.startTaskModal("add-branch")
 	m = opened.(model)
-	if m.modal.addLabel != "auth" {
-		t.Fatal("add form did not inherit branch label")
+	if m.modal.addLabel != "" {
+		t.Fatal("branch add form unexpectedly inherited a category")
 	}
-	m.modal.title.SetValue("Another auth task")
+	m.modal.title.SetValue("Another branch task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(model)
-	if m.branchLabel != "auth" || len(m.branchRows()) != 2 || m.branchRows()[m.branchCursor].todo.text != "Another auth task" {
-		t.Fatalf("new task was not added inside branch label: %+v", m.branchRows())
+	if len(m.branchRows()) != 3 || m.branchRows()[m.branchCursor].todo.text != "Another branch task" {
+		t.Fatalf("new task was not added inside branch: %+v", m.branchRows())
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
 	m = updated.(model)
-	if m.branchLabel != "" || m.branchFilter != "" || m.branchRows()[m.branchCursor].name != "feature/login" {
+	if m.branchFilter != "" || m.branchRows()[m.branchCursor].name != "feature/login" {
 		t.Fatal("v did not return to the branch list")
 	}
 }
@@ -300,7 +374,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if m.modal == nil || m.modal.field != 0 {
 		t.Fatal("add did not open the title field")
 	}
-	if help := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(help, "↓/Tab Details · Ctrl+Enter Save · Esc Cancel") {
+	if help := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(help, "↓/tab details · ctrl+enter save · esc cancel") {
 		t.Fatalf("title help has wrong shortcuts or separators: %s", help)
 	}
 	for _, size := range [][2]int{{120, 35}, {78, 16}, {60, 20}, {56, 19}} {
@@ -330,7 +404,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if m.modal.field != 1 {
 		t.Fatal("down arrow did not focus details")
 	}
-	if help := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(help, "↑/Tab Title · Ctrl+Enter Save · Esc Cancel") {
+	if help := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(help, "↑/tab title · ctrl+enter save · esc cancel") {
 		t.Fatalf("details help has wrong shortcuts or separators: %s", help)
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
@@ -376,28 +450,89 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	}
 }
 
-func TestArrowFocusesDetailsAndScanKeepsFooter(t *testing.T) {
+func TestArrowOpensDetailsAndEscapeReturnsToList(t *testing.T) {
 	m := model{general: []task{{text: "First task"}}, width: 100, height: 30}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	m = updated.(model)
 	if m.focus != detailPane || m.detailFrom != generalPane {
-		t.Fatalf("right arrow focus = %v from %v", m.focus, m.detailFrom)
+		t.Fatalf("right arrow page = %v from %v", m.focus, m.detailFrom)
 	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(model)
 	if m.focus != generalPane {
-		t.Fatal("left arrow did not return to task list")
+		t.Fatal("Escape did not return to task list")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+	m = updated.(model)
+	if m.focus != sourcePane {
+		t.Fatal("3 did not switch to file TODOs")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	m = updated.(model)
+	if m.focus != sourcePane {
+		t.Fatal("right arrow opened details without a selected file TODO")
 	}
 	updated, _ = m.Update(sourceScanMsg{matches: nil})
 	m = updated.(model)
 	footer := ansi.Strip(m.renderFooter(100))
-	if !strings.Contains(footer, "1 General") || !strings.Contains(footer, "3 File TODOs") || strings.Contains(footer, "Found 0") {
-		t.Fatalf("scan changed the navigation footer: %q", footer)
+	if !strings.Contains(footer, "(e)dit/enter file") || strings.Contains(footer, "Found 0") {
+		t.Fatalf("scan changed the file TODO footer: %q", footer)
 	}
 	m.status = "No current Git branch"
 	footer = ansi.Strip(m.renderFooter(60))
-	if !strings.Contains(footer, "No current") || !strings.Contains(footer, "1 General") || !strings.Contains(footer, "3 Files") {
-		t.Fatalf("small footer lost error or navigation: %q", footer)
+	if !strings.Contains(footer, "No current") {
+		t.Fatalf("small footer lost error: %q", footer)
+	}
+}
+
+func TestEnterEditsAndDoneOrSpaceTogglesTasks(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("- [ ] First task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(model)
+	if m.modal == nil || m.modal.title.Value() != "First task" || m.general[0].done {
+		t.Fatal("Enter did not open the selected task for editing")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	m = updated.(model)
+	if !m.general[0].done {
+		t.Fatal("d did not complete the task")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	m = updated.(model)
+	if m.general[0].done {
+		t.Fatal("Space did not reopen the task")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(model)
+	if m.modal == nil || m.focus != detailPane {
+		t.Fatal("Enter from details did not open the edit form")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(model)
+	if m.modal == nil || !m.indexMode {
+		t.Fatal("Enter from All tasks did not open the edit form")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	m = updated.(model)
+	if selected, ok := m.selectedTask(); !ok || !selected.done {
+		t.Fatal("d did not complete the selected task in All tasks")
 	}
 }
 
@@ -415,8 +550,8 @@ func TestEditorCommandUsesLineNumber(t *testing.T) {
 }
 
 func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "TODO.md")
-	content := "## General\n\n- [ ] Plain task\n\n### @zeta\n\n- [ ] Medium task\n  - Priority: Medium\n\n  More context\n  on another line.\n\n## Branches\n\n### feature/z\n\n#### @alpha\n\n- [ ] Low task\n  - Priority: Low\n\n### feature/a\n\n- [x] High task\n  - Priority: High\n"
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "- [ ] Plain task\n\n# zeta\n\n- [ ] Medium task\n  - Priority: Medium\n\n  More context\n  on another line.\n\n# Branches\n\n## feature/z\n\n- [ ] Low task\n  - Priority: Low\n\n## feature/a\n\n- [x] High task\n  - Priority: High\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +574,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 			t.Errorf("index size at %dx%d = %dx%d", size[0], size[1], lipgloss.Width(view), lipgloss.Height(view))
 		}
 		plain := ansi.Strip(view)
-		for _, want := range []string{"All tasks  4", "!!!", "!!", "!", "@zeta", "feature/a", "High task", "More context on another line."} {
+		for _, want := range []string{"All tasks  1 / 4", "!", "@zeta", "feature/a", "High task", "More context on another line."} {
 			if !strings.Contains(plain, want) && size[0] == 120 {
 				t.Errorf("index missing %q: %s", want, plain)
 			}
@@ -458,7 +593,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
 	m = updated.(model)
-	if got := indexTitles(m.indexTasks()); got != "Low task,Medium task,High task,Plain task" {
+	if got := indexTitles(m.indexTasks()); got != "Medium task,High task,Low task,Plain task" {
 		t.Fatalf("label order = %q", got)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -497,12 +632,155 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	if m.modal == nil || m.modal.title.Value() != "First" {
 		t.Fatal("Edit did not open the indexed task")
 	}
-	if priorityMarker("high") != "!!!" || priorityMarker("medium") != "!!" || priorityMarker("low") != "!" || priorityMarker("") != "-" {
+	if priorityMarker("high") != "!" || priorityMarker("medium") != "!" || priorityMarker("low") != "!" || priorityMarker("") != "-" {
 		t.Fatal("wrong priority markers")
 	}
 	for priority, want := range map[string]color.Color{"high": colorHigh, "medium": colorMedium, "low": colorLow} {
 		if got := priorityStyle(priority).GetForeground(); got != want {
 			t.Errorf("%s priority color = %v, want %v", priority, got, want)
 		}
+	}
+}
+
+func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "- [ ] Urgent\n  - Priority: High\n\n- [ ] Routine\n  - Priority: Medium\n\n- Bare\n\n- [ ] Another unprioritized\n\n# Docs\n\n- [ ] Document it\n\n# Tests\n\n- [ ] Test it\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.generalCursor = 4 // Two category rows, then the three generic tasks.
+	selected, ok := m.selectedTask()
+	if !ok || selected.text != "Bare" {
+		t.Fatalf("setup selected %+v", selected)
+	}
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
+	m = updated.(model)
+	selected, ok = m.selectedTask()
+	if !ok || selected.text != "Bare" || selected.priority != "high" {
+		t.Fatalf("first p selected %+v", selected)
+	}
+	if rows := m.generalRows(); rows[2].todo.text != "Urgent" || rows[3].todo.text != "Routine" || rows[4].todo.text != "Bare" || rows[5].todo.text != "Another unprioritized" || m.generalCursor != 4 {
+		t.Fatalf("priority edit moved the highlighted task: cursor %d, rows %+v", m.generalCursor, rows)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
+	m = updated.(model)
+	selected, ok = m.selectedTask()
+	if !ok || selected.text != "Bare" || selected.priority != "medium" {
+		t.Fatalf("second p selected %+v", selected)
+	}
+	for _, want := range []string{"low", "", "high"} {
+		updated, _ = m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
+		m = updated.(model)
+		selected, ok = m.selectedTask()
+		if !ok || selected.text != "Bare" || selected.priority != want {
+			t.Fatalf("cycling to %q selected %+v", want, selected)
+		}
+		if rows := m.generalRows(); rows[4].todo.text != "Bare" || rows[5].todo.text != "Another unprioritized" || m.generalCursor != 4 {
+			t.Fatalf("cycling to %q moved the row: cursor %d, rows %+v", want, m.generalCursor, rows)
+		}
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	m = updated.(model)
+	if got := indexTitles(m.indexTasks()); !strings.HasPrefix(got, "Urgent,Routine,Bare,Another unprioritized") {
+		t.Fatalf("opening the full list unexpectedly resorted tasks: %q", got)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
+	m = updated.(model)
+	if got := indexTitles(m.indexTasks()); !strings.HasPrefix(got, "Urgent,Bare,Routine") {
+		t.Fatalf("explicit full-list priority sort failed: %q", got)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	m = updated.(model)
+	if rows := m.generalRows(); rows[3].todo.text != "Routine" || rows[4].todo.text != "Bare" || m.generalCursor != 4 {
+		t.Fatalf("completing a task unexpectedly resorted the list: %+v", rows)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	m = updated.(model)
+	if rows := m.generalRows(); rows[3].todo.text != "Bare" || rows[4].todo.text != "Routine" {
+		t.Fatalf("reload did not sort by priority: %+v", rows)
+	}
+	items, err := loadTasks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range items {
+		if item.text == "Routine" && item.priority != "medium" {
+			t.Fatalf("p changed the wrong task: %+v", items)
+		}
+	}
+}
+
+func TestPriorityChangeKeepsMovedBranchTaskSelected(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "# Branches\n\n## main\n\n- [ ] Existing high\n  - Priority: High\n\n- [ ] Moved task\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{branch: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.focus = branchPane
+	m.enterSelectedGroup()
+	m.branchCursor = 1
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
+	m = updated.(model)
+	selected, ok := m.selectedTask()
+	if !ok || selected.text != "Moved task" || selected.priority != "high" {
+		t.Fatalf("branch selection moved to %+v", selected)
+	}
+}
+
+func TestPriorityChangeKeepsCategoryTaskWithDetailsSelected(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "# Tests\n\n- [ ] High task\n  - Priority: High\n\n- [x] Detailed task\n  - Priority: Low\n\n  This task has details.\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.enterSelectedGroup()
+	m.generalCursor = 1
+	for _, want := range []string{"", "high", "medium", "low"} {
+		updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
+		m = updated.(model)
+		selected, ok := m.selectedTask()
+		if !ok || selected.text != "Detailed task" || selected.priority != want || selected.details != "This task has details." {
+			t.Fatalf("cycling to %q selected %+v", want, selected)
+		}
+	}
+}
+
+func TestPrioritySortHappensOnLoadAndReload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "- [ ] No priority\n\n- [ ] High priority\n  - Priority: High\n\n- [ ] Medium priority\n  - Priority: Medium\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows := m.generalRows(); rows[0].todo.text != "High priority" || rows[1].todo.text != "Medium priority" || rows[2].todo.text != "No priority" {
+		t.Fatalf("startup order = %+v", rows)
+	}
+	m.generalCursor = 2
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
+	m = updated.(model)
+	if rows := m.generalRows(); rows[2].todo.text != "No priority" || m.generalCursor != 2 {
+		t.Fatalf("priority edit resorted rows: %+v", rows)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	m = updated.(model)
+	if rows := m.generalRows(); rows[0].todo.text != "No priority" || rows[1].todo.text != "High priority" || rows[2].todo.text != "Medium priority" {
+		t.Fatalf("reload order = %+v", rows)
 	}
 }

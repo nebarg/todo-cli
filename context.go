@@ -33,7 +33,7 @@ func gitOutput(dir string, args ...string) (string, error) {
 
 func defaultFile(project projectContext) string {
 	if project.root != "" {
-		return filepath.Join(project.root, "TODO.md")
+		return filepath.Join(project.root, "todo.md")
 	}
-	return "TODO.md"
+	return "todo.md"
 }

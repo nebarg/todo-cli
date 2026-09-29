@@ -9,7 +9,7 @@ import (
 )
 
 func TestMarkdownPreserved(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "TODO.md")
+	path := filepath.Join(t.TempDir(), "todo.md")
 	original := "# Test TODOs\n\n- [ ] first\nSome context.\n- [x] second\n"
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
@@ -28,18 +28,18 @@ func TestMarkdownPreserved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "# Test TODOs\n\n- [x] first\nSome context.\n- [x] second\n\n## General\n\n- [ ] third\n"
+	want := "- [ ] third\n\n# Test TODOs\n\n- [x] first\nSome context.\n- [x] second\n"
 	if string(got) != want {
 		t.Fatalf("file = %q, want %q", got, want)
 	}
 }
 
 func TestBranchesAndMetadata(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "TODO.md")
+	path := filepath.Join(t.TempDir(), "todo.md")
 	if err := addTask(path, "general task"); err != nil {
 		t.Fatal(err)
 	}
-	if err := addTaskWithOptions(path, "branch task", "high", []string{"tests"}, "feature/login"); err != nil {
+	if err := addTaskWithOptions(path, "branch task", "high", nil, "feature/login"); err != nil {
 		t.Fatal(err)
 	}
 	if err := addTaskWithOptions(path, "another branch task", "", nil, "feature/login"); err != nil {
@@ -49,37 +49,38 @@ func TestBranchesAndMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(data), "### feature/login") != 1 {
+	if strings.Count(string(data), "## feature/login") != 1 {
 		t.Fatalf("duplicate branch heading: %s", data)
 	}
-	if !strings.Contains(string(data), "## General\n") || !strings.Contains(string(data), "## Branches\n\n### feature/login\n") {
+	if !strings.Contains(string(data), "# Branches\n\n## feature/login\n") || strings.Contains(string(data), "General") {
 		t.Fatalf("missing headings: %s", data)
 	}
 	tasks, err := loadTasks(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tasks) != 3 || tasks[2].branch != "feature/login" || tasks[2].priority != "high" || taskLabel(tasks[2]) != "tests" || !tasks[2].headingLabel {
+	if len(tasks) != 3 || tasks[1].branch != "feature/login" || tasks[1].priority != "high" || taskLabel(tasks[1]) != "" {
 		t.Fatalf("parsed tasks: %+v", tasks)
 	}
-	if !strings.Contains(string(data), "#### @tests") || strings.Contains(string(data), "- Labels:") {
-		t.Fatalf("label was not stored as a heading: %s", data)
+	if err := addTaskWithOptions(path, "invalid", "", []string{"tests"}, "feature/login"); err == nil {
+		t.Fatal("branch category was accepted")
 	}
-	if err := setTaskPriority(path, tasks[2], "low"); err != nil {
+	if err := setTaskPriority(path, tasks[1], "low"); err != nil {
 		t.Fatal(err)
 	}
 	tasks, err = loadTasks(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := setTaskLabel(path, tasks[2], "smoke"); err != nil {
-		t.Fatal(err)
+	for _, item := range tasks {
+		if item.text == "branch task" && item.priority != "low" {
+			t.Fatalf("priority edit failed: %+v", tasks)
+		}
+		if item.text == "branch task" && setTaskLabel(path, item, "smoke") == nil {
+			t.Fatal("branch category edit was accepted")
+		}
 	}
-	tasks, err = loadTasks(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tasks[2].priority != "low" || taskLabel(tasks[2]) != "smoke" || tasks[1].text != "another branch task" {
+	if tasks[1].text != "branch task" || tasks[2].text != "another branch task" {
 		t.Fatalf("updated tasks: %+v", tasks)
 	}
 }
@@ -111,6 +112,9 @@ func TestLabelsRequireOneAlphanumericWord(t *testing.T) {
 			t.Fatalf("label %q was not saved correctly: %v, %+v", label, err, tasks)
 		}
 	}
+	if err := validateLabel("Branches"); err == nil {
+		t.Fatal("reserved branch heading was accepted as a category")
+	}
 }
 
 func TestLegacySpacedLabelCanBeRenamed(t *testing.T) {
@@ -140,14 +144,11 @@ func TestLegacySpacedLabelCanBeRenamed(t *testing.T) {
 }
 
 func TestSingleLabelHeadingsAndMoves(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "TODO.md")
+	path := filepath.Join(t.TempDir(), "todo.md")
 	if err := addTaskWithDetails(path, "Auth task", "Keep this detail.", "high", []string{"auth"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := addTaskWithOptions(path, "General task", "", nil, ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := addTaskWithOptions(path, "Branch auth", "", []string{"auth"}, "feature/login"); err != nil {
 		t.Fatal(err)
 	}
 	if err := addTaskWithOptions(path, "Branch plain", "", nil, "feature/login"); err != nil {
@@ -158,13 +159,13 @@ func TestSingleLabelHeadingsAndMoves(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(data)
-	for _, want := range []string{"### @auth", "#### @auth", "  - Priority: High", "  Keep this detail."} {
+	for _, want := range []string{"# auth", "# Branches", "## feature/login", "  - Priority: High", "  Keep this detail."} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("missing %q: %s", want, s)
 		}
 	}
-	if strings.Index(s, "General task") > strings.Index(s, "### @auth") || strings.Index(s, "Branch plain") > strings.Index(s, "#### @auth") {
-		t.Fatalf("unlabeled tasks were inserted under label headings: %s", s)
+	if strings.Index(s, "General task") > strings.Index(s, "# auth") || strings.Index(s, "Branch plain") < strings.Index(s, "## feature/login") {
+		t.Fatalf("tasks were inserted under incorrect headings: %s", s)
 	}
 	tasks, err := loadTasks(path)
 	if err != nil {
@@ -196,7 +197,7 @@ func TestSingleLabelHeadingsAndMoves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data), "\n### @auth\n") || !strings.Contains(string(data), "\n### @docs\n") {
+	if strings.Contains(string(data), "\n# auth\n") || !strings.Contains(string(data), "\n# docs\n") {
 		t.Fatalf("relabel left an empty heading or missed the new heading: %s", data)
 	}
 	if err := addTaskWithOptions(path, "Too many", "", []string{"one", "two"}, ""); err == nil {
@@ -206,7 +207,7 @@ func TestSingleLabelHeadingsAndMoves(t *testing.T) {
 
 func TestLegacyLabelMovesToHeading(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	old := "## General\n\n- [ ] Legacy\n  - Priority: High\n  - Labels: auth, tests\n\n  Keep this detail.\n"
+	old := "- [ ] Legacy\n  - Priority: High\n  - Labels: auth, tests\n\n  Keep this detail.\n"
 	if err := os.WriteFile(path, []byte(old), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +222,7 @@ func TestLegacyLabelMovesToHeading(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "### @backend") || strings.Contains(string(data), "- Labels:") {
+	if !strings.Contains(string(data), "# backend") || strings.Contains(string(data), "- Labels:") {
 		t.Fatalf("legacy metadata was not migrated: %s", data)
 	}
 	tasks, err = loadTasks(path)
@@ -258,10 +259,19 @@ func TestTaskDetailsAreParsedAndPreserved(t *testing.T) {
 		t.Fatalf("details changed while editing metadata: %s", updated)
 	}
 	tasks, err = loadTasks(path)
-	if err != nil || len(tasks) != 3 || tasks[0].details != wantDetails {
+	if err != nil || len(tasks) != 3 {
 		t.Fatalf("reloaded details: %v, %+v", err, tasks)
 	}
-	if err := toggleTask(path, tasks[0]); err != nil {
+	var selected task
+	for _, item := range tasks {
+		if item.text == "Fix login redirect" {
+			selected = item
+		}
+	}
+	if selected.details != wantDetails {
+		t.Fatalf("reloaded details: %+v", tasks)
+	}
+	if err := toggleTask(path, selected); err != nil {
 		t.Fatal(err)
 	}
 	updated, err = os.ReadFile(path)
@@ -337,9 +347,136 @@ func TestGeneralInsertedBeforeExistingBranches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Index(string(data), "## General") > strings.Index(string(data), "## Branches") {
+	if strings.Index(string(data), "general task") > strings.Index(string(data), "# Branches") || strings.Contains(string(data), "General") {
 		t.Fatalf("general section follows branches: %s", data)
 	}
+}
+
+func TestDefaultFileUsesLowercaseName(t *testing.T) {
+	if got := defaultFile(projectContext{}); got != "todo.md" {
+		t.Fatalf("default file = %q", got)
+	}
+	if got := defaultFile(projectContext{root: "/project"}); got != filepath.Join("/project", "todo.md") {
+		t.Fatalf("project file = %q", got)
+	}
+}
+
+func TestExternalMarkdownIsReadWithoutChangingIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	original := "- bare generic\n\n# Work\n\n- [ ] malformed priority\n  - Priority: urgent\n\n  Keep this note.\n\n# Branches\n\n## feature/login\n\n- [ ] direct branch task\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := loadTasks(path)
+	if err != nil || len(tasks) != 3 {
+		t.Fatalf("tasks = %+v, error = %v", tasks, err)
+	}
+	if tasks[0].text != "bare generic" || tasks[0].done || taskLabel(tasks[0]) != "" || tasks[1].priority != "" || taskLabel(tasks[1]) != "Work" || tasks[1].details != "Keep this note." || tasks[2].branch != "feature/login" {
+		t.Fatalf("misread external file: %+v", tasks)
+	}
+	if got, _ := os.ReadFile(path); string(got) != original {
+		t.Fatalf("reading changed file: %q", got)
+	}
+	if err := editTaskContent(path, tasks[0], "renamed generic", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(path); !strings.HasPrefix(string(got), "- [ ] renamed generic\n") || !strings.Contains(string(got), "  - Priority: urgent") {
+		t.Fatalf("edit failed to normalize bare item or changed unrelated content: %q", got)
+	}
+}
+
+func TestAnyNonBranchHeadingDefinesCategory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "- generic\n\n## General\n\n- under heading\n\n### deeper\n\n- nested heading\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := loadTasks(path)
+	if err != nil || len(tasks) != 3 || taskLabel(tasks[0]) != "" || taskLabel(tasks[1]) != "General" || taskLabel(tasks[2]) != "deeper" {
+		t.Fatalf("heading categories = %+v, error = %v", tasks, err)
+	}
+}
+
+func TestBranchNamedBranchesRemainsARegularBranch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := addTaskWithOptions(path, "nested name", "", nil, "Branches"); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := loadTasks(path)
+	if err != nil || len(tasks) != 1 || tasks[0].branch != "Branches" {
+		t.Fatalf("branch name parsed incorrectly: %v, %+v", err, tasks)
+	}
+}
+
+func TestBareItemsBecomeCheckboxesOnlyWhenEdited(t *testing.T) {
+	for _, edit := range []struct {
+		name string
+		run  func(string, task) error
+	}{
+		{"toggle", toggleTask},
+		{"priority", func(path string, item task) error { return setTaskPriority(path, item, "high") }},
+		{"category", func(path string, item task) error { return setTaskLabel(path, item, "Work") }},
+	} {
+		t.Run(edit.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "todo.md")
+			if err := os.WriteFile(path, []byte("- bare\n\n- untouched\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			tasks, err := loadTasks(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, _ := os.ReadFile(path); !strings.HasPrefix(string(got), "- bare\n") {
+				t.Fatalf("read normalized a bare item: %s", got)
+			}
+			if err := edit.run(path, tasks[0]); err != nil {
+				t.Fatal(err)
+			}
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(got), "- untouched") || !strings.Contains(string(got), "- [") || strings.Contains(string(got), "\n- bare\n") {
+				t.Fatalf("bare item edit damaged file: %s", got)
+			}
+		})
+	}
+}
+
+func TestNewTasksSortedPriorityAndEditsStayInPlace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	for _, scope := range []struct{ label, branch string }{{}, {label: "Work"}, {branch: "feature/login"}} {
+		for _, item := range []struct{ title, priority string }{{"none", ""}, {"low", "low"}, {"high", "high"}, {"medium", "medium"}} {
+			if err := addTaskWithOptions(path, item.title+scope.label+scope.branch, item.priority, labelSlice(scope.label), scope.branch); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	tasks, err := loadTasks(path)
+	if err != nil || len(tasks) != 12 {
+		t.Fatalf("tasks = %+v, error = %v", tasks, err)
+	}
+	for i := 0; i < len(tasks); i += 4 {
+		for j, want := range []string{"high", "medium", "low", ""} {
+			if tasks[i+j].priority != want {
+				t.Fatalf("scope %d priority %d = %q, want %q: %+v", i/4, j, tasks[i+j].priority, want, tasks)
+			}
+		}
+	}
+	if err := setTaskPriority(path, tasks[3], "high"); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err = loadTasks(path)
+	if err != nil || tasks[0].text != "high" || tasks[1].text != "medium" || tasks[2].text != "low" || tasks[3].text != "none" || tasks[3].priority != "high" {
+		t.Fatalf("priority edit moved a task: %v, %+v", err, tasks)
+	}
+}
+
+func labelSlice(label string) []string {
+	if label == "" {
+		return nil
+	}
+	return []string{label}
 }
 
 func TestChangedTaskIsNotOverwritten(t *testing.T) {
