@@ -39,7 +39,7 @@ func TestDashboardFitsTerminal(t *testing.T) {
 				{"general", generalPane, "Fix failing tests", "main.go:12"},
 				{"branches", branchPane, "feature/login", "Fix failing tests"},
 				{"files", sourcePane, "main.go:12", "Fix failing tests"},
-				{"details", detailPane, "Status", "main.go:12"},
+				{"details", detailPane, "Open  ·  No priority", "main.go:12"},
 			} {
 				m.focus = page.focus
 				m.detailFrom = generalPane
@@ -104,13 +104,15 @@ func TestTaskDetailsShownOnDetailPage(t *testing.T) {
 	}
 	m := &model{general: []store.Task{{Text: "Fix login redirect", Details: "When a session expires, return to the previous page.\n\n- Add a regression test"}}}
 	got := strings.Join(m.taskDetails(60), "\n")
-	for _, want := range []string{"Fix login redirect", "When a session expires", "- Add a regression test", "Status", "Category"} {
+	for _, want := range []string{"Fix login redirect", "When a session expires", "- Add a regression test"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in task details: %s", want, got)
 		}
 	}
-	if strings.Index(got, "Status") < strings.Index(got, "When a session expires") {
-		t.Error("metadata appears before the task description")
+	for _, gone := range []string{"Status", "Scope", "Priority", "Category"} {
+		if strings.Contains(got, gone) {
+			t.Errorf("task details still list %q, which belongs in the status bar: %s", gone, got)
+		}
 	}
 	if strings.Contains(got, "e  edit") {
 		t.Error("unfocused details repeat keyboard shortcuts")
@@ -143,23 +145,24 @@ func TestTaskDetailsShownOnDetailPage(t *testing.T) {
 }
 
 func TestTaskRowsColourPriorityOnTheBullet(t *testing.T) {
-	for p, foreground := range map[store.Priority]string{
-		"high": "240;119;119", "medium": "244;162;97", "low": "244;211;94",
+	for p, want := range map[store.Priority]struct{ foreground, mark string }{
+		"high": {"240;119;119", "●"}, "medium": {"244;211;94", "◐"}, "low": {"125;207;223", "○"},
 	} {
+		foreground, mark := want.foreground, want.mark
 		t.Run(string(p), func(t *testing.T) {
 			task := store.Task{Text: "Highlighted title", Priority: p, Details: "Extra context"}
 			selected := renderTaskRow(task, 30, true)
-			if ansi.StringWidth(selected) != 30 || !strings.HasPrefix(ansi.Strip(selected), "○ Highlighted title") || !strings.HasSuffix(ansi.Strip(selected), "⋯") {
+			if ansi.StringWidth(selected) != 30 || !strings.HasPrefix(ansi.Strip(selected), mark+" Highlighted title") || !strings.HasSuffix(ansi.Strip(selected), "⋯") {
 				t.Fatalf("%s selected task is not full width with a right-aligned details marker: %q", p, ansi.Strip(selected))
 			}
-			if !strings.Contains(selected, "38;2;"+foreground+";48;2;36;87;166m○") || strings.Contains(selected, foreground+";48;2;36;87;166mHighlighted") {
+			if !strings.Contains(selected, "38;2;"+foreground+";48;2;36;87;166m"+mark) || strings.Contains(selected, foreground+";48;2;36;87;166mHighlighted") {
 				t.Fatalf("%s selected task should colour only its bullet: %q", p, selected)
 			}
 			unselected := renderTaskRow(task, 30, false)
 			if ansi.StringWidth(unselected) != 30 || !strings.HasSuffix(ansi.Strip(unselected), "⋯") {
 				t.Fatalf("%s details marker is not right-aligned: %q", p, ansi.Strip(unselected))
 			}
-			if !strings.Contains(unselected, "38;2;"+foreground+"m○") || strings.Contains(unselected, foreground+"mHighlighted") {
+			if !strings.Contains(unselected, "38;2;"+foreground+"m"+mark) || strings.Contains(unselected, foreground+"mHighlighted") {
 				t.Fatalf("%s unselected task should colour only its bullet: %q", p, unselected)
 			}
 			done := renderTaskRow(store.Task{Text: "Highlighted title", Priority: p, Done: true}, 30, false)
@@ -299,6 +302,9 @@ func TestHelpOverlayOpensAndCloses(t *testing.T) {
 	if !m.helpOpen || !strings.Contains(ansi.Strip(view), "toggle done") || lipgloss.Width(view) != 56 || lipgloss.Height(view) != 16 {
 		t.Fatalf("help overlay did not open within the terminal: %s", ansi.Strip(view))
 	}
+	if got := lipgloss.Height(renderHelp()); got > 16 {
+		t.Fatalf("help is %d rows, taller than the smallest supported terminal", got)
+	}
 	for line := range strings.SplitSeq(renderHelp(), "\n") {
 		if strings.Contains(line, "\x1b[m ") {
 			t.Fatalf("help lets the terminal background through after a reset: %q", line)
@@ -329,5 +335,51 @@ func TestFooterOmitsObviousMovementHints(t *testing.T) {
 	m.indexMode = true
 	if footer := ansi.Strip(m.renderFooter(120)); strings.Contains(footer, "↑/↓") || strings.Contains(footer, "move") {
 		t.Errorf("movement hint remains in All tasks: %q", footer)
+	}
+}
+
+func TestPriorityReadsFromShapeAsWellAsColour(t *testing.T) {
+	marks := map[store.Priority]string{store.PriorityHigh: "●", store.PriorityMedium: "◐", store.PriorityLow: "○", store.PriorityNone: "○"}
+	for p, want := range marks {
+		if got := priorityMark(p); got != want {
+			t.Errorf("priorityMark(%q) = %q, want %q", p, got, want)
+		}
+	}
+	if status := ansi.Strip(taskStatus(store.Task{Text: "Urgent", Priority: store.PriorityHigh})); status != "Open  ·  ● High priority" {
+		t.Fatalf("status bar = %q", status)
+	}
+	if help := ansi.Strip(renderHelp()); !regexp.MustCompile(`quit[ │]*\n[│ ]*\n[│ ]*Priority  ● high  ◐ medium  ○ low`).MatchString(help) {
+		t.Fatalf("help lacks the priority legend: %s", help)
+	}
+}
+
+func TestStatusBarDescribesTheHighlightedRow(t *testing.T) {
+	m := &model{
+		general: []store.Task{{Text: "Loose", Priority: store.PriorityMedium}, {Text: "Filed", Category: "Docs", Done: true}, {Text: "Open filed", Category: "Docs"}},
+		source:  []scan.Match{{Path: "main.go", Line: 1, Text: "// TODO"}},
+		width:   80, height: 20,
+	}
+	bottom := func() string {
+		lines := strings.Split(ansi.Strip(m.View().Content), "\n")
+		return strings.Trim(lines[len(lines)-3], " │")
+	}
+	if got := bottom(); got != "1 of 2 done" {
+		t.Fatalf("category row status = %q", got)
+	}
+	m.generalCursor = 1
+	if got := bottom(); got != "Open  ·  ◐ Medium priority" {
+		t.Fatalf("task row status = %q", got)
+	}
+	m.focus, m.detailFrom = detailPane, generalPane
+	if got := bottom(); got != "Open  ·  ◐ Medium priority" {
+		t.Fatalf("detail page status = %q", got)
+	}
+	m.focus, m.generalCategory, m.generalCursor = generalPane, "Docs", 1
+	if got := bottom(); got != "✓ Done  ·  No priority" {
+		t.Fatalf("done task status = %q", got)
+	}
+	m.focus = sourcePane
+	if got := bottom(); strings.Contains(got, "priority") || strings.Contains(got, "done") {
+		t.Fatalf("file TODOs have no status, but the bar showed %q", got)
 	}
 }

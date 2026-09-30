@@ -298,7 +298,7 @@ func TestEnteringBranchRechecksIt(t *testing.T) {
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
-	if m.panelStatus() != missingBranchStatus {
+	if !strings.Contains(ansi.Strip(m.panelStatus()), missingBranchStatus) {
 		t.Fatal("entering a branch deleted after startup did not show it as missing")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
@@ -313,7 +313,7 @@ func TestEnteringBranchRechecksIt(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
-	if m.panelStatus() != "" {
+	if strings.Contains(ansi.Strip(m.panelStatus()), missingBranchStatus) {
 		t.Fatal("restored branch still shown as missing")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})

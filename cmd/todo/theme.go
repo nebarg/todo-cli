@@ -64,8 +64,8 @@ func applyTheme(dark bool) {
 	colorGit = hex("#C2410C", "#F05032")
 	colorPurple = hex("#6B46C1", "#B7A4EB")
 	colorHigh = hex("#C53030", "#F07777")
-	colorMedium = hex("#C05621", "#F4A261")
-	colorLow = hex("#B7791F", "#F4D35E")
+	colorMedium = hex("#B7791F", "#F4D35E")
+	colorLow = hex("#0E7490", "#7DCFDF")
 
 	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(colorFocus)
 	taskTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(colorStrong)

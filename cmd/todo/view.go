@@ -267,11 +267,32 @@ func (m *model) panelStyle(width, height int) lipgloss.Style {
 		Border(lipgloss.RoundedBorder()).BorderForeground(colorBorder)
 }
 
+// panelStatus is the bar along the bottom of a list or detail panel: a
+// warning for a missing branch, otherwise the selected row's status.
 func (m *model) panelStatus() string {
 	if m.viewingMissingBranch() {
-		return missingBranchStatus
+		return statusBarStyle.Render(missingBranchStatus)
 	}
-	return ""
+	row, ok := m.selectedNavigationRow()
+	switch {
+	case !ok:
+		return ""
+	case row.kind == rowTask:
+		return taskStatus(row.todo)
+	}
+	return mutedStyle.Render(fmt.Sprintf("%d of %d done", row.completed, row.count))
+}
+
+func taskStatus(t store.Task) string {
+	status := lipgloss.NewStyle().Foreground(colorText).Render("Open")
+	if t.Done {
+		status = lipgloss.NewStyle().Foreground(colorGreen).Render("✓ Done")
+	}
+	priority := mutedStyle.Render("No priority")
+	if t.Priority != "" {
+		priority = priorityStyle(t.Priority).Render(priorityMark(t.Priority) + " " + t.Priority.Title() + " priority")
+	}
+	return status + mutedStyle.Render("  ·  ") + priority
 }
 
 func (m *model) panelContentHeight(height int) int {
@@ -290,7 +311,8 @@ func (m *model) renderPanel(width, height int, lines []string) string {
 			lines = append(lines, "")
 		}
 		innerWidth := max(1, width-4)
-		lines = append(lines, statusBarStyle.Width(innerWidth).Render(ansi.Truncate(status, innerWidth, "…")))
+		status = ansi.Truncate(status, max(1, innerWidth-2), "…")
+		lines = append(lines, lipgloss.NewStyle().Background(colorBar).Width(innerWidth).Padding(0, 1).Render(onBackground(status, colorBar)))
 	}
 	return m.panelStyle(width, height).Render(strings.Join(lines, "\n"))
 }
@@ -384,7 +406,7 @@ func renderGroupRow(item navigationRow, width int, selected, current bool) strin
 }
 
 func renderTaskRow(t store.Task, width int, selected bool) string {
-	mark, markStyle := "○ ", mutedStyle
+	mark, markStyle := priorityMark(t.Priority)+" ", mutedStyle
 	if t.Priority != "" {
 		markStyle = priorityStyle(t.Priority)
 	}
@@ -448,9 +470,7 @@ func (m *model) renderSourcePane(width, height int) string {
 func (m *model) renderDetailPane(width, height int) string {
 	innerWidth := max(1, width-4)
 	lines := []string{renderBreadcrumb(m.breadcrumb(detailPane), "", innerWidth), ""}
-	if height < 8 {
-		lines = append(lines, m.compactDetails()...)
-	} else if m.activePane() == sourcePane {
+	if m.activePane() == sourcePane {
 		lines = append(lines, m.sourceDetails(innerWidth)...)
 	} else if row, ok := m.selectedNavigationRow(); ok && row.kind != rowTask {
 		lines = append(lines, m.groupDetails(row, innerWidth)...)
@@ -467,38 +487,6 @@ func (m *model) renderDetailPane(width, height int) string {
 		lines[i] = ansi.Truncate(line, innerWidth, "…")
 	}
 	return m.renderPanel(width, height, lines)
-}
-
-func (m *model) compactDetails() []string {
-	if m.activePane() == sourcePane {
-		if m.sourceCursor >= len(m.source) {
-			return []string{"No file selected"}
-		}
-		item := m.source[m.sourceCursor]
-		return []string{item.Path + ":" + fmt.Sprint(item.Line), cleanDisplay(item.Text)}
-	}
-	if row, ok := m.selectedNavigationRow(); ok && row.kind != rowTask {
-		return []string{groupName(row), fmt.Sprintf("%d/%d tasks · enter/→ open", row.completed, row.count)}
-	}
-	t, ok := m.selectedTask()
-	if !ok {
-		return []string{"No task selected"}
-	}
-	if t.Details != "" {
-		return []string{cleanDisplay(t.Text), cleanDisplay(strings.Split(t.Details, "\n")[0])}
-	}
-	mark := "open"
-	if t.Done {
-		mark = "done"
-	}
-	return []string{cleanDisplay(t.Text), mark + " · " + taskLocation(t)}
-}
-
-func taskLocation(t store.Task) string {
-	if t.Branch == "" {
-		return "General"
-	}
-	return "Branch " + t.Branch
 }
 
 func groupName(row navigationRow) string {
@@ -521,18 +509,6 @@ func (m *model) taskDetails(width int) []string {
 	if !ok {
 		return []string{"", mutedStyle.Render("Select a Markdown task.")}
 	}
-	status := "Open"
-	if t.Done {
-		status = "Complete"
-	}
-	priorityText := mutedStyle.Render("None")
-	if t.Priority != "" {
-		priorityText = priorityStyle(t.Priority).Render(t.Priority.Title())
-	}
-	category := "None"
-	if t.Category != "" {
-		category = "@" + t.Category
-	}
 	result := []string{taskTitleStyle.Render(cleanDisplay(t.Text)), ""}
 	if t.Details == "" {
 		result = append(result, mutedStyle.Render("No details yet"))
@@ -541,8 +517,6 @@ func (m *model) taskDetails(width int) []string {
 			result = append(result, cleanDisplay(line))
 		}
 	}
-	result = append(result, "", mutedStyle.Render("Status    "+status), mutedStyle.Render("Scope     "+taskLocation(t)),
-		mutedStyle.Render("Priority  ")+priorityText, mutedStyle.Render("Category  "+category))
 	return wrapLines(result, width)
 }
 

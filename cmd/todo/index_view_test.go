@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -59,7 +60,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	if len(lines) < 4 || strings.Trim(lines[2], " │") != "" || strings.Index(lines[3], "TASK: DETAILS") > strings.Index(lines[3], "CATEGORY / BRANCH") {
 		t.Fatalf("all tasks heading and columns are out of order: %s", plain)
 	}
-	if !strings.Contains(rendered, "38;2;244;162;97") {
+	if !regexp.MustCompile(`38;2;244;211;94(;48;2;[0-9;]+)?m◐`).MatchString(rendered) {
 		t.Error("medium priority did not color the task")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'B', Text: "B"})

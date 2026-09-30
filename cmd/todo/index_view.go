@@ -22,6 +22,18 @@ func priorityStyle(p store.Priority) lipgloss.Style {
 	return lipgloss.NewStyle().Bold(p != store.PriorityNone).Foreground(color)
 }
 
+// priorityMark fills an open task's circle by urgency, so priority reads
+// from shape as well as colour.
+func priorityMark(p store.Priority) string {
+	switch p {
+	case store.PriorityHigh:
+		return "●"
+	case store.PriorityMedium:
+		return "◐"
+	}
+	return "○"
+}
+
 func indexColumn(value string, width int) string {
 	value = ansi.Truncate(cleanDisplay(value), width, "…")
 	return value + strings.Repeat(" ", max(0, width-ansi.StringWidth(value)))
@@ -54,7 +66,7 @@ func (m *model) renderIndex(width, height int) string {
 		if t.Branch != "" {
 			scope = branchIcon + " " + t.Branch
 		}
-		mark, markStyle := "○ ", mutedStyle
+		mark, markStyle := priorityMark(t.Priority)+" ", mutedStyle
 		if t.Priority != "" {
 			markStyle = priorityStyle(t.Priority)
 		}
