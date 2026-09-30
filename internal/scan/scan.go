@@ -1,4 +1,5 @@
-package main
+// Package scan finds to-do marker comments in source code.
+package scan
 
 import (
 	"bufio"
@@ -17,10 +18,12 @@ import (
 
 var todoMarker = regexp.MustCompile(`(?i)(?:^|[^[:alnum:]_-])@?todo(?:$|[[:space:]:({])`)
 
-type sourceTodo struct {
-	path string
-	line int
-	text string
+// Match is a to-do marker comment found in a source file, with its path relative
+// to the scanned directory.
+type Match struct {
+	Path string
+	Line int
+	Text string
 }
 
 type ripgrepEvent struct {
@@ -36,7 +39,10 @@ type ripgrepEvent struct {
 	} `json:"data"`
 }
 
-func scanSource(dir string, limit int, allFiles bool) ([]sourceTodo, error) {
+// Source finds to-do marker comments under dir, using ripgrep when it is installed.
+// Results are sorted by path and line; limit caps them, and 0 means no limit.
+// allFiles also searches Markdown, hidden and ignored files.
+func Source(dir string, limit int, allFiles bool) ([]Match, error) {
 	info, err := os.Stat(dir)
 	if err != nil {
 		return nil, err
@@ -58,7 +64,7 @@ func scanSource(dir string, limit int, allFiles bool) ([]sourceTodo, error) {
 	return scanBuiltIn(ctx, dir, limit, allFiles)
 }
 
-func scanWithRipgrep(ctx context.Context, dir string, limit int, allFiles bool) ([]sourceTodo, error) {
+func scanWithRipgrep(ctx context.Context, dir string, limit int, allFiles bool) ([]Match, error) {
 	args := []string{"--json", "--line-number"}
 	if allFiles {
 		args = append(args, "--hidden", "--no-ignore", "--glob", "!.git/")
@@ -78,7 +84,7 @@ func scanWithRipgrep(ctx context.Context, dir string, limit int, allFiles bool) 
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	var matches []sourceTodo
+	var matches []Match
 	scanner := bufio.NewScanner(pipe)
 	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
 	for scanner.Scan() {
@@ -92,10 +98,10 @@ func scanWithRipgrep(ctx context.Context, dir string, limit int, allFiles bool) 
 		if !allFiles && !hasTodoComment(event.Data.Lines.Text) {
 			continue
 		}
-		matches = append(matches, sourceTodo{
-			path: strings.TrimPrefix(event.Data.Path.Text, "./"),
-			line: event.Data.LineNumber,
-			text: strings.TrimSpace(event.Data.Lines.Text),
+		matches = append(matches, Match{
+			Path: strings.TrimPrefix(event.Data.Path.Text, "./"),
+			Line: event.Data.LineNumber,
+			Text: strings.TrimSpace(event.Data.Lines.Text),
 		})
 	}
 	scanErr := scanner.Err()
@@ -118,9 +124,9 @@ func scanWithRipgrep(ctx context.Context, dir string, limit int, allFiles bool) 
 
 // sortedMatches orders matches by file and line before applying limit, so
 // parallel scans always return the same results.
-func sortedMatches(matches []sourceTodo, limit int) []sourceTodo {
-	slices.SortFunc(matches, func(a, b sourceTodo) int {
-		return cmp.Or(strings.Compare(a.path, b.path), cmp.Compare(a.line, b.line))
+func sortedMatches(matches []Match, limit int) []Match {
+	slices.SortFunc(matches, func(a, b Match) int {
+		return cmp.Or(strings.Compare(a.Path, b.Path), cmp.Compare(a.Line, b.Line))
 	})
 	if limit > 0 && len(matches) > limit {
 		matches = matches[:limit]

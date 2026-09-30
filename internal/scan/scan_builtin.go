@@ -1,4 +1,4 @@
-package main
+package scan
 
 import (
 	"bufio"
@@ -14,13 +14,13 @@ import (
 )
 
 // scanBuiltIn keeps file TODOs usable when ripgrep is not installed.
-func scanBuiltIn(ctx context.Context, dir string, limit int, allFiles bool) ([]sourceTodo, error) {
+func scanBuiltIn(ctx context.Context, dir string, limit int, allFiles bool) ([]Match, error) {
 	files, err := sourceFiles(ctx, dir, allFiles)
 	if err != nil {
 		return nil, err
 	}
 	jobs := make(chan string, 128)
-	found := make(chan sourceTodo, 128)
+	found := make(chan Match, 128)
 	var wg sync.WaitGroup
 	for range min(runtime.GOMAXPROCS(0), 8) {
 		wg.Go(func() {
@@ -44,7 +44,7 @@ func scanBuiltIn(ctx context.Context, dir string, limit int, allFiles bool) ([]s
 	}()
 	go func() { wg.Wait(); close(found) }()
 
-	var matches []sourceTodo
+	var matches []Match
 	for match := range found {
 		matches = append(matches, match)
 	}
@@ -131,7 +131,7 @@ func shouldScanPath(path string, allFiles bool) bool {
 	return extension != ".md" && extension != ".markdown"
 }
 
-func scanFile(ctx context.Context, dir, relative string, allFiles bool, found chan<- sourceTodo) {
+func scanFile(ctx context.Context, dir, relative string, allFiles bool, found chan<- Match) {
 	path := filepath.Join(dir, relative)
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() {
@@ -160,7 +160,7 @@ func scanFile(ctx context.Context, dir, relative string, allFiles bool, found ch
 		if !todoMarker.MatchString(text) || (!allFiles && !hasTodoComment(text)) {
 			continue
 		}
-		match := sourceTodo{path: filepath.ToSlash(relative), line: line, text: strings.TrimSpace(text)}
+		match := Match{Path: filepath.ToSlash(relative), Line: line, Text: strings.TrimSpace(text)}
 		select {
 		case found <- match:
 		case <-ctx.Done():

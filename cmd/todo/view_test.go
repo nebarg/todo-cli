@@ -9,6 +9,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/scan"
+	"github.com/nebarg/todo-cli/internal/store"
 )
 
 func TestDashboardFitsTerminal(t *testing.T) {
@@ -21,7 +23,7 @@ func TestDashboardFitsTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.source = []sourceTodo{{path: "main.go", line: 12, text: "// TODO: improve"}}
+	m.source = []scan.Match{{Path: "main.go", Line: 12, Text: "// TODO: improve"}}
 	m.sourceLoading = false
 	for _, size := range [][2]int{{120, 35}, {80, 24}, {78, 16}, {60, 20}, {56, 19}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
@@ -91,7 +93,7 @@ func TestTaskDetailsShownOnDetailPage(t *testing.T) {
 	if taskTitleStyle.GetForeground() != colorStrong {
 		t.Fatal("task title is not styled with the white text color")
 	}
-	m := &model{general: []task{{text: "Fix login redirect", details: "When a session expires, return to the previous page.\n\n- Add a regression test"}}}
+	m := &model{general: []store.Task{{Text: "Fix login redirect", Details: "When a session expires, return to the previous page.\n\n- Add a regression test"}}}
 	got := strings.Join(m.taskDetails(60), "\n")
 	for _, want := range []string{"Fix login redirect", "When a session expires", "- Add a regression test", "Status", "Category"} {
 		if !strings.Contains(got, want) {
@@ -132,30 +134,30 @@ func TestTaskDetailsShownOnDetailPage(t *testing.T) {
 }
 
 func TestTaskRowsKeepTitlesAlignedAndShowDetails(t *testing.T) {
-	for priority, foreground := range map[priority]string{
+	for p, foreground := range map[store.Priority]string{
 		"high": "240;119;119", "medium": "244;162;97", "low": "244;211;94",
 	} {
-		t.Run(string(priority), func(t *testing.T) {
-			selected := renderTaskRow(task{text: "Highlighted title", priority: priority, details: "Extra context"}, 30, true)
-			unselected := renderTaskRow(task{text: "Highlighted title", priority: priority, details: "Extra context"}, 30, false)
+		t.Run(string(p), func(t *testing.T) {
+			selected := renderTaskRow(store.Task{Text: "Highlighted title", Priority: p, Details: "Extra context"}, 30, true)
+			unselected := renderTaskRow(store.Task{Text: "Highlighted title", Priority: p, Details: "Extra context"}, 30, false)
 			if ansi.StringWidth(selected) != 30 || !strings.Contains(ansi.Strip(selected), "○ Highlighted title  ⋯") || !strings.Contains(selected, "38;2;"+foreground+";48;2;36;87;166mHighlighted title") {
-				t.Fatalf("%s selected task is not fully highlighted and coloured: %q", priority, selected)
+				t.Fatalf("%s selected task is not fully highlighted and coloured: %q", p, selected)
 			}
 			if ansi.Strip(unselected) != "○ Highlighted title  ⋯" || !strings.Contains(unselected, "38;2;"+foreground+"mHighlighted title") {
-				t.Fatalf("%s unselected task is not coloured: %q", priority, unselected)
+				t.Fatalf("%s unselected task is not coloured: %q", p, unselected)
 			}
-			done := renderTaskRow(task{text: "Highlighted title", priority: priority, done: true}, 30, false)
+			done := renderTaskRow(store.Task{Text: "Highlighted title", Priority: p, Done: true}, 30, false)
 			if ansi.Strip(done) != "✓ Highlighted title" || strings.Contains(done, "38;2;"+foreground) {
-				t.Fatalf("%s done task is not muted: %q", priority, done)
+				t.Fatalf("%s done task is not muted: %q", p, done)
 			}
 		})
 	}
-	open := ansi.Strip(renderTaskRow(task{text: "Same title"}, 24, false))
-	done := ansi.Strip(renderTaskRow(task{text: "Same title", done: true}, 24, false))
+	open := ansi.Strip(renderTaskRow(store.Task{Text: "Same title"}, 24, false))
+	done := ansi.Strip(renderTaskRow(store.Task{Text: "Same title", Done: true}, 24, false))
 	if strings.Index(open, "Same title") != strings.Index(done, "Same title") || strings.Contains(open, "⋯") || strings.Contains(done, "⋯") {
 		t.Fatalf("completion changed title alignment or added details marker: %q / %q", open, done)
 	}
-	truncated := ansi.Strip(renderTaskRow(task{text: strings.Repeat("x", 50), details: "More"}, 24, false))
+	truncated := ansi.Strip(renderTaskRow(store.Task{Text: strings.Repeat("x", 50), Details: "More"}, 24, false))
 	if ansi.StringWidth(truncated) != 24 || !strings.HasSuffix(truncated, "  ⋯") {
 		t.Fatalf("long task lost its details marker: %q", truncated)
 	}

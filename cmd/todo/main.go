@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/nebarg/todo-cli/internal/scan"
+	"github.com/nebarg/todo-cli/internal/store"
 )
 
 func main() {
@@ -49,12 +51,12 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		matches, err := scanSource(absolute, 0, *allFiles)
+		matches, err := scan.Source(absolute, 0, *allFiles)
 		if err != nil {
 			fail(err)
 		}
 		for _, match := range matches {
-			fmt.Printf("%s:%d: %s\n", match.path, match.line, match.text)
+			fmt.Printf("%s:%d: %s\n", match.Path, match.Line, match.Text)
 		}
 		return
 	}
@@ -92,12 +94,12 @@ func main() {
 		if branch != "" && !project.hasLocalBranch(branch) {
 			fail(fmt.Errorf("branch %q does not exist locally", branch))
 		}
-		p, err := parsePriority(*priorityFlag)
+		p, err := store.ParsePriority(*priorityFlag)
 		if err != nil {
 			fail(err)
 		}
 		title := strings.Join(args, " ")
-		if err := addTaskWithOptions(file, title, p, category, branch); err != nil {
+		if err := store.Add(file, title, "", p, category, branch); err != nil {
 			fail(err)
 		}
 		fmt.Printf("Added to %s: %s\n", file, title)

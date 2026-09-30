@@ -1,4 +1,4 @@
-package main
+package scan
 
 import (
 	"fmt"
@@ -28,14 +28,14 @@ func TestScanSource(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "binary.dat"), []byte{'T', 'O', 'D', 'O', 0, 'x'}, 0644); err != nil {
 		t.Fatal(err)
 	}
-	matches, err := scanSource(dir, 0, false)
+	matches, err := Source(dir, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(matches) != 2 || matches[0].path != "code.go" || matches[0].line != 1 || matches[1].line != 3 {
+	if len(matches) != 2 || matches[0].Path != "code.go" || matches[0].Line != 1 || matches[1].Line != 3 {
 		t.Fatalf("matches: %+v", matches)
 	}
-	all, err := scanSource(dir, 0, true)
+	all, err := Source(dir, 0, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,9 +45,9 @@ func TestScanSource(t *testing.T) {
 }
 
 func TestSortedMatchesOrderBeforeLimit(t *testing.T) {
-	matches := []sourceTodo{{path: "b.go", line: 1}, {path: "a.go", line: 9}, {path: "a.go", line: 2}, {path: "c.go", line: 1}}
+	matches := []Match{{Path: "b.go", Line: 1}, {Path: "a.go", Line: 9}, {Path: "a.go", Line: 2}, {Path: "c.go", Line: 1}}
 	got := sortedMatches(matches, 3)
-	if len(got) != 3 || got[0] != (sourceTodo{path: "a.go", line: 2}) || got[1].line != 9 || got[2].path != "b.go" {
+	if len(got) != 3 || got[0] != (Match{Path: "a.go", Line: 2}) || got[1].Line != 9 || got[2].Path != "b.go" {
 		t.Fatalf("matches were limited before sorting: %+v", got)
 	}
 	if got := sortedMatches(nil, 3); len(got) != 0 {
@@ -64,11 +64,11 @@ func TestBuiltInScanLimitIsDeterministic(t *testing.T) {
 		}
 	}
 	for range 5 {
-		matches, err := scanSource(dir, 3, false)
+		matches, err := Source(dir, 3, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(matches) != 3 || matches[0].path != "f00.go" || matches[2].path != "f02.go" {
+		if len(matches) != 3 || matches[0].Path != "f00.go" || matches[2].Path != "f02.go" {
 			t.Fatalf("limited scan picked arbitrary files: %+v", matches)
 		}
 	}

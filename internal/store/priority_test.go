@@ -1,4 +1,4 @@
-package main
+package store
 
 import (
 	"strings"
@@ -8,17 +8,17 @@ import (
 func TestParsePriority(t *testing.T) {
 	for _, item := range []struct {
 		input string
-		want  priority
+		want  Priority
 		err   bool
 	}{
-		{"", priorityNone, false},
-		{" High ", priorityHigh, false},
-		{"MEDIUM", priorityMedium, false},
-		{"low", priorityLow, false},
-		{"urgent", priorityNone, true},
+		{"", PriorityNone, false},
+		{" High ", PriorityHigh, false},
+		{"MEDIUM", PriorityMedium, false},
+		{"low", PriorityLow, false},
+		{"urgent", PriorityNone, true},
 	} {
 		t.Run(item.input, func(t *testing.T) {
-			got, err := parsePriority(item.input)
+			got, err := ParsePriority(item.input)
 			if got != item.want || (err != nil) != item.err {
 				t.Fatalf("parsePriority(%q) = %q, %v", item.input, got, err)
 			}
@@ -27,16 +27,16 @@ func TestParsePriority(t *testing.T) {
 }
 
 func TestPriorityCyclesAndTitles(t *testing.T) {
-	p := priorityNone
+	p := PriorityNone
 	var seen []string
 	for range 4 {
-		p = p.next()
-		seen = append(seen, p.title())
+		p = p.Next()
+		seen = append(seen, p.Title())
 	}
 	if got := strings.Join(seen, ","); got != "High,Medium,Low," {
 		t.Fatalf("priority cycle = %q", got)
 	}
-	if priority("urgent").next() != priorityNone || priority("urgent").rank() != priorityNone.rank() {
+	if Priority("urgent").Next() != PriorityNone || Priority("urgent").Rank() != PriorityNone.Rank() {
 		t.Fatal("unknown priority should behave like no priority")
 	}
 }

@@ -3,6 +3,8 @@ package main
 import (
 	"sort"
 	"strings"
+
+	"github.com/nebarg/todo-cli/internal/store"
 )
 
 type navigationKind int
@@ -19,13 +21,13 @@ type navigationRow struct {
 	count            int
 	completed        int
 	missingGitBranch bool
-	todo             task
+	todo             store.Task
 }
 
-func completedCount(tasks []task) int {
+func completedCount(tasks []store.Task) int {
 	count := 0
 	for _, t := range tasks {
-		if t.done {
+		if t.Done {
 			count++
 		}
 	}
@@ -39,14 +41,14 @@ func (m *model) generalRows() []navigationRow {
 		completed := make(map[string]int)
 		display := make(map[string]string)
 		for _, t := range m.general {
-			if t.category != "" {
-				key := strings.ToLower(t.category)
+			if t.Category != "" {
+				key := strings.ToLower(t.Category)
 				counts[key]++
-				if t.done {
+				if t.Done {
 					completed[key]++
 				}
 				if display[key] == "" {
-					display[key] = t.category
+					display[key] = t.Category
 				}
 			}
 		}
@@ -55,7 +57,7 @@ func (m *model) generalRows() []navigationRow {
 		}
 		taskStart := len(rows)
 		for _, t := range m.general {
-			if t.category == "" {
+			if t.Category == "" {
 				rows = append(rows, navigationRow{kind: rowTask, todo: t})
 			}
 		}
@@ -75,7 +77,7 @@ func (m *model) branchRows() []navigationRow {
 	var rows []navigationRow
 	if m.branchFilter != "" {
 		for _, t := range m.branches {
-			if t.branch == m.branchFilter {
+			if t.Branch == m.branchFilter {
 				rows = append(rows, navigationRow{kind: rowTask, todo: t})
 			}
 		}
@@ -85,9 +87,9 @@ func (m *model) branchRows() []navigationRow {
 	counts := make(map[string]int)
 	completed := make(map[string]int)
 	for _, t := range m.branches {
-		counts[t.branch]++
-		if t.done {
-			completed[t.branch]++
+		counts[t.Branch]++
+		if t.Done {
+			completed[t.Branch]++
 		}
 	}
 	for _, name := range sortedNames(counts) {
@@ -102,11 +104,11 @@ func (m *model) branchMissing(name string) bool {
 
 func openTasksFirst(rows []navigationRow) {
 	sort.SliceStable(rows, func(i, j int) bool {
-		return !rows[i].todo.done && rows[j].todo.done
+		return !rows[i].todo.Done && rows[j].todo.Done
 	})
 }
 
-func (m *model) selectNavigationTask(selected task) {
+func (m *model) selectNavigationTask(selected store.Task) {
 	var rows []navigationRow
 	var cursor *int
 	switch m.activePane() {
@@ -118,8 +120,8 @@ func (m *model) selectNavigationTask(selected task) {
 		return
 	}
 	for i, row := range rows {
-		if row.kind == rowTask && row.todo.line == selected.line && row.todo.text == selected.text &&
-			row.todo.branch == selected.branch && strings.EqualFold(row.todo.category, selected.category) {
+		if row.kind == rowTask && row.todo.Line == selected.Line && row.todo.Text == selected.Text &&
+			row.todo.Branch == selected.Branch && strings.EqualFold(row.todo.Category, selected.Category) {
 			*cursor = i
 			return
 		}
@@ -141,16 +143,16 @@ func sortedNames(counts map[string]int) []string {
 	return names
 }
 
-func sortedTasksByPriority(tasks []task) []task {
-	sorted := append([]task(nil), tasks...)
+func sortedTasksByPriority(tasks []store.Task) []store.Task {
+	sorted := append([]store.Task(nil), tasks...)
 	sort.SliceStable(sorted, func(i, j int) bool {
-		return sorted[i].priority.rank() < sorted[j].priority.rank()
+		return sorted[i].Priority.Rank() < sorted[j].Priority.Rank()
 	})
 	return sorted
 }
 
-func taskInCategory(t task, category string) bool {
-	return strings.EqualFold(t.category, category)
+func taskInCategory(t store.Task, category string) bool {
+	return strings.EqualFold(t.Category, category)
 }
 
 func (m *model) selectedNavigationRow() (navigationRow, bool) {

@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/store"
 )
 
 type modalMode int
@@ -24,7 +25,7 @@ const (
 
 type taskModal struct {
 	mode         modalMode
-	selected     task
+	selected     store.Task
 	project      projectContext
 	addBranch    string
 	addCategory  string
@@ -58,7 +59,7 @@ func (m *model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
 			m.status = "Select a Markdown task to edit"
 			return m, nil
 		}
-		if selected.branch != "" {
+		if selected.Branch != "" {
 			m.checkLocalBranches()
 		}
 		if m.blockMissingBranch(selected) {
@@ -86,8 +87,8 @@ func (m *model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
 	modal.details.ShowLineNumbers = false
 	modal.details.Placeholder = "Add context, steps, or links…"
 	if mode == modalEdit {
-		modal.title.SetValue(modal.selected.text)
-		modal.details.SetValue(modal.selected.details)
+		modal.title.SetValue(modal.selected.Text)
+		modal.details.SetValue(modal.selected.Details)
 	}
 	modal.resize(m.width, m.height)
 	m.modal = modal
@@ -129,7 +130,7 @@ func (m *model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 			for i, row := range m.generalRows() {
-				if row.kind == rowTask && row.todo.branch == "" && row.todo.text == modal.taskTitle() && strings.EqualFold(row.todo.category, modal.addCategory) {
+				if row.kind == rowTask && row.todo.Branch == "" && row.todo.Text == modal.taskTitle() && strings.EqualFold(row.todo.Category, modal.addCategory) {
 					m.generalCursor = i
 				}
 			}
@@ -146,7 +147,7 @@ func (m *model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 			m.branchFilter = modal.addBranch
 			for i, row := range m.branchRows() {
-				if row.kind == rowTask && row.todo.text == modal.taskTitle() {
+				if row.kind == rowTask && row.todo.Text == modal.taskTitle() {
 					m.branchCursor = i
 				}
 			}
@@ -273,11 +274,11 @@ func (f *taskModal) focusField(field int) tea.Cmd {
 
 func (f *taskModal) save(path string) error {
 	if f.mode == modalEdit {
-		return editTaskContent(path, f.selected, f.taskTitle(), f.details.Value())
+		return store.Edit(path, f.selected, f.taskTitle(), f.details.Value())
 	}
 	category, branch := "", ""
 	if f.mode == modalAddGeneral {
-		f.addCategory = normalizeCategoryInput(f.scope.Value())
+		f.addCategory = store.NormalizeCategory(f.scope.Value())
 		category = f.addCategory
 	} else {
 		f.addBranch = f.chosenBranch()
@@ -292,7 +293,7 @@ func (f *taskModal) save(path string) error {
 		}
 		branch = f.addBranch
 	}
-	return addTaskWithDetails(path, f.taskTitle(), f.details.Value(), priorityNone, category, branch)
+	return store.Add(path, f.taskTitle(), f.details.Value(), store.PriorityNone, category, branch)
 }
 
 func (f *taskModal) taskTitle() string {
@@ -502,10 +503,10 @@ func (f *taskModal) contentLines(width, height int) []string {
 }
 
 func (f *taskModal) editLocation(width int) string {
-	if f.selected.branch != "" {
-		return ansi.Truncate(mutedStyle.Render("Branch    ")+lipgloss.NewStyle().Foreground(colorGreen).Render(" "+f.selected.branch), width, "…")
+	if f.selected.Branch != "" {
+		return ansi.Truncate(mutedStyle.Render("Branch    ")+lipgloss.NewStyle().Foreground(colorGreen).Render(" "+f.selected.Branch), width, "…")
 	}
-	if category := f.selected.category; category != "" {
+	if category := f.selected.Category; category != "" {
 		return ansi.Truncate(mutedStyle.Render("Category  ")+lipgloss.NewStyle().Foreground(colorPurple).Render("@"+category), width, "…")
 	}
 	return mutedStyle.Render("General task")

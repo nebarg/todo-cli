@@ -12,6 +12,8 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/nebarg/todo-cli/internal/scan"
+	"github.com/nebarg/todo-cli/internal/store"
 )
 
 type pane int
@@ -24,13 +26,13 @@ const (
 )
 
 type sourceScanMsg struct {
-	matches []sourceTodo
+	matches []scan.Match
 	err     error
 }
 type sourcePreviewMsg struct {
 	path  string
 	line  int
-	lines []previewLine
+	lines []scan.ContextLine
 	err   error
 }
 type editorFinishedMsg struct{ err error }
@@ -57,14 +59,14 @@ func (s sortOrder) next() sortOrder {
 type model struct {
 	file                  string
 	project               projectContext
-	allTasks              []task
+	allTasks              []store.Task
 	indexMode             bool
 	indexSort             sortOrder
 	indexPriorityExplicit bool
 	indexCursor           int
-	general               []task
-	branches              []task
-	source                []sourceTodo
+	general               []store.Task
+	branches              []store.Task
+	source                []scan.Match
 	focus                 pane
 	detailFrom            pane
 	detailScroll          int
@@ -80,13 +82,13 @@ type model struct {
 	sourceLoading         bool
 	sourceScanned         bool
 	sourceError           string
-	preview               []previewLine
+	preview               []scan.ContextLine
 	previewPath           string
 	previewLine           int
 	previewError          string
 	input                 textinput.Model
 	categoryInput         bool
-	editTask              task
+	editTask              store.Task
 	modal                 *taskModal
 	status                string
 	width                 int
@@ -122,7 +124,7 @@ func (m *model) scanDir() string {
 func (m *model) scanCmd() tea.Cmd {
 	dir := m.scanDir()
 	return func() tea.Msg {
-		matches, err := scanSource(dir, 1000, false)
+		matches, err := scan.Source(dir, 1000, false)
 		return sourceScanMsg{matches: matches, err: err}
 	}
 }
@@ -132,10 +134,10 @@ func (m *model) previewCmd() tea.Cmd {
 		return nil
 	}
 	selected := m.source[m.sourceCursor]
-	path := filepath.Join(m.scanDir(), selected.path)
+	path := filepath.Join(m.scanDir(), selected.Path)
 	return func() tea.Msg {
-		lines, err := readSourceContext(path, selected.line)
-		return sourcePreviewMsg{path: selected.path, line: selected.line, lines: lines, err: err}
+		lines, err := scan.ReadContext(path, selected.Line)
+		return sourcePreviewMsg{path: selected.Path, line: selected.Line, lines: lines, err: err}
 	}
 }
 
@@ -168,7 +170,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sourcePreviewMsg:
 		if m.sourceCursor < len(m.source) {
 			selected := m.source[m.sourceCursor]
-			if selected.path == msg.path && selected.line == msg.line {
+			if selected.Path == msg.path && selected.Line == msg.line {
 				m.previewPath, m.previewLine = msg.path, msg.line
 				m.preview = msg.lines
 				m.previewError = ""
@@ -344,19 +346,19 @@ func (m *model) moveCursor(delta int) bool {
 	return true
 }
 
-func (m *model) selectedTask() (task, bool) {
+func (m *model) selectedTask() (store.Task, bool) {
 	if m.indexMode {
 		tasks := m.indexTasks()
 		if m.indexCursor >= 0 && m.indexCursor < len(tasks) {
 			return tasks[m.indexCursor], true
 		}
-		return task{}, false
+		return store.Task{}, false
 	}
 	row, ok := m.selectedNavigationRow()
 	if ok && row.kind == rowTask {
 		return row.todo, true
 	}
-	return task{}, false
+	return store.Task{}, false
 }
 
 func (m *model) activePane() pane {
@@ -372,13 +374,13 @@ func (m *model) startCategoryInput() (tea.Model, tea.Cmd) {
 		m.status = "Select a Markdown task to edit its category"
 		return m, nil
 	}
-	if selected.branch != "" {
+	if selected.Branch != "" {
 		m.status = "Categories are only for general tasks"
 		return m, nil
 	}
 	m.editTask = selected
 	m.input.Prompt = "Category: "
-	m.input.SetValue(selected.category)
+	m.input.SetValue(selected.Category)
 	m.categoryInput = true
 	m.status = ""
 	return m, m.input.Focus()
@@ -394,8 +396,8 @@ func (m *model) updateCategoryInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		oldTask := m.editTask
-		newCategory := normalizeCategoryInput(m.input.Value())
-		if err := setTaskCategory(m.file, m.editTask, m.input.Value()); err != nil {
+		newCategory := store.NormalizeCategory(m.input.Value())
+		if err := store.SetCategory(m.file, m.editTask, m.input.Value()); err != nil {
 			m.status = errorStatus(err)
 			return m, nil
 		}
@@ -424,7 +426,7 @@ func (m *model) updateCategoryInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 			for i, row := range m.generalRows() {
-				if row.kind == rowTask && row.todo.text == oldTask.text && row.todo.branch == oldTask.branch && strings.EqualFold(row.todo.category, newCategory) {
+				if row.kind == rowTask && row.todo.Text == oldTask.Text && row.todo.Branch == oldTask.Branch && strings.EqualFold(row.todo.Category, newCategory) {
 					m.generalCursor = i
 					break
 				}
@@ -464,7 +466,7 @@ func (m *model) toggleSelected() {
 	if m.blockMissingBranch(selected) {
 		return
 	}
-	if err := toggleTask(m.file, selected); err != nil {
+	if err := store.Toggle(m.file, selected); err != nil {
 		m.status = errorStatus(err)
 		return
 	}
@@ -479,14 +481,14 @@ func (m *model) toggleSelected() {
 }
 
 func errorStatus(err error) string {
-	if errors.Is(err, errTaskChanged) {
+	if errors.Is(err, store.ErrTaskChanged) {
 		return "Task changed on disk; press r to reload"
 	}
 	return err.Error()
 }
 
-func (m *model) blockMissingBranch(t task) bool {
-	if !m.branchMissing(t.branch) {
+func (m *model) blockMissingBranch(t store.Task) bool {
+	if !m.branchMissing(t.Branch) {
 		return false
 	}
 	m.status = missingBranchStatus
@@ -502,7 +504,7 @@ func (m *model) cyclePriority() {
 	if m.blockMissingBranch(selected) {
 		return
 	}
-	if err := setTaskPriority(m.file, selected, selected.priority.next()); err != nil {
+	if err := store.SetPriority(m.file, selected, selected.Priority.Next()); err != nil {
 		m.status = errorStatus(err)
 		return
 	}
@@ -518,7 +520,7 @@ func (m *model) openSource() tea.Cmd {
 		return nil
 	}
 	item := m.source[m.sourceCursor]
-	return openEditor(filepath.Join(m.scanDir(), item.path), item.line)
+	return openEditor(filepath.Join(m.scanDir(), item.Path), item.Line)
 }
 
 func openEditor(path string, line int) tea.Cmd {
@@ -575,7 +577,7 @@ func (m *model) refresh() error {
 func (m *model) readTasks(sortByPriority bool) error {
 	previous, hadSelection := m.selectedTask()
 	previousTasks := m.allTasks
-	tasks, err := loadTasks(m.file)
+	tasks, err := store.Load(m.file)
 	if err != nil {
 		return err
 	}
@@ -602,7 +604,7 @@ func (m *model) readTasks(sortByPriority bool) error {
 	if m.branchFilter != "" {
 		found := false
 		for _, t := range m.branches {
-			if t.branch == m.branchFilter {
+			if t.Branch == m.branchFilter {
 				found = true
 				break
 			}
@@ -623,13 +625,13 @@ func (m *model) readTasks(sortByPriority bool) error {
 	return nil
 }
 
-func preserveTaskOrder(previous, loaded []task) []task {
+func preserveTaskOrder(previous, loaded []store.Task) []store.Task {
 	if len(previous) == 0 || len(loaded) == 0 {
 		return loaded
 	}
 	type key struct{ text, branch, category string }
-	identity := func(item task) key {
-		return key{item.text, item.branch, strings.ToLower(item.category)}
+	identity := func(item store.Task) key {
+		return key{item.Text, item.Branch, strings.ToLower(item.Category)}
 	}
 	positions := make(map[key][]int, len(loaded))
 	for i, item := range loaded {
@@ -644,7 +646,7 @@ func preserveTaskOrder(previous, loaded []task) []task {
 		candidates := positions[identity(old)]
 		best, bestOffset, distance := -1, -1, int(^uint(0)>>1)
 		for offset, i := range candidates {
-			d := loaded[i].line - old.line
+			d := loaded[i].Line - old.Line
 			if d < 0 {
 				d = -d
 			}
@@ -664,10 +666,10 @@ func preserveTaskOrder(previous, loaded []task) []task {
 		}
 		best, distance := -1, int(^uint(0)>>1)
 		for i, candidate := range loaded {
-			if used[i] || candidate.branch != old.branch || !strings.EqualFold(candidate.category, old.category) {
+			if used[i] || candidate.Branch != old.Branch || !strings.EqualFold(candidate.Category, old.Category) {
 				continue
 			}
-			d := candidate.line - old.line
+			d := candidate.Line - old.Line
 			if d < 0 {
 				d = -d
 			}
@@ -680,7 +682,7 @@ func preserveTaskOrder(previous, loaded []task) []task {
 			used[best] = true
 		}
 	}
-	ordered := make([]task, 0, len(loaded))
+	ordered := make([]store.Task, 0, len(loaded))
 	for _, index := range assigned {
 		if index >= 0 {
 			ordered = append(ordered, loaded[index])
@@ -694,35 +696,35 @@ func preserveTaskOrder(previous, loaded []task) []task {
 	return ordered
 }
 
-func (m *model) indexTasks() []task {
-	tasks := append([]task(nil), m.allTasks...)
+func (m *model) indexTasks() []store.Task {
+	tasks := append([]store.Task(nil), m.allTasks...)
 	sort.SliceStable(tasks, func(i, j int) bool {
 		a, b := tasks[i], tasks[j]
 		switch m.indexSort {
 		case sortBranch:
-			if c := compareIndexGroup(a.branch, b.branch); c != 0 {
+			if c := compareIndexGroup(a.Branch, b.Branch); c != 0 {
 				return c < 0
 			}
-			if a.branch == "" {
-				if c := compareIndexGroup(a.category, b.category); c != 0 {
+			if a.Branch == "" {
+				if c := compareIndexGroup(a.Category, b.Category); c != 0 {
 					return c < 0
 				}
 			}
 		case sortCategory:
-			if c := compareIndexGroup(a.category, b.category); c != 0 {
+			if c := compareIndexGroup(a.Category, b.Category); c != 0 {
 				return c < 0
 			}
-			if a.category == "" {
-				if c := compareIndexGroup(a.branch, b.branch); c != 0 {
+			if a.Category == "" {
+				if c := compareIndexGroup(a.Branch, b.Branch); c != 0 {
 					return c < 0
 				}
 			}
 		}
-		if a.done != b.done {
-			return !a.done
+		if a.Done != b.Done {
+			return !a.Done
 		}
 		if m.indexSort == sortPriority && m.indexPriorityExplicit {
-			return a.priority.rank() < b.priority.rank()
+			return a.Priority.Rank() < b.Priority.Rank()
 		}
 		return false
 	})
@@ -739,12 +741,12 @@ func compareIndexGroup(a, b string) int {
 	return strings.Compare(strings.ToLower(a), strings.ToLower(b))
 }
 
-func (m *model) selectIndexTask(selected task) {
+func (m *model) selectIndexTask(selected store.Task) {
 	tasks := m.indexTasks()
 	best, distance := -1, int(^uint(0)>>1)
 	for i, t := range tasks {
-		if t.text == selected.text && t.branch == selected.branch {
-			d := t.line - selected.line
+		if t.Text == selected.Text && t.Branch == selected.Branch {
+			d := t.Line - selected.Line
 			if d < 0 {
 				d = -d
 			}
@@ -812,7 +814,7 @@ func (m *model) partitionTasks() {
 	m.general = nil
 	m.branches = nil
 	for _, t := range m.allTasks {
-		if t.branch == "" {
+		if t.Branch == "" {
 			m.general = append(m.general, t)
 		} else {
 			m.branches = append(m.branches, t)

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/nebarg/todo-cli/internal/store"
 )
 
 func TestChangingCategoryKeepsTaskSelected(t *testing.T) {
@@ -32,7 +33,7 @@ func TestChangingCategoryKeepsTaskSelected(t *testing.T) {
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
 	selected, ok := m.selectedTask()
-	if m.categoryInput || !ok || selected.text != "Fix login" || selected.category != "backend" {
+	if m.categoryInput || !ok || selected.Text != "Fix login" || selected.Category != "backend" {
 		t.Fatalf("recategorising lost selection: %+v", m.generalRows())
 	}
 }
@@ -77,19 +78,19 @@ func TestEnterEditsAndDoneOrSpaceTogglesTasks(t *testing.T) {
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
-	if m.modal == nil || m.modal.title.Value() != "First task" || m.general[0].done {
+	if m.modal == nil || m.modal.title.Value() != "First task" || m.general[0].Done {
 		t.Fatal("Enter did not open the selected task for editing")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	m = updated.(*model)
-	if !m.general[0].done {
+	if !m.general[0].Done {
 		t.Fatal("d did not complete the task")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(*model)
-	if m.general[0].done {
+	if m.general[0].Done {
 		t.Fatal("Space did not reopen the task")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
@@ -112,7 +113,7 @@ func TestEnterEditsAndDoneOrSpaceTogglesTasks(t *testing.T) {
 	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	m = updated.(*model)
-	if selected, ok := m.selectedTask(); !ok || !selected.done {
+	if selected, ok := m.selectedTask(); !ok || !selected.Done {
 		t.Fatal("d did not complete the selected task in All tasks")
 	}
 }
@@ -142,32 +143,32 @@ func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 	}
 	m.generalCursor = 4 // Two category rows, then the three generic tasks.
 	selected, ok := m.selectedTask()
-	if !ok || selected.text != "Bare" {
+	if !ok || selected.Text != "Bare" {
 		t.Fatalf("setup selected %+v", selected)
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
 	m = updated.(*model)
 	selected, ok = m.selectedTask()
-	if !ok || selected.text != "Bare" || selected.priority != "high" {
+	if !ok || selected.Text != "Bare" || selected.Priority != "high" {
 		t.Fatalf("first p selected %+v", selected)
 	}
-	if rows := m.generalRows(); rows[2].todo.text != "Urgent" || rows[3].todo.text != "Routine" || rows[4].todo.text != "Bare" || rows[5].todo.text != "Another unprioritized" || m.generalCursor != 4 {
+	if rows := m.generalRows(); rows[2].todo.Text != "Urgent" || rows[3].todo.Text != "Routine" || rows[4].todo.Text != "Bare" || rows[5].todo.Text != "Another unprioritized" || m.generalCursor != 4 {
 		t.Fatalf("priority edit moved the highlighted task: cursor %d, rows %+v", m.generalCursor, rows)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
 	m = updated.(*model)
 	selected, ok = m.selectedTask()
-	if !ok || selected.text != "Bare" || selected.priority != "medium" {
+	if !ok || selected.Text != "Bare" || selected.Priority != "medium" {
 		t.Fatalf("second p selected %+v", selected)
 	}
-	for _, want := range []priority{priorityLow, priorityNone, priorityHigh} {
+	for _, want := range []store.Priority{store.PriorityLow, store.PriorityNone, store.PriorityHigh} {
 		updated, _ = m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
 		m = updated.(*model)
 		selected, ok = m.selectedTask()
-		if !ok || selected.text != "Bare" || selected.priority != want {
+		if !ok || selected.Text != "Bare" || selected.Priority != want {
 			t.Fatalf("cycling to %q selected %+v", want, selected)
 		}
-		if rows := m.generalRows(); rows[4].todo.text != "Bare" || rows[5].todo.text != "Another unprioritized" || m.generalCursor != 4 {
+		if rows := m.generalRows(); rows[4].todo.Text != "Bare" || rows[5].todo.Text != "Another unprioritized" || m.generalCursor != 4 {
 			t.Fatalf("cycling to %q moved the row: cursor %d, rows %+v", want, m.generalCursor, rows)
 		}
 	}
@@ -187,20 +188,20 @@ func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(*model)
-	if rows := m.generalRows(); rows[3].todo.text != "Routine" || rows[4].todo.text != "Another unprioritized" || rows[5].todo.text != "Bare" || m.generalCursor != 5 {
+	if rows := m.generalRows(); rows[3].todo.Text != "Routine" || rows[4].todo.Text != "Another unprioritized" || rows[5].todo.Text != "Bare" || m.generalCursor != 5 {
 		t.Fatalf("completed task did not move after open tasks while staying selected: %+v", rows)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
 	m = updated.(*model)
-	if rows := m.generalRows(); rows[3].todo.text != "Routine" || rows[4].todo.text != "Another unprioritized" || rows[5].todo.text != "Bare" {
+	if rows := m.generalRows(); rows[3].todo.Text != "Routine" || rows[4].todo.Text != "Another unprioritized" || rows[5].todo.Text != "Bare" {
 		t.Fatalf("reload did not leave completed tasks last: %+v", rows)
 	}
-	items, err := loadTasks(path)
+	items, err := store.Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, item := range items {
-		if item.text == "Routine" && item.priority != "medium" {
+		if item.Text == "Routine" && item.Priority != "medium" {
 			t.Fatalf("p changed the wrong task: %+v", items)
 		}
 	}
@@ -222,7 +223,7 @@ func TestPriorityChangeKeepsMovedBranchTaskSelected(t *testing.T) {
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
 	m = updated.(*model)
 	selected, ok := m.selectedTask()
-	if !ok || selected.text != "Moved task" || selected.priority != "high" {
+	if !ok || selected.Text != "Moved task" || selected.Priority != "high" {
 		t.Fatalf("branch selection moved to %+v", selected)
 	}
 }
@@ -239,11 +240,11 @@ func TestPriorityChangeKeepsCategoryTaskWithDetailsSelected(t *testing.T) {
 	}
 	m.enterSelectedGroup()
 	m.generalCursor = 1
-	for _, want := range []priority{priorityNone, priorityHigh, priorityMedium, priorityLow} {
+	for _, want := range []store.Priority{store.PriorityNone, store.PriorityHigh, store.PriorityMedium, store.PriorityLow} {
 		updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
 		m = updated.(*model)
 		selected, ok := m.selectedTask()
-		if !ok || selected.text != "Detailed task" || selected.priority != want || selected.details != "This task has details." {
+		if !ok || selected.Text != "Detailed task" || selected.Priority != want || selected.Details != "This task has details." {
 			t.Fatalf("cycling to %q selected %+v", want, selected)
 		}
 	}
@@ -259,27 +260,27 @@ func TestPrioritySortHappensOnLoadAndReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rows := m.generalRows(); rows[0].todo.text != "High priority" || rows[1].todo.text != "Medium priority" || rows[2].todo.text != "No priority" {
+	if rows := m.generalRows(); rows[0].todo.Text != "High priority" || rows[1].todo.Text != "Medium priority" || rows[2].todo.Text != "No priority" {
 		t.Fatalf("startup order = %+v", rows)
 	}
 	m.generalCursor = 2
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
 	m = updated.(*model)
-	if rows := m.generalRows(); rows[2].todo.text != "No priority" || m.generalCursor != 2 {
+	if rows := m.generalRows(); rows[2].todo.Text != "No priority" || m.generalCursor != 2 {
 		t.Fatalf("priority edit resorted rows: %+v", rows)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
 	m = updated.(*model)
-	if rows := m.generalRows(); rows[0].todo.text != "No priority" || rows[1].todo.text != "High priority" || rows[2].todo.text != "Medium priority" {
+	if rows := m.generalRows(); rows[0].todo.Text != "No priority" || rows[1].todo.Text != "High priority" || rows[2].todo.Text != "Medium priority" {
 		t.Fatalf("reload order = %+v", rows)
 	}
 }
 
 func TestChangedTaskErrorLeavesUIHintsToCaller(t *testing.T) {
-	if strings.Contains(errTaskChanged.Error(), "press") {
-		t.Fatalf("store error mentions a UI key: %q", errTaskChanged)
+	if strings.Contains(store.ErrTaskChanged.Error(), "press") {
+		t.Fatalf("store error mentions a UI key: %q", store.ErrTaskChanged)
 	}
-	if got := errorStatus(fmt.Errorf("save: %w", errTaskChanged)); !strings.Contains(got, "press r to reload") {
+	if got := errorStatus(fmt.Errorf("save: %w", store.ErrTaskChanged)); !strings.Contains(got, "press r to reload") {
 		t.Fatalf("TUI status lost the reload hint: %q", got)
 	}
 }

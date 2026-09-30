@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/store"
 )
 
 func TestBranchListMarksMissingGitBranches(t *testing.T) {
@@ -128,7 +129,7 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	general := m.generalRows()
-	if len(general) != 3 || general[0].kind != rowCategory || general[0].name != "auth" || general[0].count != 1 || general[1].kind != rowCategory || general[1].name != "tests" || general[2].todo.text != "Uncategorised" {
+	if len(general) != 3 || general[0].kind != rowCategory || general[0].name != "auth" || general[0].count != 1 || general[1].kind != rowCategory || general[1].name != "tests" || general[2].todo.Text != "Uncategorised" {
 		t.Fatalf("general rows = %+v", general)
 	}
 	list := ansi.Strip(m.renderNavigationPane(m.generalTitle(), general, 0, generalPane, 50, 18))
@@ -140,7 +141,7 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
-	if m.generalCategory != "auth" || m.generalTitle() != "General · @auth" || len(m.generalRows()) != 1 || m.generalRows()[0].todo.text != "Login task" {
+	if m.generalCategory != "auth" || m.generalTitle() != "General · @auth" || len(m.generalRows()) != 1 || m.generalRows()[0].todo.Text != "Login task" {
 		t.Fatalf("category did not filter general tasks: %+v", m.generalRows())
 	}
 	if opened := ansi.Strip(m.renderNavigationPane(m.generalTitle(), m.generalRows(), 0, generalPane, 50, 12)); strings.Contains(opened, "  Login task") || !strings.Contains(opened, "Login task") {
@@ -169,7 +170,7 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	m = updated.(*model)
-	if m.branchFilter != "fix/api" || len(m.branchRows()) != 1 || m.branchRows()[0].todo.text != "Branch API" {
+	if m.branchFilter != "fix/api" || len(m.branchRows()) != 1 || m.branchRows()[0].todo.Text != "Branch API" {
 		t.Fatalf("branch did not open: %+v", m.branchRows())
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
@@ -191,7 +192,7 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 }
 
 func TestArrowOpensDetailsAndEscapeReturnsToList(t *testing.T) {
-	m := &model{general: []task{{text: "First task"}}, width: 100, height: 30}
+	m := &model{general: []store.Task{{Text: "First task"}}, width: 100, height: 30}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	m = updated.(*model)
 	if m.focus != detailPane || m.detailFrom != generalPane {
@@ -250,21 +251,21 @@ func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 			}
 		})
 	}
-	if rows := m.generalRows(); rows[1].todo.text != "General open" || rows[2].todo.text != "General done" {
+	if rows := m.generalRows(); rows[1].todo.Text != "General open" || rows[2].todo.Text != "General done" {
 		t.Fatalf("general tasks are out of order: %+v", rows)
 	}
 	m.generalCategory = "auth"
-	if rows := m.generalRows(); rows[0].todo.text != "Auth open" || rows[1].todo.text != "Auth done" {
+	if rows := m.generalRows(); rows[0].todo.Text != "Auth open" || rows[1].todo.Text != "Auth done" {
 		t.Fatalf("category tasks are out of order: %+v", rows)
 	}
 	m.focus = branchPane
 	m.branchFilter = "feature/x"
-	if rows := m.branchRows(); rows[0].todo.text != "Branch open first" || rows[1].todo.text != "Branch open second" || rows[2].todo.text != "Branch done" {
+	if rows := m.branchRows(); rows[0].todo.Text != "Branch open first" || rows[1].todo.Text != "Branch open second" || rows[2].todo.Text != "Branch done" {
 		t.Fatalf("branch tasks are out of order: %+v", rows)
 	}
 	m.branchCursor = 0
 	m.toggleSelected()
-	if selected, ok := m.selectedTask(); !ok || selected.text != "Branch open first" || !selected.done || m.branchCursor != 2 {
+	if selected, ok := m.selectedTask(); !ok || selected.Text != "Branch open first" || !selected.Done || m.branchCursor != 2 {
 		t.Fatalf("completed branch task did not stay selected at the end: %+v", m.branchRows())
 	}
 }

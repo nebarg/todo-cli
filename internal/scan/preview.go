@@ -1,4 +1,4 @@
-package main
+package scan
 
 import (
 	"bufio"
@@ -6,12 +6,14 @@ import (
 	"strings"
 )
 
-type previewLine struct {
-	number int
-	text   string
+// ContextLine is one numbered source line shown around a match.
+type ContextLine struct {
+	Number int
+	Text   string
 }
 
-func readSourceContext(path string, line int) ([]previewLine, error) {
+// ReadContext returns the lines surrounding line in the file at path.
+func ReadContext(path string, line int) ([]ContextLine, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -19,12 +21,12 @@ func readSourceContext(path string, line int) ([]previewLine, error) {
 	defer func() { _ = f.Close() }() // Read-only, so a close error cannot lose data.
 	start := max(line-4, 1)
 	end := line + 4
-	var result []previewLine
+	var result []ContextLine
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for number := 1; scanner.Scan() && number <= end; number++ {
 		if number >= start {
-			result = append(result, previewLine{number: number, text: strings.TrimSuffix(scanner.Text(), "\r")})
+			result = append(result, ContextLine{Number: number, Text: strings.TrimSuffix(scanner.Text(), "\r")})
 		}
 	}
 	return result, scanner.Err()

@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/store"
 )
 
 func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
@@ -71,7 +72,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	if got := indexTitles(m.indexTasks()); m.indexSort != "branch" || got != "High task,Low task,Medium task,Plain task" {
 		t.Fatalf("branch order = %q", got)
 	}
-	if selected, _ := m.selectedTask(); selected.text != "Medium task" {
+	if selected, _ := m.selectedTask(); selected.Text != "Medium task" {
 		t.Fatal("sort lost selected task")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
@@ -94,10 +95,10 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	}
 }
 
-func indexTitles(tasks []task) string {
+func indexTitles(tasks []store.Task) string {
 	names := make([]string, len(tasks))
 	for i, t := range tasks {
-		names[i] = t.text
+		names[i] = t.Text
 	}
 	return strings.Join(names, ",")
 }
@@ -120,7 +121,7 @@ func TestIndexEditShowsTaskLocation(t *testing.T) {
 	} {
 		t.Run(item.task, func(t *testing.T) {
 			for i, task := range m.indexTasks() {
-				if task.text == item.task {
+				if task.Text == item.task {
 					m.indexCursor = i
 					break
 				}
@@ -156,7 +157,7 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	m.indexSort = "priority"
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(*model)
-	if selected, ok := m.selectedTask(); !ok || selected.text != "First" || !selected.done {
+	if selected, ok := m.selectedTask(); !ok || selected.Text != "First" || !selected.Done {
 		t.Fatal("Space did not complete the selected indexed task")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
@@ -168,7 +169,7 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
 	m = updated.(*model)
-	if selected, ok := m.selectedTask(); !ok || selected.text != "First" || selected.priority != "medium" || m.indexSort != "priority" {
+	if selected, ok := m.selectedTask(); !ok || selected.Text != "First" || selected.Priority != "medium" || m.indexSort != "priority" {
 		t.Fatal("p should change the selected task's priority without changing sort")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
@@ -176,10 +177,10 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	if !m.categoryInput || m.indexSort != "priority" {
 		t.Fatal("c should edit the selected task's category without changing sort")
 	}
-	for priority, want := range map[priority]color.Color{"high": colorHigh, "medium": colorMedium, "low": colorLow} {
-		t.Run(string(priority), func(t *testing.T) {
-			if got := priorityStyle(priority).GetForeground(); got != want {
-				t.Errorf("%s priority color = %v, want %v", priority, got, want)
+	for p, want := range map[store.Priority]color.Color{"high": colorHigh, "medium": colorMedium, "low": colorLow} {
+		t.Run(string(p), func(t *testing.T) {
+			if got := priorityStyle(p).GetForeground(); got != want {
+				t.Errorf("%s priority color = %v, want %v", p, got, want)
 			}
 		})
 	}

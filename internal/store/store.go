@@ -1,8 +1,9 @@
-package main
+// Package store reads and edits tasks in a Markdown task file, preserving
+// everything it does not change.
+package store
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,25 +13,32 @@ import (
 
 var taskLine = regexp.MustCompile(`^([ \t]*- )(?:\[([ xX])\] +)?(.*)$`)
 var markdownHeading = regexp.MustCompile(`^ {0,3}(#{1,6})[ \t]+(.+?)\s*\r?$`)
-var errTaskChanged = errors.New("task changed on disk")
 
-type task struct {
-	line         int
+// ErrTaskChanged means the file no longer matches the task that was read,
+// so the edit was refused rather than risk changing the wrong lines.
+var ErrTaskChanged = errors.New("task changed on disk")
+
+// Task is one Markdown checklist item. The unexported fields record exactly
+// what was read, so writes can refuse to touch a task that changed on disk.
+type Task struct {
+	Line     int
+	Text     string
+	Done     bool
+	Branch   string
+	Priority Priority
+	Category string
+	Details  string
+
 	raw          string
-	text         string
-	done         bool
-	branch       string
-	priority     priority
-	category     string
 	categoryLine int
 	meta         []string
-	details      string
 	bodyStart    int
 	bodyEnd      int
 	bodyRaw      []string
 }
 
-func loadTasks(path string) ([]task, error) {
+// Load reads every task in the Markdown file at path. A missing file has no tasks.
+func Load(path string) ([]Task, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -39,7 +47,7 @@ func loadTasks(path string) ([]task, error) {
 		return nil, err
 	}
 	lines := strings.Split(string(data), "\n")
-	var tasks []task
+	var tasks []Task
 	branchSectionLevel, branch, category, categoryLine := 0, "", "", -1
 	for i := 0; i < len(lines); i++ {
 		raw := lines[i]
@@ -63,17 +71,17 @@ func loadTasks(path string) ([]task, error) {
 		if parts == nil || strings.TrimSpace(parts[3]) == "" {
 			continue
 		}
-		t := task{
-			line: i, raw: raw, text: strings.TrimSuffix(parts[3], "\r"),
-			done: parts[2] == "x" || parts[2] == "X", branch: branch, category: category, categoryLine: categoryLine,
+		t := Task{
+			Line: i, raw: raw, Text: strings.TrimSuffix(parts[3], "\r"),
+			Done: parts[2] == "x" || parts[2] == "X", Branch: branch, Category: category, categoryLine: categoryLine,
 		}
 		indent := taskIndent(raw)
 		j := i + 1
 		for j < len(lines) {
 			line := strings.TrimSuffix(lines[j], "\r")
 			if strings.HasPrefix(strings.ToLower(line), strings.ToLower(indent+"  - Priority:")) {
-				if p, err := parsePriority(line[len(indent+"  - Priority:"):]); err == nil {
-					t.priority = p
+				if p, err := ParsePriority(line[len(indent+"  - Priority:"):]); err == nil {
+					t.Priority = p
 				}
 			} else {
 				break
@@ -106,7 +114,7 @@ func loadTasks(path string) ([]task, error) {
 			line = strings.TrimSuffix(line, "\r")
 			body = append(body, strings.TrimPrefix(line, indent+"  "))
 		}
-		t.details = strings.Join(body, "\n")
+		t.Details = strings.Join(body, "\n")
 		tasks = append(tasks, t)
 		i = j - 1
 	}
@@ -117,11 +125,9 @@ func taskIndent(raw string) string {
 	return raw[:len(raw)-len(strings.TrimLeft(raw, " \t"))]
 }
 
-func addTaskWithOptions(path, title string, p priority, category, branch string) error {
-	return addTaskWithDetails(path, title, "", p, category, branch)
-}
-
-func addTaskWithDetails(path, title, details string, p priority, category, branch string) error {
+// Add writes a new open task, filed under branch or category (not both), and
+// creates the file or section if needed.
+func Add(path, title, details string, p Priority, category, branch string) error {
 	title = strings.TrimSpace(title)
 	branch = strings.TrimSpace(branch)
 	if title == "" || strings.ContainsAny(title, "\r\n") {
@@ -131,7 +137,7 @@ func addTaskWithDetails(path, title, details string, p priority, category, branc
 		return errors.New("branch name must be one line")
 	}
 	if category != "" {
-		category = normalizeCategoryInput(category)
+		category = NormalizeCategory(category)
 		if err := validateCategory(category); err != nil {
 			return err
 		}
@@ -177,7 +183,8 @@ func formattedDetails(details string) []string {
 	return result
 }
 
-func editTaskContent(path string, selected task, title, details string) error {
+// Edit replaces the title and details of selected, keeping its metadata.
+func Edit(path string, selected Task, title, details string) error {
 	title = strings.TrimSpace(title)
 	if title == "" || strings.ContainsAny(title, "\r\n") {
 		return errors.New("enter a single-line task title")
@@ -187,11 +194,11 @@ func editTaskContent(path string, selected task, title, details string) error {
 	})
 }
 
-func editedTaskLines(lines []string, selected task, title, details string) []string {
-	updated := append([]string{}, lines[:selected.line]...)
-	updated = append(updated, normalizedTaskLine(selected, title, selected.done))
+func editedTaskLines(lines []string, selected Task, title, details string) []string {
+	updated := append([]string{}, lines[:selected.Line]...)
+	updated = append(updated, normalizedTaskLine(selected, title, selected.Done))
 	updated = append(updated, selected.meta...)
-	if strings.Join(formattedDetails(details), "\n") == strings.Join(formattedDetails(selected.details), "\n") {
+	if strings.Join(formattedDetails(details), "\n") == strings.Join(formattedDetails(selected.Details), "\n") {
 		updated = append(updated, selected.bodyRaw...)
 	} else if body := formattedDetails(details); len(body) > 0 {
 		updated = append(updated, "")
@@ -205,7 +212,7 @@ func editedTaskLines(lines []string, selected task, title, details string) []str
 
 // rewriteTask replaces the file with change(lines), refusing when selected no
 // longer matches the file so edits never land on the wrong task.
-func rewriteTask(path string, selected task, change func(lines []string) string) error {
+func rewriteTask(path string, selected Task, change func(lines []string) string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -216,17 +223,17 @@ func rewriteTask(path string, selected task, change func(lines []string) string)
 	}
 	lines := strings.Split(string(data), "\n")
 	if !taskUnchanged(lines, selected) {
-		return errTaskChanged
+		return ErrTaskChanged
 	}
 	return replaceFile(path, []byte(change(lines)), info.Mode().Perm())
 }
 
-func taskUnchanged(lines []string, selected task) bool {
-	if selected.line < 0 || selected.line >= len(lines) || lines[selected.line] != selected.raw || selected.bodyEnd > len(lines) || !taskLine.MatchString(selected.raw) {
+func taskUnchanged(lines []string, selected Task) bool {
+	if selected.Line < 0 || selected.Line >= len(lines) || lines[selected.Line] != selected.raw || selected.bodyEnd > len(lines) || !taskLine.MatchString(selected.raw) {
 		return false
 	}
 	for i, raw := range selected.meta {
-		if selected.line+1+i >= len(lines) || lines[selected.line+1+i] != raw {
+		if selected.Line+1+i >= len(lines) || lines[selected.Line+1+i] != raw {
 			return false
 		}
 	}
@@ -253,7 +260,8 @@ func validateCategory(category string) error {
 	return nil
 }
 
-func normalizeCategoryInput(raw string) string {
+// NormalizeCategory drops one leading @ or # from a category name.
+func NormalizeCategory(raw string) string {
 	if len(raw) > 1 && (strings.HasPrefix(raw, "@") || strings.HasPrefix(raw, "#")) {
 		return raw[1:]
 	}
@@ -267,10 +275,10 @@ func headingCategoryName(name string) string {
 	return name
 }
 
-func metadataLines(p priority) []string {
+func metadataLines(p Priority) []string {
 	var lines []string
-	if p != priorityNone {
-		lines = append(lines, "  - Priority: "+p.title())
+	if p != PriorityNone {
+		lines = append(lines, "  - Priority: "+p.Title())
 	}
 	return lines
 }
@@ -406,35 +414,35 @@ func findCategorySection(lines []string, category string) (int, int) {
 	return -1, -1
 }
 
-func priorityFromBlock(block []string) priority {
+func priorityFromBlock(block []string) Priority {
 	for _, line := range block[1:] {
 		trimmed := strings.TrimSpace(line)
 		if !strings.HasPrefix(strings.ToLower(trimmed), "- priority:") {
 			break
 		}
-		if p, err := parsePriority(trimmed[len("- priority:"):]); err == nil {
+		if p, err := ParsePriority(trimmed[len("- priority:"):]); err == nil {
 			return p
 		}
 	}
-	return priorityNone
+	return PriorityNone
 }
 
-func insertBlockSorted(lines []string, start, end int, block []string, p priority) string {
+func insertBlockSorted(lines []string, start, end int, block []string, p Priority) string {
 	idx := trimBlankEnd(lines, end, start)
 	for i := start; i < end; i++ {
 		parts := taskLine.FindStringSubmatch(lines[i])
 		if parts == nil || strings.TrimSpace(parts[3]) == "" || strings.HasPrefix(lines[i], " ") || strings.HasPrefix(lines[i], "\t") {
 			continue
 		}
-		oldPriority := priorityNone
+		oldPriority := PriorityNone
 		for j := i + 1; j < end; j++ {
 			trimmed := strings.TrimSpace(lines[j])
 			if !strings.HasPrefix(strings.ToLower(trimmed), "- priority:") {
 				break
 			}
-			oldPriority, _ = parsePriority(trimmed[len("- priority:"):])
+			oldPriority, _ = ParsePriority(trimmed[len("- priority:"):])
 		}
-		if oldPriority.rank() > p.rank() {
+		if oldPriority.Rank() > p.Rank() {
 			idx = i
 			break
 		}
@@ -482,7 +490,7 @@ func insertLines(lines []string, index int, addition []string) []string {
 	return result
 }
 
-func normalizedTaskLine(selected task, title string, done bool) string {
+func normalizedTaskLine(selected Task, title string, done bool) string {
 	indent := taskIndent(selected.raw)
 	mark := " "
 	if done {
@@ -495,17 +503,19 @@ func normalizedTaskLine(selected task, title string, done bool) string {
 	return indent + "- [" + mark + "] " + title + ending
 }
 
-func toggleTask(path string, selected task) error {
+// Toggle flips selected between open and done.
+func Toggle(path string, selected Task) error {
 	return rewriteTask(path, selected, func(lines []string) string {
-		lines[selected.line] = normalizedTaskLine(selected, selected.text, !selected.done)
+		lines[selected.Line] = normalizedTaskLine(selected, selected.Text, !selected.Done)
 		return strings.Join(lines, "\n")
 	})
 }
 
-func setTaskPriority(path string, selected task, p priority) error {
+// SetPriority rewrites the priority line of selected.
+func SetPriority(path string, selected Task, p Priority) error {
 	return rewriteTask(path, selected, func(lines []string) string {
-		updated := append([]string{}, lines[:selected.line]...)
-		updated = append(updated, normalizedTaskLine(selected, selected.text, selected.done))
+		updated := append([]string{}, lines[:selected.Line]...)
+		updated = append(updated, normalizedTaskLine(selected, selected.Text, selected.Done))
 		indent := taskIndent(selected.raw)
 		for _, line := range metadataLines(p) {
 			updated = append(updated, indent+line)
@@ -515,47 +525,49 @@ func setTaskPriority(path string, selected task, p priority) error {
 				updated = append(updated, line)
 			}
 		}
-		updated = append(updated, lines[selected.line+1+len(selected.meta):]...)
+		updated = append(updated, lines[selected.Line+1+len(selected.meta):]...)
 		return strings.Join(updated, "\n")
 	})
 }
 
-func setTaskCategory(path string, selected task, category string) error {
-	if selected.branch != "" {
+// SetCategory moves selected under the heading for category, or to the
+// general list when category is blank.
+func SetCategory(path string, selected Task, category string) error {
+	if selected.Branch != "" {
 		return errors.New("branch tasks do not have categories")
 	}
 	blank := strings.TrimSpace(category) == ""
-	category = normalizeCategoryInput(category)
+	category = NormalizeCategory(category)
 	if !blank {
 		if err := validateCategory(category); err != nil {
 			return err
 		}
 	}
-	if strings.EqualFold(selected.category, category) {
+	if strings.EqualFold(selected.Category, category) {
 		return nil
 	}
 	return rewriteTask(path, selected, func(lines []string) string {
-		block := []string{normalizedTaskLine(selected, selected.text, selected.done)}
+		block := []string{normalizedTaskLine(selected, selected.Text, selected.Done)}
 		block = append(block, selected.meta...)
 		body := append([]string(nil), selected.bodyRaw...)
 		for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
 			body = body[:len(body)-1]
 		}
 		block = append(block, body...)
-		remaining := append([]string{}, lines[:selected.line]...)
+		remaining := append([]string{}, lines[:selected.Line]...)
 		remaining = append(remaining, lines[selected.bodyEnd:]...)
 		remaining = removeEmptyCategoryHeading(remaining, selected)
-		return insertTaskBlock(strings.Join(remaining, "\n"), block, selected.branch, category)
+		return insertTaskBlock(strings.Join(remaining, "\n"), block, selected.Branch, category)
 	})
 }
 
-func removeEmptyCategoryHeading(lines []string, selected task) []string {
-	if selected.category == "" || selected.categoryLine < 0 || selected.categoryLine >= len(lines) {
+func removeEmptyCategoryHeading(lines []string, selected Task) []string {
+	if selected.Category == "" || selected.categoryLine < 0 || selected.categoryLine >= len(lines) {
 		return lines
 	}
 	start := selected.categoryLine
 	_, name, ok := parseHeading(lines[start])
-	if !ok || !strings.EqualFold(headingCategoryName(name), selected.category) {
+	if !ok || !strings.EqualFold(headingCategoryName(name), selected.Category) {
 		return lines
 	}
 	end := start + 1
@@ -596,11 +608,4 @@ func writeSynced(f *os.File, data []byte, mode os.FileMode) error {
 		return err
 	}
 	return f.Sync()
-}
-
-func taskLocation(t task) string {
-	if t.branch == "" {
-		return "General"
-	}
-	return fmt.Sprintf("Branch %s", t.branch)
 }

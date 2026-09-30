@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/nebarg/todo-cli/internal/store"
 )
 
 func TestThemeFollowsTerminalBackground(t *testing.T) {
@@ -16,7 +17,7 @@ func TestThemeFollowsTerminalBackground(t *testing.T) {
 	if colorText == dark || colorStrong == color.Color(lipgloss.Color("#FFFFFF")) {
 		t.Fatal("light background kept the dark palette")
 	}
-	if got := priorityStyle(priorityHigh).GetForeground(); got != colorHigh {
+	if got := priorityStyle(store.PriorityHigh).GetForeground(); got != colorHigh {
 		t.Fatalf("priority style did not use the light palette: %v", got)
 	}
 	m.Update(tea.BackgroundColorMsg{Color: color.Black})

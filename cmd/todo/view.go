@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/store"
 )
 
 const missingBranchStatus = "⚠ Branch no longer exists · tasks cannot be edited"
@@ -234,7 +235,7 @@ func (m *model) renderNavigationPane(title string, rows []navigationRow, cursor 
 		for _, row := range rows {
 			if row.kind == rowTask {
 				count++
-				if row.todo.done {
+				if row.todo.Done {
 					completed++
 				}
 			}
@@ -305,29 +306,29 @@ func renderMissingBranchRow(item navigationRow, width int, selected bool) string
 	return line
 }
 
-func renderTaskRow(t task, width int, selected bool) string {
+func renderTaskRow(t store.Task, width int, selected bool) string {
 	mark := "○ "
-	if t.done {
+	if t.Done {
 		mark = "✓ "
 	}
 	suffix := ""
-	if strings.TrimSpace(t.details) != "" {
+	if strings.TrimSpace(t.Details) != "" {
 		suffix = "  ⋯"
 	}
 	titleWidth := max(0, width-ansi.StringWidth(mark)-ansi.StringWidth(suffix))
-	title := ansi.Truncate(cleanDisplay(t.text), titleWidth, "…")
+	title := ansi.Truncate(cleanDisplay(t.Text), titleWidth, "…")
 	taskStyle := lipgloss.NewStyle().Foreground(colorStrong)
-	if t.priority != "" {
-		taskStyle = priorityStyle(t.priority)
+	if t.Priority != "" {
+		taskStyle = priorityStyle(t.Priority)
 	}
-	if t.done {
+	if t.Done {
 		taskStyle = mutedStyle
 	}
 	if !selected {
 		return mutedStyle.Render(mark) + taskStyle.Render(title) + mutedStyle.Render(suffix)
 	}
 	titleStyle := taskStyle.Background(colorSelection)
-	if t.done {
+	if t.Done {
 		titleStyle = selectedDoneStyle
 	}
 	padding := strings.Repeat(" ", max(0, width-ansi.StringWidth(mark)-ansi.StringWidth(title)-ansi.StringWidth(suffix)))
@@ -355,7 +356,7 @@ func (m *model) renderSourcePane(width, height int) string {
 	}
 	for i := start; i < end; i++ {
 		item := m.source[i]
-		row := fmt.Sprintf("%s:%d  %s", item.path, item.line, cleanDisplay(item.text))
+		row := fmt.Sprintf("%s:%d  %s", item.Path, item.Line, cleanDisplay(item.Text))
 		row = ansi.Truncate(row, innerWidth, "…")
 		if i == m.sourceCursor && (m.focus == sourcePane || (m.focus == detailPane && m.detailFrom == sourcePane)) {
 			lines = append(lines, selectedStyle.Width(innerWidth).Render(row))
@@ -396,7 +397,7 @@ func (m *model) compactDetails() []string {
 			return []string{"No file selected"}
 		}
 		item := m.source[m.sourceCursor]
-		return []string{item.path + ":" + fmt.Sprint(item.line), cleanDisplay(item.text)}
+		return []string{item.Path + ":" + fmt.Sprint(item.Line), cleanDisplay(item.Text)}
 	}
 	if row, ok := m.selectedNavigationRow(); ok && row.kind != rowTask {
 		return []string{groupName(row), fmt.Sprintf("%d/%d tasks · enter/→ open", row.completed, row.count)}
@@ -405,14 +406,21 @@ func (m *model) compactDetails() []string {
 	if !ok {
 		return []string{"No task selected"}
 	}
-	if t.details != "" {
-		return []string{cleanDisplay(t.text), cleanDisplay(strings.Split(t.details, "\n")[0])}
+	if t.Details != "" {
+		return []string{cleanDisplay(t.Text), cleanDisplay(strings.Split(t.Details, "\n")[0])}
 	}
 	mark := "open"
-	if t.done {
+	if t.Done {
 		mark = "done"
 	}
-	return []string{cleanDisplay(t.text), mark + " · " + taskLocation(t)}
+	return []string{cleanDisplay(t.Text), mark + " · " + taskLocation(t)}
+}
+
+func taskLocation(t store.Task) string {
+	if t.Branch == "" {
+		return "General"
+	}
+	return "Branch " + t.Branch
 }
 
 func groupName(row navigationRow) string {
@@ -436,27 +444,27 @@ func (m *model) taskDetails(width int) []string {
 		return []string{"", mutedStyle.Render("Select a Markdown task.")}
 	}
 	status := "Open"
-	if t.done {
+	if t.Done {
 		status = "Complete"
 	}
-	priority := mutedStyle.Render("None")
-	if t.priority != "" {
-		priority = priorityStyle(t.priority).Render(t.priority.title())
+	priorityText := mutedStyle.Render("None")
+	if t.Priority != "" {
+		priorityText = priorityStyle(t.Priority).Render(t.Priority.Title())
 	}
 	category := "None"
-	if t.category != "" {
-		category = "@" + t.category
+	if t.Category != "" {
+		category = "@" + t.Category
 	}
-	result := []string{taskTitleStyle.Render(cleanDisplay(t.text)), ""}
-	if t.details == "" {
+	result := []string{taskTitleStyle.Render(cleanDisplay(t.Text)), ""}
+	if t.Details == "" {
 		result = append(result, mutedStyle.Render("No details yet"))
 	} else {
-		for line := range strings.SplitSeq(t.details, "\n") {
+		for line := range strings.SplitSeq(t.Details, "\n") {
 			result = append(result, cleanDisplay(line))
 		}
 	}
 	result = append(result, "", mutedStyle.Render("Status    "+status), mutedStyle.Render("Scope     "+taskLocation(t)),
-		mutedStyle.Render("Priority  ")+priority, mutedStyle.Render("Category  "+category))
+		mutedStyle.Render("Priority  ")+priorityText, mutedStyle.Render("Category  "+category))
 	return wrapLines(result, width)
 }
 
@@ -468,18 +476,18 @@ func (m *model) sourceDetails(width int) []string {
 		return []string{"", mutedStyle.Render("No file TODO selected.")}
 	}
 	item := m.source[m.sourceCursor]
-	result := []string{"", mutedStyle.Render("FILE TODO"), item.path + ":" + fmt.Sprint(item.line),
-		"", cleanDisplay(item.text), "", mutedStyle.Render("CONTEXT")}
+	result := []string{"", mutedStyle.Render("FILE TODO"), item.Path + ":" + fmt.Sprint(item.Line),
+		"", cleanDisplay(item.Text), "", mutedStyle.Render("CONTEXT")}
 	switch {
-	case m.previewPath != item.path || m.previewLine != item.line:
+	case m.previewPath != item.Path || m.previewLine != item.Line:
 		result = append(result, mutedStyle.Render("Loading preview…"))
 	case m.previewError != "":
 		result = append(result, mutedStyle.Render(m.previewError))
 	default:
 		for _, line := range m.preview {
-			prefix := fmt.Sprintf("%4d │ ", line.number)
-			row := prefix + cleanDisplay(line.text)
-			if line.number == item.line {
+			prefix := fmt.Sprintf("%4d │ ", line.Number)
+			row := prefix + cleanDisplay(line.Text)
+			if line.Number == item.Line {
 				row = selectedStyle.Render(ansi.Truncate(row, width, "…"))
 			}
 			result = append(result, row)

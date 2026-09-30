@@ -6,19 +6,20 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/store"
 )
 
-func priorityStyle(p priority) lipgloss.Style {
+func priorityStyle(p store.Priority) lipgloss.Style {
 	color := colorMuted
 	switch p {
-	case priorityHigh:
+	case store.PriorityHigh:
 		color = colorHigh
-	case priorityMedium:
+	case store.PriorityMedium:
 		color = colorMedium
-	case priorityLow:
+	case store.PriorityLow:
 		color = colorLow
 	}
-	return lipgloss.NewStyle().Bold(p != priorityNone).Foreground(color)
+	return lipgloss.NewStyle().Bold(p != store.PriorityNone).Foreground(color)
 }
 
 func indexColumn(value string, width int) string {
@@ -43,32 +44,32 @@ func (m *model) renderIndex(width, height int) string {
 	for i := start; i < end; i++ {
 		t := tasks[i]
 		scope := "-"
-		if t.category != "" {
-			scope = "@" + t.category
+		if t.Category != "" {
+			scope = "@" + t.Category
 		}
-		if t.branch != "" {
-			scope = " " + t.branch
+		if t.Branch != "" {
+			scope = " " + t.Branch
 		}
 		mark := "○ "
-		if t.done {
+		if t.Done {
 			mark = "✓ "
 		}
-		title := mark + cleanDisplay(t.text)
-		if details := strings.Join(strings.Fields(cleanDisplay(t.details)), " "); details != "" {
+		title := mark + cleanDisplay(t.Text)
+		if details := strings.Join(strings.Fields(cleanDisplay(t.Details)), " "); details != "" {
 			title += ": " + details
 		}
 		selected := i == m.indexCursor
 		taskStyle := lipgloss.NewStyle().Foreground(colorStrong)
-		if t.priority != "" {
-			taskStyle = priorityStyle(t.priority)
+		if t.Priority != "" {
+			taskStyle = priorityStyle(t.Priority)
 		}
-		if t.done {
+		if t.Done {
 			taskStyle = mutedStyle
 		}
 		scopeStyle := mutedStyle
-		if t.branch != "" {
+		if t.Branch != "" {
 			scopeStyle = lipgloss.NewStyle().Foreground(colorGreen)
-		} else if t.category != "" {
+		} else if t.Category != "" {
 			scopeStyle = lipgloss.NewStyle().Foreground(colorPurple)
 		}
 		if selected {

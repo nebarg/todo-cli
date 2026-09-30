@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/store"
 )
 
 func TestAddingWithinGroupsKeepsScope(t *testing.T) {
@@ -33,7 +34,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	m.modal.title.SetValue("New auth task")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
-	if len(m.generalRows()) != 2 || !taskInCategory(m.generalRows()[1].todo, "auth") || m.generalRows()[1].todo.text != "New auth task" || m.generalCursor != 1 {
+	if len(m.generalRows()) != 2 || !taskInCategory(m.generalRows()[1].todo, "auth") || m.generalRows()[1].todo.Text != "New auth task" || m.generalCursor != 1 {
 		t.Fatalf("new task was not added to category: %+v", m.generalRows())
 	}
 	m.focus = branchPane
@@ -46,7 +47,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	m.modal.title.SetValue("New branch task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
-	if m.branchFilter != "feature/login" || len(m.branchRows()) != 2 || m.branchRows()[1].todo.text != "New branch task" {
+	if m.branchFilter != "feature/login" || len(m.branchRows()) != 2 || m.branchRows()[1].todo.Text != "New branch task" {
 		t.Fatalf("new task was not added to branch: %+v", m.branchRows())
 	}
 	opened, _ = m.startTaskModal(modalAddBranch)
@@ -57,7 +58,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	m.modal.title.SetValue("Another branch task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
-	if len(m.branchRows()) != 3 || m.branchRows()[m.branchCursor].todo.text != "Another branch task" {
+	if len(m.branchRows()) != 3 || m.branchRows()[m.branchCursor].todo.Text != "Another branch task" {
 		t.Fatalf("new task was not added inside branch: %+v", m.branchRows())
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
@@ -91,7 +92,7 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 		t.Fatalf("root add opened category %q", m.generalCategory)
 	}
 	selected, ok := m.selectedTask()
-	if !ok || selected.text != "General task" || selected.category != "" {
+	if !ok || selected.Text != "General task" || selected.Category != "" {
 		t.Fatalf("new general task was not selected or was categorised: %+v", m.generalRows())
 	}
 	m.generalCursor = 0
@@ -107,7 +108,7 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
 	selected, ok = m.selectedTask()
-	if m.generalCategory != "test" || !ok || selected.text != "Another test task" || selected.category != "test" {
+	if m.generalCategory != "test" || !ok || selected.Text != "Another test task" || selected.Category != "test" {
 		t.Fatalf("new category task was not selected or categorised: %+v", m.generalRows())
 	}
 }
@@ -149,7 +150,7 @@ func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
 	selected, ok := m.selectedTask()
-	if !ok || selected.text != "Second feature task" || selected.branch != "feature/a" {
+	if !ok || selected.Text != "Second feature task" || selected.Branch != "feature/a" {
 		t.Fatalf("new task was not selected in feature/a: %+v", m.branchRows())
 	}
 	m.focus = generalPane
@@ -224,7 +225,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
 	selected, ok := m.selectedTask()
-	if m.modal != nil || !ok || selected.category != "newarea" || m.generalCategory != "newarea" {
+	if m.modal != nil || !ok || selected.Category != "newarea" || m.generalCategory != "newarea" {
 		t.Fatalf("new category was not created and opened: %+v", m.generalRows())
 	}
 	m.project = testGitProject(t, filepath.Dir(path), "feature/new", "feature/index")
@@ -251,7 +252,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
 	selected, ok = m.selectedTask()
-	if m.modal != nil || !ok || selected.branch != "feature/new" || m.branchFilter != "feature/new" {
+	if m.modal != nil || !ok || selected.Branch != "feature/new" || m.branchFilter != "feature/new" {
 		t.Fatalf("new Markdown branch was not created and opened: %+v", m.branchRows())
 	}
 	data, err := os.ReadFile(path)
@@ -289,7 +290,7 @@ func TestAddFormAcceptsSymbolCategory(t *testing.T) {
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
 	selected, ok := m.selectedTask()
-	if m.modal != nil || !ok || selected.category != "+v1" || m.generalCategory != "+v1" {
+	if m.modal != nil || !ok || selected.Category != "+v1" || m.generalCategory != "+v1" {
 		t.Fatalf("symbol category did not save from the form: %+v", m.generalRows())
 	}
 }
@@ -340,7 +341,7 @@ func TestBranchPickerSearchAndSelection(t *testing.T) {
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
 	selected, ok := m.selectedTask()
-	if m.modal != nil || !ok || selected.branch != "fix/auth" {
+	if m.modal != nil || !ok || selected.Branch != "fix/auth" {
 		t.Fatalf("task was not saved under the selected branch: %+v", selected)
 	}
 	opened, _ = m.startTaskModal(modalAddBranch)
@@ -588,7 +589,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	m = opened.(*model)
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = opened.(*model)
-	if m.modal != nil || len(m.general) != 1 || m.general[0].details != "Added in modal.\n- [ ] Nested step" {
+	if m.modal != nil || len(m.general) != 1 || m.general[0].Details != "Added in modal.\n- [ ] Nested step" {
 		t.Fatalf("task was not saved: %+v", m.general)
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
@@ -600,7 +601,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	m.modal.details.SetValue("Revised details.")
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = opened.(*model)
-	if len(m.general) != 1 || m.general[0].text != "Renamed task" || m.general[0].details != "Revised details." {
+	if len(m.general) != 1 || m.general[0].Text != "Renamed task" || m.general[0].Details != "Revised details." {
 		t.Fatalf("edit was not saved: %+v", m.general)
 	}
 }
@@ -621,7 +622,7 @@ func TestTwoLineTaskInputStaysOneMarkdownTask(t *testing.T) {
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = opened.(*model)
 	selected, ok := m.selectedTask()
-	if !ok || selected.text != "Fix login redirect" {
+	if !ok || selected.Text != "Fix login redirect" {
 		t.Fatalf("two-line Task was not saved as one title: %+v", m.generalRows())
 	}
 	data, err := os.ReadFile(path)
@@ -637,7 +638,7 @@ func TestModalDetailsFillRemainingHeight(t *testing.T) {
 	for _, size := range [][2]int{{100, 30}, {80, 24}, {80, 18}, {80, 17}, {60, 16}, {56, 19}, {56, 16}} {
 		for _, mode := range []modalMode{modalAddGeneral, modalAddBranch, modalEdit} {
 			t.Run(fmt.Sprintf("%dx%d mode %d", size[0], size[1], mode), func(t *testing.T) {
-				m := &model{width: size[0], height: size[1], general: []task{{text: "Task"}}}
+				m := &model{width: size[0], height: size[1], general: []store.Task{{Text: "Task"}}}
 				opened, _ := m.startTaskModal(mode)
 				m = opened.(*model)
 				width, height := m.modal.dimensions(size[0], size[1])
