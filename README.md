@@ -29,6 +29,7 @@ todo -b Fix the bug on this branch
 | `-b` / `-branch` | Add to the current Git branch |
 | `-branch-name feature/login` | Add to another local Git branch |
 | `-file path/to/tasks.md` | Use another task file, for the dashboard too |
+| `-e` / `-exclude dir` | Skip a directory when scanning for TODO comments. See [TODOs in source files](#todos-in-source-files) |
 
 Flags go before the task text. `todo add scan` adds a task literally named “scan”.
 
@@ -45,7 +46,7 @@ The task file is `todo.md` at the repository root, or in the current directory o
 
 - **1 General**: tasks outside branch sections. `▸ category` rows open to show that category's tasks; uncategorised tasks follow.
 - **2 Branches**: every branch with tasks. At startup it opens on the current branch's tasks, if it has any.
-- **3 Files**: TODO comments found in source files. Scanning runs in the background, and these are read only.
+- **3 Files**: TODO comments in source files under the working directory. Scanning runs in the background, and these are read only.
 
 Each tab returns to where you left it. Press `1` again to leave an opened category, and `2` again to switch between the branch list and the current branch. `←` or `esc` goes back one level.
 
@@ -147,9 +148,20 @@ The file stays readable without the app. When the app writes a task, it re-sorts
 
 `todo scan [directory]` lists case-insensitive `TODO` and `@todo` comments with their file and line. The dashboard's Files tab shows the same results, up to 1,000 matches.
 
-- Scanning starts at the repository root and uses ripgrep (`rg`) if it's installed.
-- It skips hidden, ignored, binary and Markdown files.
-- `todo -all-files scan` includes Markdown and ignored or hidden text files. `.git` is always skipped.
+- Scanning covers the working directory and below, and uses ripgrep (`rg`) if it's installed.
+- It skips gitignored, hidden, binary and Markdown files. `todo -all-files scan` includes them, apart from binaries.
+- Directories starting with `.` are always skipped, as are `node_modules` and `vendor` by default.
+
+To skip other directories, use `-e` / `-exclude`, once per directory. It works for `todo scan` and the dashboard:
+
+```sh
+todo -e node_modules -e vendor -e dist scan
+todo -e ./web/generated
+```
+
+- A bare name, such as `dist`, skips every directory with that name.
+- Anything with a slash, such as `./web/generated`, is a path from the working directory.
+- Giving `-e` replaces the defaults, so list `node_modules` and `vendor` again if you still want them skipped.
 
 ## Development
 

@@ -41,8 +41,9 @@ type ripgrepEvent struct {
 
 // Source finds to-do marker comments under dir, using ripgrep when it is installed.
 // Results are sorted by path and line; limit caps them, and 0 means no limit.
-// allFiles also searches Markdown, hidden and ignored files.
-func Source(dir string, limit int, allFiles bool) ([]Match, error) {
+// allFiles also searches Markdown, hidden and ignored files. Directories
+// in exclude, and those starting with a dot, are always skipped.
+func Source(dir string, limit int, allFiles bool, exclude Exclude) ([]Match, error) {
 	info, err := os.Stat(dir)
 	if err != nil {
 		return nil, err
@@ -53,7 +54,7 @@ func Source(dir string, limit int, allFiles bool) ([]Match, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if _, err := exec.LookPath("rg"); err == nil {
-		matches, scanErr := scanWithRipgrep(ctx, dir, limit, allFiles)
+		matches, scanErr := scanWithRipgrep(ctx, dir, limit, allFiles, exclude)
 		if scanErr == nil {
 			return matches, nil
 		}
@@ -61,13 +62,13 @@ func Source(dir string, limit int, allFiles bool) ([]Match, error) {
 			return nil, ctx.Err()
 		}
 	}
-	return scanBuiltIn(ctx, dir, limit, allFiles)
+	return scanBuiltIn(ctx, dir, limit, allFiles, exclude)
 }
 
-func scanWithRipgrep(ctx context.Context, dir string, limit int, allFiles bool) ([]Match, error) {
-	args := []string{"--json", "--line-number"}
+func scanWithRipgrep(ctx context.Context, dir string, limit int, allFiles bool, exclude Exclude) ([]Match, error) {
+	args := append([]string{"--json", "--line-number"}, exclude.ripgrepGlobs()...)
 	if allFiles {
-		args = append(args, "--hidden", "--no-ignore", "--glob", "!.git/")
+		args = append(args, "--hidden", "--no-ignore")
 	} else {
 		// The default code view honors ignore rules and leaves out Markdown.
 		args = append(args, "--glob", "!*.md", "--glob", "!*.markdown")

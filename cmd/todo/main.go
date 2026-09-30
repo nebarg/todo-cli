@@ -21,16 +21,23 @@ func main() {
 	onBranch := flag.Bool("branch", false, "put a new task under the current Git branch")
 	branchName := flag.String("branch-name", "", "put a new task under this existing local Git branch")
 	allFiles := flag.Bool("all-files", false, "include Markdown, hidden, and ignored text in scan")
+	var excludes excludeFlags
+	flag.Var(&excludes, "exclude", "skip a directory when scanning for file TODOs: a name at any depth, or a path from here; repeat for more (default node_modules and vendor)")
+	flag.Var(&excludes, "e", "shorthand for -exclude")
 	flag.StringVar(priorityFlag, "p", "", "shorthand for -priority")
 	flag.StringVar(categoryFlag, "c", "", "shorthand for -category")
 	flag.BoolVar(onBranch, "b", false, "shorthand for -branch")
 	flag.Usage = func() {
-		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags] [@category] [task text]\n       %s [-file path] clear-done\n\nFlags:\n", os.Args[0], os.Args[0])
+		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags] [@category] [task text]\n       %s [-all-files] [-e dir]... scan [directory]\n       %s [-file path] clear-done\n\nFlags:\n", os.Args[0], os.Args[0], os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 
 	project := currentProject()
+	cwd, err := os.Getwd()
+	if err != nil {
+		fail(err)
+	}
 	file := *fileFlag
 	if file == "" {
 		file = defaultFile(project)
@@ -42,18 +49,17 @@ func main() {
 			fmt.Fprintln(os.Stderr, "usage: todo scan [directory]")
 			os.Exit(2)
 		}
-		dir := project.root
-		if dir == "" {
-			dir = "."
-		}
+		dir := cwd
 		if len(args) == 2 {
-			dir = args[1]
+			if dir, err = filepath.Abs(args[1]); err != nil {
+				fail(err)
+			}
 		}
-		absolute, err := filepath.Abs(dir)
+		exclude, err := scanExclude(cwd, dir, excludes)
 		if err != nil {
 			fail(err)
 		}
-		matches, err := scan.Source(absolute, 0, *allFiles)
+		matches, err := scan.Source(dir, 0, *allFiles, exclude)
 		if err != nil {
 			fail(err)
 		}
@@ -64,7 +70,7 @@ func main() {
 	}
 
 	if len(args) > 0 && args[0] == "clear-done" {
-		if len(args) > 1 || *priorityFlag != "" || *categoryFlag != "" || *onBranch || *branchName != "" || *allFiles {
+		if len(args) > 1 || *priorityFlag != "" || *categoryFlag != "" || *onBranch || *branchName != "" || *allFiles || len(excludes) > 0 {
 			fmt.Fprintln(os.Stderr, "usage: todo [-file path] clear-done")
 			os.Exit(2)
 		}
@@ -75,8 +81,8 @@ func main() {
 	}
 
 	if len(args) > 0 {
-		if *allFiles {
-			fmt.Fprintln(os.Stderr, "-all-files is only for scan")
+		if *allFiles || len(excludes) > 0 {
+			fmt.Fprintln(os.Stderr, "-all-files and -exclude are only for scanning")
 			os.Exit(2)
 		}
 		if args[0] == "add" {
@@ -124,6 +130,9 @@ func main() {
 	}
 	m, err := newModel(file, project)
 	if err != nil {
+		fail(err)
+	}
+	if m.scanExclude, err = scanExclude(cwd, cwd, excludes); err != nil {
 		fail(err)
 	}
 	if _, err := tea.NewProgram(m).Run(); err != nil {

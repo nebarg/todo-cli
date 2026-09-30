@@ -14,8 +14,8 @@ import (
 )
 
 // scanBuiltIn keeps file TODOs usable when ripgrep is not installed.
-func scanBuiltIn(ctx context.Context, dir string, limit int, allFiles bool) ([]Match, error) {
-	files, err := sourceFiles(ctx, dir, allFiles)
+func scanBuiltIn(ctx context.Context, dir string, limit int, allFiles bool, exclude Exclude) ([]Match, error) {
+	files, err := sourceFiles(ctx, dir, allFiles, exclude)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func scanBuiltIn(ctx context.Context, dir string, limit int, allFiles bool) ([]M
 	return sortedMatches(matches, limit), nil
 }
 
-func sourceFiles(ctx context.Context, dir string, allFiles bool) ([]string, error) {
+func sourceFiles(ctx context.Context, dir string, allFiles bool, exclude Exclude) ([]string, error) {
 	if !allFiles {
 		cmd := exec.CommandContext(ctx, "git", "-C", dir, "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", ".")
 		if output, err := cmd.Output(); err == nil {
@@ -64,7 +64,7 @@ func sourceFiles(ctx context.Context, dir string, allFiles bool) ([]string, erro
 					continue
 				}
 				path := filepath.Clean(string(raw))
-				if shouldScanPath(path, false) {
+				if shouldScanPath(path, false) && !exclude.skipsFileIn(path) {
 					files = append(files, path)
 				}
 			}
@@ -84,7 +84,7 @@ func sourceFiles(ctx context.Context, dir string, allFiles bool) ([]string, erro
 			return nil
 		}
 		if entry.IsDir() {
-			if entry.Name() == ".git" || (!allFiles && skipDefaultDir(entry.Name())) {
+			if exclude.skipsDir(rel) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -103,26 +103,11 @@ func sourceFiles(ctx context.Context, dir string, allFiles bool) ([]string, erro
 	return files, err
 }
 
-func skipDefaultDir(name string) bool {
-	if strings.HasPrefix(name, ".") {
-		return true
-	}
-	switch name {
-	case "node_modules", "vendor", "dist", "build", "target", "coverage", "venv", "__pycache__":
-		return true
-	}
-	return false
-}
-
 func shouldScanPath(path string, allFiles bool) bool {
-	slash := filepath.ToSlash(path)
-	if slash == ".git" || strings.HasPrefix(slash, ".git/") {
-		return false
-	}
 	if allFiles {
 		return true
 	}
-	for part := range strings.SplitSeq(slash, "/") {
+	for part := range strings.SplitSeq(filepath.ToSlash(path), "/") {
 		if strings.HasPrefix(part, ".") {
 			return false
 		}

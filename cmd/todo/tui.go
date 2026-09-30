@@ -80,6 +80,7 @@ type model struct {
 	branchesVerified      bool
 	sourceCursor          int
 	sourceLoading         bool
+	scanExclude           scan.Exclude
 	sourceScanned         bool
 	sourceError           string
 	preview               []scan.ContextLine
@@ -114,9 +115,6 @@ func newModel(file string, project projectContext) (*model, error) {
 func (m *model) Init() tea.Cmd { return tea.Batch(m.scanCmd(), tea.RequestBackgroundColor) }
 
 func (m *model) scanDir() string {
-	if m.project.root != "" {
-		return m.project.root
-	}
 	dir, err := os.Getwd()
 	if err != nil {
 		return "."
@@ -125,9 +123,9 @@ func (m *model) scanDir() string {
 }
 
 func (m *model) scanCmd() tea.Cmd {
-	dir := m.scanDir()
+	dir, exclude := m.scanDir(), m.scanExclude
 	return func() tea.Msg {
-		matches, err := scan.Source(dir, 1000, false)
+		matches, err := scan.Source(dir, 1000, false, exclude)
 		return sourceScanMsg{matches: matches, err: err}
 	}
 }
