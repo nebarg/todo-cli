@@ -277,7 +277,11 @@ func (m *model) renderNavigationPane(title string, rows []navigationRow, cursor 
 		row = ansi.Truncate(row, innerWidth, "…")
 		switch {
 		case selected:
-			lines = append(lines, selectedStyle.Width(innerWidth).Render(row))
+			style := selectedStyle
+			if item.kind == rowBranch && item.name == m.project.branch {
+				style = style.Foreground(colorGreen)
+			}
+			lines = append(lines, style.Width(innerWidth).Render(row))
 		case item.kind == rowCategory:
 			lines = append(lines, lipgloss.NewStyle().Foreground(colorPurple).Render(row))
 		case item.kind == rowBranch && item.name == m.project.branch:
