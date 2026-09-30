@@ -22,16 +22,13 @@ func priorityStyle(p store.Priority) lipgloss.Style {
 	return lipgloss.NewStyle().Bold(p != store.PriorityNone).Foreground(color)
 }
 
-// priorityMark fills an open task's circle by urgency, so priority reads
-// from shape as well as colour.
+// priorityMark fills an open task's circle when it has a priority, whose
+// colour then tells the levels apart; an empty circle means no priority.
 func priorityMark(p store.Priority) string {
-	switch p {
-	case store.PriorityHigh:
-		return "●"
-	case store.PriorityMedium:
-		return "◐"
+	if p == store.PriorityNone {
+		return "○"
 	}
-	return "○"
+	return "●"
 }
 
 func indexColumn(value string, width int) string {

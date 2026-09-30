@@ -146,7 +146,7 @@ func TestTaskDetailsShownOnDetailPage(t *testing.T) {
 
 func TestTaskRowsColourPriorityOnTheBullet(t *testing.T) {
 	for p, want := range map[store.Priority]struct{ foreground, mark string }{
-		"high": {"240;119;119", "●"}, "medium": {"244;211;94", "◐"}, "low": {"125;207;223", "○"},
+		"high": {"240;119;119", "●"}, "medium": {"244;211;94", "●"}, "low": {"125;207;223", "●"},
 	} {
 		foreground, mark := want.foreground, want.mark
 		t.Run(string(p), func(t *testing.T) {
@@ -339,7 +339,7 @@ func TestFooterOmitsObviousMovementHints(t *testing.T) {
 }
 
 func TestPriorityReadsFromShapeAsWellAsColour(t *testing.T) {
-	marks := map[store.Priority]string{store.PriorityHigh: "●", store.PriorityMedium: "◐", store.PriorityLow: "○", store.PriorityNone: "○"}
+	marks := map[store.Priority]string{store.PriorityHigh: "●", store.PriorityMedium: "●", store.PriorityLow: "●", store.PriorityNone: "○"}
 	for p, want := range marks {
 		if got := priorityMark(p); got != want {
 			t.Errorf("priorityMark(%q) = %q, want %q", p, got, want)
@@ -348,7 +348,7 @@ func TestPriorityReadsFromShapeAsWellAsColour(t *testing.T) {
 	if status := ansi.Strip(taskStatus(store.Task{Text: "Urgent", Priority: store.PriorityHigh})); status != "Open  ·  ● High priority" {
 		t.Fatalf("status bar = %q", status)
 	}
-	if help := ansi.Strip(renderHelp()); !regexp.MustCompile(`quit[ │]*\n[│ ]*\n[│ ]*Priority  ● high  ◐ medium  ○ low`).MatchString(help) {
+	if help := ansi.Strip(renderHelp()); !regexp.MustCompile(`quit[ │]*\n[│ ]*\n[│ ]*Priority  ● high  ● medium  ● low`).MatchString(help) {
 		t.Fatalf("help lacks the priority legend: %s", help)
 	}
 }
@@ -367,11 +367,11 @@ func TestStatusBarDescribesTheHighlightedRow(t *testing.T) {
 		t.Fatalf("category row status = %q", got)
 	}
 	m.generalCursor = 1
-	if got := bottom(); got != "Open  ·  ◐ Medium priority" {
+	if got := bottom(); got != "Open  ·  ● Medium priority" {
 		t.Fatalf("task row status = %q", got)
 	}
 	m.focus, m.detailFrom = detailPane, generalPane
-	if got := bottom(); got != "Open  ·  ◐ Medium priority" {
+	if got := bottom(); got != "Open  ·  ● Medium priority" {
 		t.Fatalf("detail page status = %q", got)
 	}
 	m.focus, m.generalCategory, m.generalCursor = generalPane, "Docs", 1

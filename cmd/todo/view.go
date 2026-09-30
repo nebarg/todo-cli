@@ -137,7 +137,7 @@ func (m *model) renderTabs() string {
 
 func (m *model) sourceCount() string {
 	if m.sourceLoading {
-		return "↻"
+		return "…"
 	}
 	return fmt.Sprint(len(m.source))
 }
