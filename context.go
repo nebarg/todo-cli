@@ -36,15 +36,20 @@ func (project projectContext) currentBranch() string {
 }
 
 func (project projectContext) localBranches() []string {
+	branches, _ := project.localBranchesChecked()
+	return branches
+}
+
+func (project projectContext) localBranchesChecked() ([]string, bool) {
 	if project.root == "" {
 		if project.branch == "" {
-			return nil
+			return nil, true
 		}
-		return []string{project.branch}
+		return []string{project.branch}, true
 	}
 	output, err := gitOutput(project.root, "for-each-ref", "--format=%(refname:short)", "refs/heads")
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	var branches []string
 	for branch := range strings.SplitSeq(output, "\n") {
@@ -57,7 +62,7 @@ func (project projectContext) localBranches() []string {
 		branches = append(branches, current)
 	}
 	sort.Strings(branches)
-	return branches
+	return branches, true
 }
 
 func (project projectContext) hasLocalBranch(name string) bool {

@@ -54,6 +54,8 @@ type model struct {
 	branchCursor          int
 	branchRootCursor      int
 	branchFilter          string
+	localBranchNames      map[string]bool
+	branchesVerified      bool
 	sourceCursor          int
 	sourceLoading         bool
 	sourceScanned         bool
@@ -541,6 +543,12 @@ func (m *model) readTasks(sortByPriority bool) error {
 	tasks, err := loadTasks(m.file)
 	if err != nil {
 		return err
+	}
+	branches, verified := m.project.localBranchesChecked()
+	m.branchesVerified = verified
+	m.localBranchNames = make(map[string]bool, len(branches))
+	for _, branch := range branches {
+		m.localBranchNames[branch] = true
 	}
 	if sortByPriority {
 		m.allTasks = sortedTasksByPriority(tasks)

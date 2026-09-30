@@ -216,6 +216,51 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 	}
 }
 
+func TestBranchListMarksMissingGitBranches(t *testing.T) {
+	dir := t.TempDir()
+	project := testGitProject(t, dir, "main", "feature/live", "feature/gone")
+	path := filepath.Join(dir, "todo.md")
+	content := "# Branches\n\n## feature/gone\n\n- [ ] Keep this task\n\n## feature/live\n\n- [ ] Active task\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.focus = branchPane
+	if rows := m.branchRows(); len(rows) != 2 || rows[0].missingGitBranch || rows[1].missingGitBranch {
+		t.Fatalf("existing branches were marked missing: %+v", rows)
+	}
+	if _, err := gitOutput(dir, "branch", "-D", "feature/gone"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+	rows := m.branchRows()
+	if len(rows) != 2 || !rows[0].missingGitBranch || rows[1].missingGitBranch || rows[0].count != 1 {
+		t.Fatalf("deleted branch was not identified while keeping its tasks: %+v", rows)
+	}
+	view := ansi.Strip(m.renderNavigationPane(m.branchTitle(), rows, 0, branchPane, 60, 20))
+	if !strings.Contains(view, "⚠ feature/gone  0/1 › missing") || strings.Contains(view, "⚠ feature/live") || !strings.Contains(view, "feature/live  0/1 ›") {
+		t.Fatalf("branch list warning is unclear: %s", view)
+	}
+	long := navigationRow{kind: rowBranch, name: "feature/a-very-long-branch-name-that-needs-truncating", count: 4, completed: 1, missingGitBranch: true}
+	if got := ansi.Strip(renderMissingBranchRow(long, 28, true)); !strings.HasPrefix(got, "⚠ feature/") || !strings.Contains(got, "1/4 › missing") || ansi.StringWidth(got) != 28 {
+		t.Fatalf("long branch hid its missing marker: %q", got)
+	}
+	if _, err := gitOutput(dir, "branch", "feature/gone"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+	if m.branchRows()[0].missingGitBranch {
+		t.Fatal("restored Git branch still marked missing")
+	}
+}
+
 func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
 	content := "- [ ] Unlabeled\n\n# auth\n\n- [ ] Login task\n\n# tests\n\n- [ ] Another test\n\n# Branches\n\n## feature/login\n\n- [ ] Branch login\n\n## fix/api\n\n- [ ] Branch API\n"

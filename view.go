@@ -241,6 +241,10 @@ func (m model) renderNavigationPane(title string, rows []navigationRow, cursor i
 			lines = append(lines, renderTaskRow(item.todo, innerWidth, selected))
 			continue
 		}
+		if item.kind == rowBranch && item.missingGitBranch {
+			lines = append(lines, renderMissingBranchRow(item, innerWidth, selected))
+			continue
+		}
 		row := ""
 		switch item.kind {
 		case rowLabel:
@@ -264,6 +268,23 @@ func (m model) renderNavigationPane(title string, rows []navigationRow, cursor i
 		}
 	}
 	return m.panelStyle(m.focus == kind, width, height).Render(strings.Join(lines, "\n"))
+}
+
+func renderMissingBranchRow(item navigationRow, width int, selected bool) string {
+	prefix := "⚠ "
+	suffix := fmt.Sprintf("  %d/%d › ", item.completed, item.count)
+	note := "missing"
+	nameWidth := max(0, width-ansi.StringWidth(prefix+suffix+note))
+	name := ansi.Truncate(item.name, nameWidth, "…")
+	style := lipgloss.NewStyle().Foreground(colorHigh)
+	if selected {
+		style = style.Background(colorBlue)
+	}
+	line := style.Render(prefix+name+suffix) + style.Italic(true).Render(note)
+	if selected {
+		line += selectedStyle.Render(strings.Repeat(" ", max(0, width-ansi.StringWidth(line))))
+	}
+	return line
 }
 
 func renderTaskRow(t task, width int, selected bool) string {

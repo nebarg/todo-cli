@@ -14,11 +14,12 @@ const (
 )
 
 type navigationRow struct {
-	kind      navigationKind
-	name      string
-	count     int
-	completed int
-	todo      task
+	kind             navigationKind
+	name             string
+	count            int
+	completed        int
+	missingGitBranch bool
+	todo             task
 }
 
 func completedCount(tasks []task) int {
@@ -91,7 +92,7 @@ func (m model) branchRows() []navigationRow {
 		}
 	}
 	for _, name := range sortedNames(counts) {
-		rows = append(rows, navigationRow{kind: rowBranch, name: name, count: counts[name], completed: completed[name]})
+		rows = append(rows, navigationRow{kind: rowBranch, name: name, count: counts[name], completed: completed[name], missingGitBranch: m.branchesVerified && !m.localBranchNames[name]})
 	}
 	return rows
 }
