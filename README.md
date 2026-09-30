@@ -2,7 +2,7 @@
 
 A small TODO app that keeps your tasks in a Markdown file, with a terminal dashboard for working through them.
 
-It also finds TODO comments in your code, and understands [todo-system](https://github.com/archtechx/todo-system)'s categories (`todo@boundary`) and priorities (`todo0`, `todo1`).
+It also finds TODO comments in your code and the TODO list in your README, and understands [todo-system](https://github.com/archtechx/todo-system)'s categories (`todo@boundary`) and priorities (`todo0`, `todo1`).
 
 Use a terminal with a [Nerd Font](https://www.nerdfonts.com/) for the Git and branch icons; without one they show as empty boxes.
 
@@ -46,7 +46,7 @@ The task file is `todo.md` at the repository root, or in the current directory o
 
 ### Tabs
 
-- **1 General**: tasks outside branch sections. `▸ category` rows open to show that category's tasks; uncategorised tasks follow.
+- **1 General**: tasks outside branch sections. `▸ category` rows open to show that category's tasks, and `▸ README.md` opens [your README's TODOs](#todos-in-readmemd); uncategorised tasks follow.
 - **2 Branches**: every branch with tasks. At startup it opens on the current branch's tasks, if it has any.
 - **3 Files**: TODO comments in source files under the working directory, with [todo-system](#todo-system-syntax) categories and levels. Scanning runs in the background, and these are read only.
 
@@ -104,7 +104,7 @@ A dialog shows what will be removed, including headings left empty. Only `y` goe
 | `←` / `esc` | Back |
 | `i` | All tasks (`s` to change the sort) |
 | `a` / `b` | Add a task / add a branch task |
-| `e` / `enter` | Edit a task, or open a file TODO in your editor. `enter` also opens a category or branch |
+| `e` / `enter` | Edit a task, or open a file or README TODO in your editor. `enter` also opens a category or branch |
 | `d` / `space` | Mark done or reopen |
 | `p` / `c` | Cycle priority / change category |
 | `X` / `u` | Clear done / undo the clear |
@@ -112,7 +112,7 @@ A dialog shows what will be removed, including headings left empty. Only `y` goe
 | `?` | Help |
 | `q` / `ctrl+c` | Quit |
 
-File TODOs open in `$VISUAL`, then `$EDITOR`, falling back to `vi`. Vim, Neovim, VS Code, Codium and Cursor open at the TODO's line. When the editor exits, the Files tab rescans.
+File and README TODOs open in `$VISUAL`, then `$EDITOR`, falling back to `vi`. Vim, Neovim, VS Code, Codium and Cursor open at the TODO's line. When the editor exits, the tasks reload and the Files tab rescans.
 
 ## Markdown format
 
@@ -145,6 +145,22 @@ The file stays readable without the app. When the app writes a task, it re-sorts
 - Notes above the first task and nested headings stay put, as do other sections.
 - A compact list without blank lines stays compact.
 - All other Markdown is preserved.
+
+## TODOs in README.md
+
+As in todo-system, the dashboard reads the TODO list in the `README.md` beside the task file, so at the repository root by default. They're listed under `▸ README.md` in General, and never copied into `todo.md`.
+
+```md
+## TODOs
+
+- Write the install guide
+- [ ] todo0 Fix the broken example
+```
+
+- Tasks are the list items (`- foo` or `- [ ] foo`) directly under a heading reading `TODO` or `TODOs`, with or without a `:`, in any case. The next heading ends the list.
+- Nested list items are tasks too, and anything in a ` ``` ` code block is skipped.
+- `d` marks a task done or reopens it. It changes only the checkbox, adding one to a plain `- foo`, and leaves the README's order alone.
+- Levels such as `todo0` show and sort as in the Files tab. `p`, `c`, `X` and the edit form don't apply; `e` opens the README in your editor at the task.
 
 ## TODOs in source files
 

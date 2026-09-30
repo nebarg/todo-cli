@@ -1,0 +1,140 @@
+package store
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// readmeSample follows todo-system's samples/README.md, with extra cases.
+const readmeSample = "# Project\n\n" +
+	"- not a todo\n\n" +
+	"## TODOs:\n\n" +
+	"- abc\n" +
+	"    - todo0 def\n" +
+	"    - todo00: ghi\n" +
+	"- [ ] bar\n" +
+	"    - [x] baz\n" +
+	"- todo12 stays generic\n" +
+	"- Ship todo1 soon\n" +
+	"-no space\n" +
+	"* star item\n" +
+	"  ```\n" +
+	"  # indented comment\n" +
+	"  ```\n" +
+	"- after indented code\n" +
+	"```\n" +
+	"- in a code block\n" +
+	"# not a heading\n" +
+	"```\n" +
+	"- after code\n" +
+	"#Not a heading\n" +
+	"- still todos\n\n" +
+	"## Another section\n\n" +
+	"- abc\n\n" +
+	"### todo\n\n" +
+	"- [X] lower heading\r\n"
+
+func TestLoadReadmeFindsListItemsUnderTodoHeadings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "README.md")
+	if err := os.WriteFile(path, []byte(readmeSample), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := LoadReadme(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type want struct {
+		line  int
+		text  string
+		level string
+		done  bool
+	}
+	wants := []want{
+		{6, "abc", "", false},
+		{7, "def", "0", false},
+		{8, "ghi", "00", false},
+		{9, "bar", "", false},
+		{10, "baz", "", true},
+		{11, "todo12 stays generic", "", false},
+		{12, "Ship soon", "1", false},
+		{18, "after indented code", "", false},
+		{23, "after code", "", false},
+		{25, "still todos", "", false},
+		{33, "lower heading", "", true},
+	}
+	if len(tasks) != len(wants) {
+		t.Fatalf("got %d tasks, want %d: %+v", len(tasks), len(wants), tasks)
+	}
+	for i, w := range wants {
+		got := tasks[i]
+		if got.Line != w.line || got.Text != w.text || got.Level != w.level || got.Done != w.done {
+			t.Errorf("task %d = line %d %q level %q done %v, want %+v", i, got.Line, got.Text, got.Level, got.Done, w)
+		}
+	}
+}
+
+func TestLoadReadmeWithoutFileOrTodoSection(t *testing.T) {
+	dir := t.TempDir()
+	if tasks, err := LoadReadme(filepath.Join(dir, "README.md")); err != nil || tasks != nil {
+		t.Fatalf("missing README = %v, %v", tasks, err)
+	}
+	path := filepath.Join(dir, "README.md")
+	if err := os.WriteFile(path, []byte("# Project\n\n- feature\n\n## Todo list\n\n- not a todo section\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if tasks, err := LoadReadme(path); err != nil || len(tasks) != 0 {
+		t.Fatalf("README without a TODO heading = %+v, %v", tasks, err)
+	}
+}
+
+func TestToggleReadmeOnlyChangesTheCheckbox(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "README.md")
+	original := "# Todo\n\n- todo0 plain item !high\n  - [ ] nested\n- [x] done item\r\n\n## Next\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	steps := []struct {
+		task int
+		want string
+	}{
+		{0, "# Todo\n\n- [x] todo0 plain item !high\n  - [ ] nested\n- [x] done item\r\n\n## Next\n"},
+		{0, "# Todo\n\n- [ ] todo0 plain item !high\n  - [ ] nested\n- [x] done item\r\n\n## Next\n"},
+		{1, "# Todo\n\n- [ ] todo0 plain item !high\n  - [x] nested\n- [x] done item\r\n\n## Next\n"},
+		{2, "# Todo\n\n- [ ] todo0 plain item !high\n  - [x] nested\n- [ ] done item\r\n\n## Next\n"},
+	}
+	for _, step := range steps {
+		tasks, err := LoadReadme(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ToggleReadme(path, tasks[step.task]); err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != step.want {
+			t.Fatalf("after toggling task %d:\n%q\nwant\n%q", step.task, got, step.want)
+		}
+	}
+}
+
+func TestToggleReadmeRefusesAChangedLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "README.md")
+	if err := os.WriteFile(path, []byte("## TODO\n\n- first\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := LoadReadme(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("## TODO\n\n- first, reworded\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := ToggleReadme(path, tasks[0]); !errors.Is(err, ErrTaskChanged) {
+		t.Fatalf("toggle of a changed line = %v, want ErrTaskChanged", err)
+	}
+}

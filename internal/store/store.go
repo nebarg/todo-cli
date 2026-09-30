@@ -28,6 +28,8 @@ type Task struct {
 	Priority Priority
 	Category string
 	Details  string
+	// Level is a README task's todo-system level, such as "0" for todo0.
+	Level string
 
 	raw          string
 	categoryLine int

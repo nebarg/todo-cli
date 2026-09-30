@@ -120,7 +120,7 @@ func (m *model) renderTabs() string {
 		count string
 		pane  pane
 	}{
-		{"1", "General", fmt.Sprintf("%d/%d", completedCount(m.general), len(m.general)), generalPane},
+		{"1", "General", fmt.Sprintf("%d/%d", completedCount(m.general)+completedCount(m.readme), len(m.general)+len(m.readme)), generalPane},
 		{"2", "Branches", fmt.Sprintf("%d/%d", completedCount(m.branches), len(m.branches)), branchPane},
 		{"3", "Files", m.sourceCount(), sourcePane},
 	}
@@ -211,6 +211,10 @@ func (m *model) contextHints() []keyHint {
 		return append(append(hints, m.clearHint()...), index, reload)
 	case m.focus == detailPane && m.activePane() == sourcePane:
 		return []keyHint{back, {"e", "open file"}}
+	case m.focus == detailPane && m.readmeSelected():
+		return []keyHint{{"d", "done"}, {"e", "open file"}, back}
+	case m.readmeSelected():
+		return []keyHint{{"d", "done"}, {"e", "open file"}, back, {"→", "details"}, index, reload}
 	case m.focus == detailPane && m.activePane() == branchPane:
 		return []keyHint{{"d", "done"}, {"e", "edit"}, {"p", "priority"}, back}
 	case m.focus == detailPane:
@@ -269,7 +273,10 @@ func (m *model) breadcrumb(kind pane) []string {
 	case detailPane:
 		return append(m.breadcrumb(m.detailFrom), "Details")
 	}
-	if m.generalCategory != "" {
+	switch {
+	case m.readmeOpen:
+		return []string{"General", readmeGroup}
+	case m.generalCategory != "":
 		return []string{"General", "@" + m.generalCategory}
 	}
 	return []string{"General"}
@@ -312,6 +319,8 @@ func (m *model) panelStatus() string {
 	switch {
 	case !ok:
 		return ""
+	case row.kind == rowTask && m.readmeOpen:
+		return readmeTaskStatus(row.todo)
 	case row.kind == rowTask:
 		return taskStatus(row.todo)
 	}
@@ -328,6 +337,16 @@ func taskStatus(t store.Task) string {
 		priority = priorityStyle(t.Priority).Render(priorityMark(t.Priority) + " " + t.Priority.Title() + " priority")
 	}
 	return status + mutedStyle.Render("  ·  ") + priority
+}
+
+// readmeTaskStatus names where a README task is, as the Files tab does,
+// since it has no priority.
+func readmeTaskStatus(t store.Task) string {
+	status := lipgloss.NewStyle().Foreground(colorText).Render("Open")
+	if t.Done {
+		status = lipgloss.NewStyle().Foreground(colorGreen).Render("✓ Done")
+	}
+	return status + mutedStyle.Render(fmt.Sprintf("  ·  %s:%d", readmeGroup, t.Line+1))
 }
 
 func (m *model) panelContentHeight(height int) int {
@@ -373,6 +392,10 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 		visible = max(1, visible-1)
 	}
 	start, end := visibleRange(cursor, len(rows), visible)
+	levelWidth := 0
+	for _, row := range rows {
+		levelWidth = max(levelWidth, len(levelLabel(row.todo.Level)))
+	}
 	if len(rows) == 0 {
 		empty := "No tasks"
 		if kind == branchPane {
@@ -387,7 +410,7 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 			lines = append(lines, "")
 		}
 		if item.kind == rowTask {
-			lines = append(lines, renderTaskRow(item.todo, innerWidth, selected))
+			lines = append(lines, renderTaskRow(item.todo, innerWidth, levelWidth, selected))
 		} else {
 			lines = append(lines, renderGroupRow(item, innerWidth, selected, item.kind == rowBranch && item.name == m.project.branch))
 		}
@@ -447,15 +470,21 @@ func renderGroupRow(item navigationRow, width int, selected, current bool) strin
 	return nameStyle.Render(marker+name) + noteStyle.Render(note) + fillStyle.Render(strings.Repeat(" ", gap)) + countStyle.Render(count)
 }
 
-func renderTaskRow(t store.Task, width int, selected bool) string {
-	mark, markStyle := priorityMark(t.Priority)+" ", mutedStyle
+// renderTaskRow shows a task's priority, or with a levelWidth above 0, a
+// column of README levels in its place.
+func renderTaskRow(t store.Task, width, levelWidth int, selected bool) string {
+	mark, markStyle := priorityMark(t.Priority), mutedStyle
 	if t.Priority != "" {
 		markStyle = priorityStyle(t.Priority)
 	}
+	if levelWidth > 0 {
+		mark, markStyle = levelMark(t.Level)
+	}
 	titleStyle := lipgloss.NewStyle().Foreground(colorStrong)
 	if t.Done {
-		mark, markStyle, titleStyle = "✓ ", mutedStyle, mutedStyle
+		mark, markStyle, titleStyle = "✓", mutedStyle, mutedStyle
 	}
+	mark += strings.Repeat(" ", max(0, levelWidth-ansi.StringWidth(mark))+1)
 	suffix := ""
 	if strings.TrimSpace(t.Details) != "" {
 		suffix = "⋯"
@@ -616,8 +645,11 @@ func groupName(row navigationRow) string {
 
 func (m *model) groupDetails(row navigationRow, width int) []string {
 	scope := "general tasks"
-	if row.kind == rowBranch {
+	switch row.kind {
+	case rowBranch:
 		scope = "branch tasks"
+	case rowReadme:
+		scope = "tasks under TODO headings"
 	}
 	return wrapLines([]string{taskTitleStyle.Render(groupName(row)), "", fmt.Sprintf("%d/%d %s", row.completed, row.count, scope), "", mutedStyle.Render("enter or → to open")}, width)
 }
@@ -627,10 +659,13 @@ func (m *model) taskDetails(width int) []string {
 	if !ok {
 		return []string{"", mutedStyle.Render("Select a Markdown task.")}
 	}
-	result := []string{taskTitleStyle.Render(cleanDisplay(t.Text)), ""}
-	if t.Details == "" {
+	result := []string{leveledTitle(t.Text, t.Level), ""}
+	switch {
+	case m.readmeSelected():
+		result = result[:1]
+	case t.Details == "":
 		result = append(result, mutedStyle.Render("No details yet"))
-	} else {
+	default:
 		for line := range strings.SplitSeq(t.Details, "\n") {
 			result = append(result, cleanDisplay(line))
 		}
@@ -648,12 +683,7 @@ func (m *model) sourceDetails(width, height int) []string {
 		}
 		return []string{mutedStyle.Render("No file TODO selected.")}
 	}
-	title := taskTitleStyle.Render(cleanDisplay(item.Note))
-	if item.Level != "" {
-		label, style := levelMark(item.Level)
-		title = style.Bold(true).Render(label) + " " + title
-	}
-	result := append(wrapLines([]string{title}, width), "")
+	result := append(wrapLines([]string{leveledTitle(item.Note, item.Level)}, width), "")
 	switch {
 	case m.previewPath != item.Path || m.previewLine != item.Line:
 		return append(result, mutedStyle.Render("Loading preview…"))
@@ -666,6 +696,16 @@ func (m *model) sourceDetails(width, height int) []string {
 // contextWindow shows the source lines that fit in height, centred on the
 // TODO's line where the file allows. Long lines are cut rather than wrapped,
 // so the line numbers stay in one column.
+// leveledTitle is a detail page's title, led by its todo-system level.
+func leveledTitle(text, level string) string {
+	title := taskTitleStyle.Render(cleanDisplay(text))
+	if level == "" {
+		return title
+	}
+	label, style := levelMark(level)
+	return style.Bold(true).Render(label) + " " + title
+}
+
 func contextWindow(lines []scan.ContextLine, target, width, height int) []string {
 	at := slices.IndexFunc(lines, func(line scan.ContextLine) bool { return line.Number == target })
 	height = max(1, height)

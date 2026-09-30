@@ -67,6 +67,9 @@ func (m *model) clearScope() ([]store.Task, string) {
 	}
 	switch m.activePane() {
 	case generalPane:
+		if m.readmeOpen {
+			return nil, readmeGroup
+		}
 		if m.generalCategory == "" {
 			return m.general, "General"
 		}
@@ -114,6 +117,10 @@ func (m *model) clearHint() []keyHint {
 func (m *model) startClearDone() {
 	if m.activePane() == sourcePane && !m.indexMode {
 		m.status = "File TODOs are read only"
+		return
+	}
+	if m.readmeSelected() {
+		m.status = readmeReadOnly
 		return
 	}
 	tasks, scope := m.clearScope()

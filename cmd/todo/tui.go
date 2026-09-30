@@ -1,11 +1,13 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -65,6 +67,8 @@ type model struct {
 	indexPriorityExplicit bool
 	indexCursor           int
 	general               []store.Task
+	readme                []store.Task
+	readmeOpen            bool
 	branches              []store.Task
 	source                []scan.Match
 	focus                 pane
@@ -194,6 +198,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.status = ""
 		}
+		if err := m.refresh(); err != nil {
+			m.status = err.Error()
+		}
 		m.sourceLoading = true
 		return m, m.scanCmd()
 	case tea.PasteMsg:
@@ -305,6 +312,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activePane() == sourcePane {
 				return m, m.openSource()
 			}
+			if m.readmeSelected() {
+				return m, m.openReadme()
+			}
 			return m.startTaskModal(modalEdit)
 		case "p":
 			m.cyclePriority()
@@ -320,6 +330,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.activePane() == sourcePane {
 				return m, m.openSource()
+			}
+			if m.readmeSelected() {
+				return m, m.openReadme()
 			}
 			return m.startTaskModal(modalEdit)
 		case "r":
@@ -387,7 +400,33 @@ func (m *model) activePane() pane {
 	return m.focus
 }
 
+// readmeSelected is true while the README.md group is open, where every
+// row is a README task.
+func (m *model) readmeSelected() bool {
+	return m.readmeOpen && !m.indexMode && m.activePane() == generalPane
+}
+
+// readmeReadOnly is the status for anything but done and reopen on a README
+// task; the README is edited in an editor.
+const readmeReadOnly = "README.md tasks can only be marked done or reopened; e opens the file"
+
+func (m *model) readmeFile() string {
+	return filepath.Join(filepath.Dir(m.file), "README.md")
+}
+
+func (m *model) openReadme() tea.Cmd {
+	selected, ok := m.selectedTask()
+	if !ok {
+		return nil
+	}
+	return openEditor(m.readmeFile(), selected.Line+1)
+}
+
 func (m *model) startCategoryInput() (tea.Model, tea.Cmd) {
+	if m.readmeSelected() {
+		m.status = readmeReadOnly
+		return m, nil
+	}
 	selected, ok := m.selectedTask()
 	if !ok {
 		m.status = "Select a Markdown task to edit its category"
@@ -485,7 +524,11 @@ func (m *model) toggleSelected() {
 	if m.blockMissingBranch(selected) {
 		return
 	}
-	if err := store.Toggle(m.file, selected); err != nil {
+	toggle := func() error { return store.Toggle(m.file, selected) }
+	if m.readmeSelected() {
+		toggle = func() error { return store.ToggleReadme(m.readmeFile(), selected) }
+	}
+	if err := toggle(); err != nil {
 		m.status = errorStatus(err)
 		return
 	}
@@ -515,6 +558,10 @@ func (m *model) blockMissingBranch(t store.Task) bool {
 }
 
 func (m *model) cyclePriority() {
+	if m.readmeSelected() {
+		m.status = readmeReadOnly
+		return
+	}
 	selected, ok := m.selectedTask()
 	if !ok {
 		m.status = "Select a Markdown task to set priority"
@@ -621,6 +668,13 @@ func (m *model) readTasks(sortByPriority bool) error {
 		m.allTasks = preserveTaskOrder(previousTasks, tasks)
 	}
 	m.partitionTasks()
+	if m.readme, err = loadReadme(m.readmeFile()); err != nil {
+		return err
+	}
+	if m.readmeOpen && len(m.readme) == 0 {
+		m.readmeOpen = false
+		m.generalCursor = m.generalRootCursor
+	}
 	if m.generalCategory != "" {
 		found := false
 		for _, t := range m.general {
@@ -849,6 +903,16 @@ func (m *model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.scanCmd()
 	}
 	return m, nil
+}
+
+// loadReadme reads the README's tasks with todo-system levels first, most
+// urgent at the top, as the Files tab lists them.
+func loadReadme(path string) ([]store.Task, error) {
+	tasks, err := store.LoadReadme(path)
+	slices.SortStableFunc(tasks, func(a, b store.Task) int {
+		return cmp.Compare(scan.LevelRank(a.Level), scan.LevelRank(b.Level))
+	})
+	return tasks, err
 }
 
 func (m *model) partitionTasks() {

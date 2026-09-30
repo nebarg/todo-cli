@@ -16,7 +16,11 @@ const (
 	rowBranch
 	rowFileCategory
 	rowFile
+	rowReadme
 )
+
+// readmeGroup names the General group of README.md's tasks.
+const readmeGroup = "README.md"
 
 type navigationRow struct {
 	kind             navigationKind
@@ -40,6 +44,13 @@ func completedCount(tasks []store.Task) int {
 
 func (m *model) generalRows() []navigationRow {
 	var rows []navigationRow
+	if m.readmeOpen {
+		for _, t := range m.readme {
+			rows = append(rows, navigationRow{kind: rowTask, todo: t})
+		}
+		openTasksFirst(rows)
+		return rows
+	}
 	if m.generalCategory == "" {
 		counts := make(map[string]int)
 		completed := make(map[string]int)
@@ -58,6 +69,9 @@ func (m *model) generalRows() []navigationRow {
 		}
 		for _, key := range sortedNames(counts) {
 			rows = append(rows, navigationRow{kind: rowCategory, name: display[key], count: counts[key], completed: completed[key]})
+		}
+		if len(m.readme) > 0 {
+			rows = append(rows, navigationRow{kind: rowReadme, name: readmeGroup, count: len(m.readme), completed: completedCount(m.readme)})
 		}
 		taskStart := len(rows)
 		for _, t := range m.general {
@@ -259,6 +273,10 @@ func (m *model) enterSelectedGroup() bool {
 		m.generalCursor = 0
 	case rowBranch:
 		m.openBranch(m.branchCursor, row.name)
+	case rowReadme:
+		m.generalRootCursor = m.generalCursor
+		m.readmeOpen = true
+		m.generalCursor = 0
 	default:
 		return false
 	}
@@ -291,10 +309,10 @@ func (m *model) openBranch(rootCursor int, name string) {
 func (m *model) leaveGroup() {
 	switch m.focus {
 	case generalPane:
-		if m.generalCategory == "" {
+		if m.generalCategory == "" && !m.readmeOpen {
 			return
 		}
-		m.generalCategory = ""
+		m.generalCategory, m.readmeOpen = "", false
 		m.generalCursor = m.generalRootCursor
 	case branchPane:
 		if m.branchFilter == "" {
