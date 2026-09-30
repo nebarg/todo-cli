@@ -12,6 +12,31 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+func testGitProject(t *testing.T, dir, current string, others ...string) projectContext {
+	t.Helper()
+	if _, err := gitOutput(dir, "init", "-q"); err != nil {
+		t.Skipf("Git is unavailable: %v", err)
+	}
+	if _, err := gitOutput(dir, "symbolic-ref", "HEAD", "refs/heads/"+current); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".test-anchor"), []byte("fixture\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitOutput(dir, "add", ".test-anchor"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitOutput(dir, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "initial"); err != nil {
+		t.Fatal(err)
+	}
+	for _, branch := range others {
+		if _, err := gitOutput(dir, "branch", branch); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return projectContext{root: dir, branch: current}
+}
+
 func TestDashboardFitsTerminal(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
 	content := "- [ ] Fix failing tests\n\n# Branches\n\n## feature/login\n\n- [ ] Add login check\n"
@@ -321,12 +346,14 @@ func TestLabelInputBlocksSpaces(t *testing.T) {
 }
 
 func TestAddingWithinGroupsKeepsScope(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "todo.md")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "todo.md")
+	project := testGitProject(t, dir, "main", "feature/login")
 	content := "# auth\n\n- [ ] Existing\n\n# Branches\n\n## feature/login\n\n- [ ] Branch task\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{branch: "main"})
+	m, err := newModel(path, project)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,6 +370,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 		t.Fatalf("new task was not added to label: %+v", m.generalRows())
 	}
 	m.focus = branchPane
+	m.enterSelectedGroup()
 	opened, _ = m.startTaskModal("add-branch")
 	m = opened.(model)
 	if m.modal.addBranch != "feature/login" {
@@ -417,13 +445,15 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 	}
 }
 
-func TestAddShortcutUsesSelectedBranch(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "todo.md")
+func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "todo.md")
+	project := testGitProject(t, dir, "main", "feature/a")
 	content := "# Branches\n\n## feature/a\n\n- [ ] Existing feature task\n\n## main\n\n- [ ] Existing main task\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{branch: "main"})
+	m, err := newModel(path, project)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,19 +461,22 @@ func TestAddShortcutUsesSelectedBranch(t *testing.T) {
 	m.branchCursor = 0 // feature/a is selected; main is the current Git branch.
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(model)
-	if m.modal == nil || m.modal.mode != "add-branch" || m.modal.addBranch != "feature/a" {
-		t.Fatalf("a did not target selected branch: %+v", m.modal)
+	if m.modal == nil || m.modal.mode != "add-branch" || m.modal.addBranch != "main" {
+		t.Fatalf("a did not target the current branch from the branch list: %+v", m.modal)
 	}
-	m.modal.title.SetValue("First feature task")
+	m.modal.title.SetValue("First main task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(model)
-	if m.branchFilter != "feature/a" {
-		t.Fatalf("add did not open selected branch: %q", m.branchFilter)
+	if m.branchFilter != "main" {
+		t.Fatalf("add did not open current branch: %q", m.branchFilter)
 	}
+	m.branchFilter = ""
+	m.branchCursor = 0
+	m.enterSelectedGroup()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(model)
 	if m.modal == nil || m.modal.addBranch != "feature/a" {
-		t.Fatalf("a did not target open branch: %+v", m.modal)
+		t.Fatalf("a did not target the opened branch: %+v", m.modal)
 	}
 	m.modal.title.SetValue("Second feature task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
@@ -457,6 +490,44 @@ func TestAddShortcutUsesSelectedBranch(t *testing.T) {
 	m = updated.(model)
 	if m.modal == nil || m.modal.mode != "add-branch" || m.modal.addBranch != "main" {
 		t.Fatalf("b no longer explicitly targets the current Git branch: %+v", m.modal)
+	}
+}
+
+func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
+	repo := t.TempDir()
+	project := testGitProject(t, repo, "feature/old", "feature/new")
+	path := filepath.Join(repo, "todo.md")
+	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/old\n\n- [ ] Existing task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.focus = branchPane
+	if _, err := gitOutput(repo, "symbolic-ref", "HEAD", "refs/heads/feature/new"); err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m = updated.(model)
+	if m.modal == nil || m.modal.addBranch != "feature/new" || m.modal.scope.Value() != "feature/new" {
+		t.Fatalf("branch list used a cached or selected branch: %+v", m.modal)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	m = updated.(model)
+	m.branchFilter = "feature/old"
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m = updated.(model)
+	if m.modal == nil || m.modal.addBranch != "feature/old" {
+		t.Fatalf("opened branch did not override current Git branch: %+v", m.modal)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	m = updated.(model)
+	m.indexMode = true
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
+	m = updated.(model)
+	if m.modal == nil || m.modal.addBranch != "feature/new" {
+		t.Fatalf("All Tasks inherited a hidden branch filter: %+v", m.modal)
 	}
 }
 
@@ -489,22 +560,25 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	if m.modal != nil || !ok || taskLabel(selected) != "newlabel" || m.generalLabel != "newlabel" {
 		t.Fatalf("new category was not created and opened: %+v", m.generalRows())
 	}
+	m.project = testGitProject(t, filepath.Dir(path), "feature/new", "feature/index")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: '2', Text: "2"})
 	m = updated.(model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(model)
-	if m.modal == nil || m.modal.mode != "add-branch" || m.modal.scope.Value() != "" {
-		t.Fatalf("branch form did not open without a Git branch: %+v", m.modal)
+	if m.modal == nil || m.modal.mode != "add-branch" || m.modal.scope.Value() != "feature/new" {
+		t.Fatalf("branch form did not prefill the current Git branch: %+v", m.modal)
 	}
 	m.modal.resize(56, 16)
-	if view := ansi.Strip(m.modal.render(54, 12)); !strings.Contains(view, "Branch") || !strings.Contains(view, "Branch name") {
+	if view := ansi.Strip(m.modal.render(54, 12)); !strings.Contains(view, "Branch") || !strings.Contains(view, "feature/new") {
 		t.Fatalf("branch field is not visible in the small add form: %s", view)
 	}
 	m.modal.title.SetValue("New branch task")
+	m.modal.scope.SetValue("not-a-branch")
+	m.modal.resetBranchCursor()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(model)
-	if m.modal == nil || m.modal.err != "enter a branch name" {
-		t.Fatalf("empty branch name was accepted: %+v", m.modal)
+	if m.modal == nil || m.modal.err != "choose an existing local Git branch" {
+		t.Fatalf("unknown branch was accepted: %+v", m.modal)
 	}
 	m.modal.scope.SetValue("feature/new")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
@@ -524,7 +598,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
 	m = updated.(model)
 	if m.modal == nil || m.modal.mode != "add-branch" || m.modal.scope.Value() != "feature/new" {
-		t.Fatalf("b did not open branch add from All tasks: %+v", m.modal)
+		t.Fatal("All Tasks did not use the current Git branch")
 	}
 	m.modal.title.SetValue("Task from All tasks")
 	m.modal.scope.SetValue("feature/index")
@@ -550,6 +624,135 @@ func TestAddFormAcceptsSymbolCategory(t *testing.T) {
 	selected, ok := m.selectedTask()
 	if m.modal != nil || !ok || taskLabel(selected) != "+v1" || m.generalLabel != "+v1" {
 		t.Fatalf("symbol category did not save from the form: %+v", m.generalRows())
+	}
+}
+
+func TestBranchPickerSearchAndSelection(t *testing.T) {
+	dir := t.TempDir()
+	project := testGitProject(t, dir, "main", "feature/auth", "fix/auth", "feature/ui", "main2")
+	m, err := newModel(filepath.Join(dir, "todo.md"), project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, _ := m.startTaskModal("add-branch")
+	m = opened.(model)
+	m.modal.title.SetValue("Check auth")
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m = updated.(model)
+	if m.modal.field != 1 || m.modal.scope.Value() != "main" {
+		t.Fatalf("branch search was not focused with the current branch: %+v", m.modal)
+	}
+	updated, _ = m.Update(tea.PasteMsg{Content: "AUTH"})
+	m = updated.(model)
+	if got := m.modal.scope.Value(); got != "AUTH" {
+		t.Fatalf("search did not replace the prefilled branch: %q", got)
+	}
+	if got := m.modal.matchingBranches(); len(got) != 2 || got[0] != "feature/auth" || got[1] != "fix/auth" {
+		t.Fatalf("unexpected case-insensitive matches: %v", got)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	m = updated.(model)
+	if m.modal.branchCursor != 1 {
+		t.Fatalf("down did not select the second branch: %d", m.modal.branchCursor)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	m = updated.(model)
+	if m.modal.branchCursor != 0 || m.modal.scope.Value() != "AUTH" || m.modal.field != 1 {
+		t.Fatalf("down at the end did not wrap without selecting: %+v", m.modal)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	m = updated.(model)
+	if m.modal.branchCursor != 1 || m.modal.field != 1 {
+		t.Fatalf("up at the start did not wrap: %+v", m.modal)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(model)
+	if m.modal.field != 2 || m.modal.scope.Value() != "fix/auth" {
+		t.Fatalf("enter did not accept the selected branch: %+v", m.modal)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	m = updated.(model)
+	selected, ok := m.selectedTask()
+	if m.modal != nil || !ok || selected.branch != "fix/auth" {
+		t.Fatalf("task was not saved under the selected branch: %+v", selected)
+	}
+	opened, _ = m.startTaskModal("add-branch")
+	m = opened.(model)
+	m.modal.scope.SetValue("main")
+	m.modal.resetBranchCursor()
+	if got := m.modal.matchingBranches(); len(got) != 2 || got[0] != "main" || got[1] != "main2" {
+		t.Fatalf("exact and prefix matches were not ordered: %v", got)
+	}
+	m.modal.branchCursor = 1
+	if got := m.modal.chosenBranch(); got != "main2" {
+		t.Fatalf("highlighted branch lost to exact search text: %q", got)
+	}
+}
+
+func TestBranchPickerRejectsDeletedBranch(t *testing.T) {
+	dir := t.TempDir()
+	project := testGitProject(t, dir, "main", "feature/old")
+	path := filepath.Join(dir, "todo.md")
+	m, err := newModel(path, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, _ := m.startTaskModal("add-branch")
+	m = opened.(model)
+	m.modal.title.SetValue("Do not save")
+	m.modal.scope.SetValue("feature/old")
+	if _, err := gitOutput(dir, "branch", "-D", "feature/old"); err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	m = updated.(model)
+	if m.modal == nil || m.modal.err != "branch \"feature/old\" no longer exists locally" {
+		t.Fatalf("deleted branch was accepted: %+v", m.modal)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("rejected task changed the TODO file: %v", err)
+	}
+}
+
+func TestBranchPickerFitsCompactAndRegularModals(t *testing.T) {
+	dir := t.TempDir()
+	project := testGitProject(t, dir, "main", "feature/auth", "feature/ui", "fix/search")
+	m, err := newModel(filepath.Join(dir, "todo.md"), project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, _ := m.startTaskModal("add-branch")
+	m = opened.(model)
+	m.modal.scope.SetValue("")
+	m.modal.branchCursor = 0
+	suggestions := m.modal.branchSuggestions(24)
+	if len(suggestions) != 2 || !strings.Contains(ansi.Strip(suggestions[0]), "feature/auth") || !strings.Contains(ansi.Strip(suggestions[1]), "feature/ui") || strings.Contains(strings.Join(suggestions, ""), "fix/search") || !strings.Contains(strings.Join(suggestions, ""), "┃") {
+		t.Fatalf("picker did not show two rows with a scroll indicator: %q", suggestions)
+	}
+	m.modal.scope.SetValue("feature/")
+	m.modal.resetBranchCursor()
+	if suggestions = m.modal.branchSuggestions(24); len(suggestions) != 2 || strings.Contains(strings.Join(suggestions, ""), "┃") || strings.Contains(strings.Join(suggestions, ""), "│") {
+		t.Fatalf("scroll indicator shown for only two matches: %q", suggestions)
+	}
+	m.modal.scope.SetValue("")
+	m.modal.branchCursor = 0
+	for _, size := range [][2]int{{80, 24}, {56, 19}, {56, 16}} {
+		m.modal.resize(size[0], size[1])
+		if size[1] == 24 && lipgloss.Height(m.modal.details.View()) != 5 {
+			t.Errorf("regular details box did not gain one line: height %d", lipgloss.Height(m.modal.details.View()))
+		}
+		width, height := m.modal.dimensions(size[0], size[1])
+		view := m.modal.render(width, height)
+		if got := lipgloss.Width(view); got != width {
+			t.Errorf("picker width at %dx%d = %d, want %d", size[0], size[1], got, width)
+		}
+		if got := lipgloss.Height(view); got != height {
+			t.Errorf("picker height at %dx%d = %d, want %d", size[0], size[1], got, height)
+		}
+		plain := ansi.Strip(view)
+		if !strings.Contains(plain, "Branch") || !strings.Contains(plain, " feature/auth") || !strings.Contains(plain, " feature/ui") || !strings.Contains(plain, "Details") {
+			t.Errorf("picker content missing at %dx%d: %s", size[0], size[1], plain)
+		}
 	}
 }
 

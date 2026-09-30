@@ -15,7 +15,7 @@ func main() {
 	priority := flag.String("priority", "", "high, medium, or low for a new task")
 	categoryFlag := flag.String("category", "", "one category for a new task")
 	onBranch := flag.Bool("branch", false, "put a new task under the current Git branch")
-	branchName := flag.String("branch-name", "", "put a new task under this branch heading")
+	branchName := flag.String("branch-name", "", "put a new task under this existing local Git branch")
 	allFiles := flag.Bool("all-files", false, "include Markdown, hidden, and ignored text in scan")
 	flag.StringVar(priority, "p", "", "shorthand for -priority")
 	flag.StringVar(categoryFlag, "c", "", "shorthand for -category")
@@ -84,10 +84,13 @@ func main() {
 		}
 		branch := *branchName
 		if *onBranch {
-			branch = project.branch
+			branch = project.currentBranch()
 			if branch == "" {
-				fail(fmt.Errorf("no current Git branch; use -branch-name to choose one"))
+				fail(fmt.Errorf("no current Git branch"))
 			}
+		}
+		if branch != "" && !project.hasLocalBranch(branch) {
+			fail(fmt.Errorf("branch %q does not exist locally", branch))
 		}
 		title := strings.Join(args, " ")
 		var categories []string

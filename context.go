@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 )
 
@@ -23,6 +25,43 @@ func currentProject() projectContext {
 	}
 	branch, _ := gitOutput(root, "branch", "--show-current")
 	return projectContext{root: root, branch: branch}
+}
+
+func (project projectContext) currentBranch() string {
+	if project.root == "" {
+		return project.branch
+	}
+	branch, _ := gitOutput(project.root, "branch", "--show-current")
+	return branch
+}
+
+func (project projectContext) localBranches() []string {
+	if project.root == "" {
+		if project.branch == "" {
+			return nil
+		}
+		return []string{project.branch}
+	}
+	output, err := gitOutput(project.root, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+	if err != nil {
+		return nil
+	}
+	var branches []string
+	for branch := range strings.SplitSeq(output, "\n") {
+		if branch != "" {
+			branches = append(branches, branch)
+		}
+	}
+	// An unborn current branch has no ref yet, but is still the active branch.
+	if current := project.currentBranch(); current != "" && !slices.Contains(branches, current) {
+		branches = append(branches, current)
+	}
+	sort.Strings(branches)
+	return branches
+}
+
+func (project projectContext) hasLocalBranch(name string) bool {
+	return slices.Contains(project.localBranches(), name)
 }
 
 func gitOutput(dir string, args ...string) (string, error) {

@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
@@ -12,31 +14,35 @@ import (
 )
 
 type taskModal struct {
-	mode      string
-	selected  task
-	addBranch string
-	addLabel  string
-	title     textarea.Model
-	scope     textinput.Model
-	details   textarea.Model
-	field     int // add: title, scope, details; edit: title, details
-	compact   bool
-	err       string
+	mode         string
+	selected     task
+	project      projectContext
+	addBranch    string
+	addLabel     string
+	branches     []string
+	branchCursor int
+	branchFresh  bool
+	title        textarea.Model
+	scope        textinput.Model
+	details      textarea.Model
+	field        int // add: title, scope, details; edit: title, details
+	compact      bool
+	err          string
 }
 
 func (m model) startTaskModal(mode string) (tea.Model, tea.Cmd) {
-	modal := &taskModal{mode: mode}
+	modal := &taskModal{mode: mode, project: m.project}
 	if mode == "add-general" && m.activePane() == generalPane {
 		modal.addLabel = m.generalLabel
 	}
 	if mode == "add-branch" {
-		modal.addBranch = m.project.branch
-		if m.activePane() == branchPane {
-			if m.branchFilter != "" {
-				modal.addBranch = m.branchFilter
-			} else if row, ok := m.selectedNavigationRow(); ok && row.kind == rowBranch {
-				modal.addBranch = row.name
-			}
+		modal.branches = m.project.localBranches()
+		modal.addBranch = m.project.currentBranch()
+		if !m.indexMode && m.activePane() == branchPane && m.branchFilter != "" {
+			modal.addBranch = m.branchFilter
+		}
+		if modal.addBranch == "" || !m.project.hasLocalBranch(modal.addBranch) {
+			modal.branchCursor = -1
 		}
 	}
 	if mode == "edit" {
@@ -58,7 +64,7 @@ func (m model) startTaskModal(mode string) (tea.Model, tea.Cmd) {
 		modal.scope.Placeholder = "Optional category"
 		modal.scope.SetValue(modal.addLabel)
 	} else if mode == "add-branch" {
-		modal.scope.Placeholder = "Branch name"
+		modal.scope.Placeholder = "Search local branches"
 		modal.scope.SetValue(modal.addBranch)
 	}
 	modal.details = textarea.New()
@@ -135,10 +141,19 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		return m, nil
 	case "tab":
+		if modal.mode == "add-branch" && modal.field == 1 {
+			modal.acceptBranch()
+		}
 		return m, modal.focusField((modal.field + 1) % (modal.detailsField() + 1))
 	case "shift+tab":
 		return m, modal.focusField((modal.field + modal.detailsField()) % (modal.detailsField() + 1))
 	case "down":
+		if modal.mode == "add-branch" && modal.field == 1 {
+			if count := len(modal.matchingBranches()); count > 0 {
+				modal.branchCursor = (modal.branchCursor + 1) % count
+			}
+			return m, nil
+		}
 		if modal.field == 0 && modal.title.Line() < strings.Count(modal.title.Value(), "\n") {
 			break
 		}
@@ -147,6 +162,9 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		if modal.field == 1 && modal.mode != "edit" {
+			if modal.mode == "add-branch" {
+				modal.acceptBranch()
+			}
 			return m, modal.focusField(modal.detailsField())
 		}
 	case "up":
@@ -154,6 +172,12 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if modal.field == 1 && modal.mode != "edit" {
+			if modal.mode == "add-branch" {
+				if count := len(modal.matchingBranches()); count > 0 {
+					modal.branchCursor = (modal.branchCursor - 1 + count) % count
+				}
+				return m, nil
+			}
 			return m, modal.focusField(0)
 		}
 		if modal.field == modal.detailsField() && modal.details.Line() == 0 {
@@ -170,8 +194,14 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			msg.Text = stripLabelSpaces(msg.Text)
+		} else if modal.branchFresh && msg.Text != "" {
+			modal.scope.SetValue("")
 		}
 		modal.scope, cmd = modal.scope.Update(msg)
+		if modal.mode == "add-branch" {
+			modal.branchFresh = false
+			modal.resetBranchCursor()
+		}
 	} else {
 		modal.details, cmd = modal.details.Update(msg)
 	}
@@ -187,8 +217,14 @@ func (m model) updateTaskModalPaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 	} else if modal.field == 1 && modal.mode != "edit" {
 		if modal.mode == "add-general" {
 			msg.Content = stripLabelSpaces(msg.Content)
+		} else if modal.branchFresh {
+			modal.scope.SetValue("")
 		}
 		modal.scope, cmd = modal.scope.Update(msg)
+		if modal.mode == "add-branch" {
+			modal.branchFresh = false
+			modal.resetBranchCursor()
+		}
 	} else {
 		modal.details, cmd = modal.details.Update(msg)
 	}
@@ -211,6 +247,9 @@ func (f *taskModal) focusField(field int) tea.Cmd {
 		return f.title.Focus()
 	}
 	if field == 1 && f.mode != "edit" {
+		if f.mode == "add-branch" {
+			f.branchFresh = true
+		}
 		return f.scope.Focus()
 	}
 	return f.details.Focus()
@@ -228,9 +267,15 @@ func (f *taskModal) save(path string) error {
 			labels = []string{f.addLabel}
 		}
 	} else {
-		f.addBranch = strings.TrimSpace(f.scope.Value())
+		f.addBranch = f.chosenBranch()
 		if f.addBranch == "" {
-			return errors.New("enter a branch name")
+			if len(f.branches) == 0 {
+				return errors.New("no local Git branches found")
+			}
+			return errors.New("choose an existing local Git branch")
+		}
+		if !f.project.hasLocalBranch(f.addBranch) {
+			return fmt.Errorf("branch %q no longer exists locally", f.addBranch)
 		}
 		branch = f.addBranch
 	}
@@ -241,13 +286,122 @@ func (f *taskModal) taskTitle() string {
 	return strings.Join(strings.Fields(f.title.Value()), " ")
 }
 
+func (f *taskModal) matchingBranches() []string {
+	query := strings.ToLower(strings.TrimSpace(f.scope.Value()))
+	var matches []string
+	for _, branch := range f.branches {
+		if strings.Contains(strings.ToLower(branch), query) {
+			matches = append(matches, branch)
+		}
+	}
+	if query != "" {
+		rank := func(branch string) int {
+			name := strings.ToLower(branch)
+			if name == query {
+				return 0
+			}
+			if strings.HasPrefix(name, query) {
+				return 1
+			}
+			return 2
+		}
+		sort.SliceStable(matches, func(i, j int) bool {
+			return rank(matches[i]) < rank(matches[j])
+		})
+	}
+	return matches
+}
+
+func (f *taskModal) resetBranchCursor() {
+	if strings.TrimSpace(f.scope.Value()) == "" || len(f.matchingBranches()) == 0 {
+		f.branchCursor = -1
+	} else {
+		f.branchCursor = 0
+	}
+}
+
+func (f *taskModal) chosenBranch() string {
+	query := strings.TrimSpace(f.scope.Value())
+	matches := f.matchingBranches()
+	if f.branchCursor >= 0 && f.branchCursor < len(matches) {
+		return matches[f.branchCursor]
+	}
+	for _, branch := range f.branches {
+		if branch == query && query != "" {
+			return branch
+		}
+	}
+	if query != "" && f.project.hasLocalBranch(query) {
+		return query // The branch may have been created after the picker opened.
+	}
+	return ""
+}
+
+func (f *taskModal) acceptBranch() {
+	if branch := f.chosenBranch(); branch != "" {
+		f.scope.SetValue(branch)
+		f.branchCursor = 0
+		f.branchFresh = true
+	}
+}
+
+func (f *taskModal) branchSuggestions(width int) []string {
+	rows := 2
+	matches := f.matchingBranches()
+	lines := make([]string, 0, rows)
+	if len(matches) == 0 {
+		message := "No matching local branches"
+		if len(f.branches) == 0 {
+			message = "No local Git branches"
+		}
+		lines = append(lines, mutedStyle.Render(ansi.Truncate(message, width, "…")))
+	} else {
+		start := max(0, f.branchCursor-rows+1)
+		for i := start; i < len(matches) && len(lines) < rows; i++ {
+			mark := "  "
+			style := mutedStyle
+			if i == f.branchCursor {
+				mark = "› "
+				style = lipgloss.NewStyle().Foreground(colorGreen)
+				if f.field == 1 {
+					style = style.Background(colorBlue)
+				}
+			}
+			lineWidth := width
+			if len(matches) > rows {
+				lineWidth = max(1, width-2)
+			}
+			line := ansi.Truncate(mark+" "+matches[i], lineWidth, "…")
+			if len(matches) > rows {
+				line += strings.Repeat(" ", max(0, lineWidth-ansi.StringWidth(line)))
+				thumb := min(rows-1, max(0, f.branchCursor)*rows/len(matches))
+				bar := "│"
+				if i-start == thumb {
+					bar = "┃"
+				}
+				lines = append(lines, style.Render(line)+mutedStyle.Render(" "+bar))
+			} else {
+				lines = append(lines, style.Render(line))
+			}
+		}
+	}
+	for len(lines) < rows {
+		lines = append(lines, "")
+	}
+	return lines
+}
+
 func (f *taskModal) dimensions(width, height int) (int, int) {
-	return min(width-2, 76), min(height-4, 20)
+	modalHeight := min(height-4, 20)
+	if f.mode == "add-branch" {
+		modalHeight = min(height, max(modalHeight, 13))
+	}
+	return min(width-2, 76), modalHeight
 }
 
 func (f *taskModal) resize(width, height int) {
 	modalWidth, modalHeight := f.dimensions(width, height)
-	f.compact = f.mode != "edit" && modalHeight < 15
+	f.compact = f.mode != "edit" && (modalHeight < 15 || f.mode == "add-branch" && modalHeight < 18)
 	innerWidth := max(1, modalWidth-6)
 	f.title.SetWidth(innerWidth)
 	f.title.SetHeight(2)
@@ -256,10 +410,15 @@ func (f *taskModal) resize(width, height int) {
 	}
 	f.details.SetWidth(innerWidth)
 	detailsSpace := modalHeight - 11
-	if f.mode != "edit" && modalHeight >= 15 {
+	if f.mode == "add-branch" && !f.compact {
+		detailsSpace = modalHeight - 15
+	} else if f.mode != "edit" && !f.compact {
 		detailsSpace = modalHeight - 13
 	} else if f.mode != "edit" {
 		detailsSpace = modalHeight - 10
+		if f.mode == "add-branch" {
+			detailsSpace--
+		}
 	}
 	f.details.SetHeight(max(2, detailsSpace))
 }
@@ -282,7 +441,7 @@ func (f *taskModal) render(width, height int) string {
 		detailsLabel = titleStyle.Render("Details")
 	}
 	lines := []string{headingStyle.Render(ansi.Truncate(heading, innerWidth, "…"))}
-	compact := f.mode != "edit" && height < 15
+	compact := f.mode != "edit" && (height < 15 || f.mode == "add-branch" && height < 18)
 	if f.mode == "edit" {
 		lines = append(lines, f.editLocation(innerWidth))
 	}
@@ -291,7 +450,9 @@ func (f *taskModal) render(width, height int) string {
 	}
 	lines = append(lines, f.title.View())
 	if f.mode != "edit" {
-		lines = append(lines, "")
+		if f.mode != "add-branch" || !compact {
+			lines = append(lines, "")
+		}
 		scopeName := "Category"
 		if f.mode == "add-branch" {
 			scopeName = "Branch"
@@ -301,6 +462,9 @@ func (f *taskModal) render(width, height int) string {
 			scopeStyle = titleStyle
 		}
 		lines = append(lines, scopeStyle.Render(scopeName), f.scope.View())
+		if f.mode == "add-branch" {
+			lines = append(lines, f.branchSuggestions(max(1, innerWidth/2))...)
+		}
 		if !compact {
 			lines = append(lines, "")
 		}
@@ -311,7 +475,14 @@ func (f *taskModal) render(width, height int) string {
 	if !compact && !(f.mode == "edit" && height < 13) {
 		lines = append(lines, "")
 	}
-	lines = append(lines, mutedStyle.Render(ansi.Truncate("↑/↓/tab navigate · ctrl+enter save · esc cancel", innerWidth, "…")))
+	help := "↑/↓/tab navigate · ctrl+enter save · esc cancel"
+	if f.mode == "add-branch" && f.field == 1 {
+		help = "↑/↓ cycle · tab next · ctrl+enter save · esc cancel"
+		if compact {
+			help = "↑/↓ cycle · ctrl+enter save · esc cancel"
+		}
+	}
+	lines = append(lines, mutedStyle.Render(ansi.Truncate(help, innerWidth, "…")))
 	return lipgloss.NewStyle().Width(width).Height(height).Padding(0, 2).
 		Border(lipgloss.RoundedBorder()).BorderForeground(colorFocus).
 		Background(lipgloss.Color("#111E2F")).Render(strings.Join(lines, "\n"))
@@ -345,7 +516,9 @@ func (f *taskModal) cursor(x, y int) *tea.Cursor {
 		cursor = f.scope.Cursor()
 		if cursor != nil {
 			cursor.X += x + 3
-			if f.compact {
+			if f.compact && f.mode == "add-branch" {
+				cursor.Y += y + 5
+			} else if f.compact {
 				cursor.Y += y + 6
 			} else {
 				cursor.Y += y + 7
@@ -355,10 +528,14 @@ func (f *taskModal) cursor(x, y int) *tea.Cursor {
 		cursor = f.details.Cursor()
 		if cursor != nil {
 			cursor.X += x + 3
-			if f.compact {
+			if f.compact && f.mode == "add-branch" {
+				cursor.Y += y + 9
+			} else if f.compact {
 				cursor.Y += y + 8
 			} else if f.mode == "edit" {
 				cursor.Y += y + 8
+			} else if f.mode == "add-branch" {
+				cursor.Y += y + 12
 			} else {
 				cursor.Y += y + 10
 			}
