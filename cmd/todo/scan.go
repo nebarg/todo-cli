@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -57,7 +59,7 @@ func scanSource(dir string, limit int, allFiles bool) ([]sourceTodo, error) {
 }
 
 func scanWithRipgrep(ctx context.Context, dir string, limit int, allFiles bool) ([]sourceTodo, error) {
-	args := []string{"--json", "--line-number", "--ignore-case"}
+	args := []string{"--json", "--line-number"}
 	if allFiles {
 		args = append(args, "--hidden", "--no-ignore", "--glob", "!.git/")
 	} else {
@@ -90,13 +92,11 @@ func scanWithRipgrep(ctx context.Context, dir string, limit int, allFiles bool) 
 		if !allFiles && !hasTodoComment(event.Data.Lines.Text) {
 			continue
 		}
-		if limit == 0 || len(matches) < limit {
-			matches = append(matches, sourceTodo{
-				path: strings.TrimPrefix(event.Data.Path.Text, "./"),
-				line: event.Data.LineNumber,
-				text: strings.TrimSpace(event.Data.Lines.Text),
-			})
-		}
+		matches = append(matches, sourceTodo{
+			path: strings.TrimPrefix(event.Data.Path.Text, "./"),
+			line: event.Data.LineNumber,
+			text: strings.TrimSpace(event.Data.Lines.Text),
+		})
 	}
 	scanErr := scanner.Err()
 	waitErr := cmd.Wait()
@@ -109,11 +109,23 @@ func scanWithRipgrep(ctx context.Context, dir string, limit int, allFiles bool) 
 	if waitErr != nil {
 		var exitErr *exec.ExitError
 		if errors.As(waitErr, &exitErr) && exitErr.ExitCode() == 1 {
-			return matches, nil
+			return nil, nil
 		}
 		return nil, fmt.Errorf("ripgrep: %s", strings.TrimSpace(stderr.String()))
 	}
-	return matches, nil
+	return sortedMatches(matches, limit), nil
+}
+
+// sortedMatches orders matches by file and line before applying limit, so
+// parallel scans always return the same results.
+func sortedMatches(matches []sourceTodo, limit int) []sourceTodo {
+	slices.SortFunc(matches, func(a, b sourceTodo) int {
+		return cmp.Or(strings.Compare(a.path, b.path), cmp.Compare(a.line, b.line))
+	})
+	if limit > 0 && len(matches) > limit {
+		matches = matches[:limit]
+	}
+	return matches
 }
 
 func hasTodoComment(line string) bool {

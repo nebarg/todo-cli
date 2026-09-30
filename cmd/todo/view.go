@@ -80,7 +80,7 @@ func (m model) View() tea.View {
 	}
 	v := tea.NewView(content)
 	v.AltScreen = true
-	if m.inputMode != "" {
+	if m.categoryInput {
 		v.Cursor = m.input.Cursor()
 		if v.Cursor != nil {
 			index := strings.LastIndex(content, m.input.View())
@@ -132,7 +132,7 @@ func (m model) renderTabs(width int) string {
 }
 
 func (m model) renderFooter(width int) string {
-	if m.inputMode != "" {
+	if m.categoryInput {
 		return ansi.Truncate(m.input.View()+"  enter save · esc cancel", width, "…")
 	}
 	if m.indexMode {
@@ -454,7 +454,7 @@ func (m model) taskDetails(width int) []string {
 	}
 	priority := mutedStyle.Render("None")
 	if t.priority != "" {
-		priority = priorityStyle(t.priority).Render(strings.ToUpper(t.priority[:1]) + t.priority[1:])
+		priority = priorityStyle(t.priority).Render(t.priority.title())
 	}
 	label := "None"
 	if len(t.labels) > 0 {

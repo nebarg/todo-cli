@@ -145,7 +145,7 @@ func sortedNames(counts map[string]int) []string {
 func sortedTasksByPriority(tasks []task) []task {
 	sorted := append([]task(nil), tasks...)
 	sort.SliceStable(sorted, func(i, j int) bool {
-		return priorityRank(sorted[i].priority) < priorityRank(sorted[j].priority)
+		return sorted[i].priority.rank() < sorted[j].priority.rank()
 	})
 	return sorted
 }

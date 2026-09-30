@@ -12,7 +12,7 @@ import (
 
 var taskLine = regexp.MustCompile(`^([ \t]*- )(?:\[([ xX])\] +)?(.*)$`)
 var markdownHeading = regexp.MustCompile(`^ {0,3}(#{1,6})[ \t]+(.+?)\s*\r?$`)
-var errTaskChanged = errors.New("task changed on disk; press r to reload")
+var errTaskChanged = errors.New("task changed on disk")
 
 type task struct {
 	line         int
@@ -20,7 +20,7 @@ type task struct {
 	text         string
 	done         bool
 	branch       string
-	priority     string
+	priority     priority
 	labels       []string
 	headingLabel bool
 	headingLine  int
@@ -71,15 +71,13 @@ func loadTasks(path string) ([]task, error) {
 		if label != "" && branch == "" {
 			t.labels = []string{label}
 		}
-		indent := raw[:len(raw)-len(strings.TrimLeft(raw, " \t"))]
+		indent := taskIndent(raw)
 		j := i + 1
 		for j < len(lines) {
 			line := strings.TrimSuffix(lines[j], "\r")
 			if strings.HasPrefix(strings.ToLower(line), strings.ToLower(indent+"  - Priority:")) {
-				value := strings.TrimSpace(line[len(indent+"  - Priority:"):])
-				value = strings.ToLower(value)
-				if validPriority(value) {
-					t.priority = value
+				if p, err := parsePriority(line[len(indent+"  - Priority:"):]); err == nil {
+					t.priority = p
 				}
 			} else if strings.HasPrefix(line, indent+"  - Labels: ") && label == "" && branch == "" {
 				t.labels = parseLabels(strings.TrimPrefix(line, indent+"  - Labels: "))
@@ -137,27 +135,19 @@ func parseLabels(s string) []string {
 	return labels
 }
 
-func validPriority(value string) bool {
-	return value == "" || value == "high" || value == "medium" || value == "low"
+func taskIndent(raw string) string {
+	return raw[:len(raw)-len(strings.TrimLeft(raw, " \t"))]
 }
 
-func addTask(path, title string) error {
-	return addTaskWithOptions(path, title, "", nil, "")
+func addTaskWithOptions(path, title string, p priority, labels []string, branch string) error {
+	return addTaskWithDetails(path, title, "", p, labels, branch)
 }
 
-func addTaskWithOptions(path, title, priority string, labels []string, branch string) error {
-	return addTaskWithDetails(path, title, "", priority, labels, branch)
-}
-
-func addTaskWithDetails(path, title, details, priority string, labels []string, branch string) error {
+func addTaskWithDetails(path, title, details string, p priority, labels []string, branch string) error {
 	title = strings.TrimSpace(title)
-	priority = strings.ToLower(strings.TrimSpace(priority))
 	branch = strings.TrimSpace(branch)
 	if title == "" || strings.ContainsAny(title, "\r\n") {
 		return errors.New("enter a single-line task")
-	}
-	if !validPriority(priority) {
-		return errors.New("priority must be high, medium, or low")
 	}
 	if strings.ContainsAny(branch, "\r\n") {
 		return errors.New("branch name must be one line")
@@ -184,7 +174,7 @@ func addTaskWithDetails(path, title, details, priority string, labels []string, 
 		mode = info.Mode().Perm()
 	}
 	block := []string{"- [ ] " + title}
-	block = append(block, metadataLines(priority)...)
+	block = append(block, metadataLines(p)...)
 	if body := formattedDetails(details); len(body) > 0 {
 		block = append(block, "")
 		block = append(block, body...)
@@ -218,14 +208,12 @@ func editTaskContent(path string, selected task, title, details string) error {
 	if title == "" || strings.ContainsAny(title, "\r\n") {
 		return errors.New("enter a single-line task title")
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	lines := strings.Split(string(data), "\n")
-	if !taskUnchanged(lines, selected) {
-		return errTaskChanged
-	}
+	return rewriteTask(path, selected, func(lines []string) string {
+		return strings.Join(editedTaskLines(lines, selected, title, details), "\n")
+	})
+}
+
+func editedTaskLines(lines []string, selected task, title, details string) []string {
 	updated := append([]string{}, lines[:selected.line]...)
 	updated = append(updated, normalizedTaskLine(selected, title, selected.done))
 	updated = append(updated, selected.meta...)
@@ -238,12 +226,25 @@ func editTaskContent(path string, selected task, title, details string) error {
 	} else if selected.bodyEnd < len(lines) {
 		updated = append(updated, "")
 	}
-	updated = append(updated, lines[selected.bodyEnd:]...)
+	return append(updated, lines[selected.bodyEnd:]...)
+}
+
+// rewriteTask replaces the file with change(lines), refusing when selected no
+// longer matches the file so edits never land on the wrong task.
+func rewriteTask(path string, selected task, change func(lines []string) string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
 	}
-	return replaceFile(path, []byte(strings.Join(updated, "\n")), info.Mode().Perm())
+	lines := strings.Split(string(data), "\n")
+	if !taskUnchanged(lines, selected) {
+		return errTaskChanged
+	}
+	return replaceFile(path, []byte(change(lines)), info.Mode().Perm())
 }
 
 func taskUnchanged(lines []string, selected task) bool {
@@ -261,13 +262,6 @@ func taskUnchanged(lines []string, selected task) bool {
 		}
 	}
 	return true
-}
-
-func trimTaskBlock(block []string) []string {
-	for len(block) > 1 && strings.TrimSpace(block[len(block)-1]) == "" {
-		block = block[:len(block)-1]
-	}
-	return block
 }
 
 func validateLabel(label string) error {
@@ -300,16 +294,16 @@ func headingCategoryName(name string) string {
 	return name
 }
 
-func metadataLines(priority string) []string {
+func metadataLines(p priority) []string {
 	var lines []string
-	if priority != "" {
-		lines = append(lines, "  - Priority: "+strings.ToUpper(priority[:1])+priority[1:])
+	if p != priorityNone {
+		lines = append(lines, "  - Priority: "+p.title())
 	}
 	return lines
 }
 
 func insertTaskBlock(data string, block []string, branch, label string) string {
-	priority := priorityFromBlock(block)
+	p := priorityFromBlock(block)
 	if strings.TrimSpace(data) == "" {
 		if branch != "" {
 			return "# Branches\n\n## " + branch + "\n\n" + strings.Join(block, "\n") + "\n"
@@ -335,7 +329,7 @@ func insertTaskBlock(data string, block []string, branch, label string) string {
 				break
 			}
 		}
-		return insertBlockSorted(lines, branchStart+1, branchEnd, block, priority)
+		return insertBlockSorted(lines, branchStart+1, branchEnd, block, p)
 	}
 	if label == "" {
 		end := len(lines)
@@ -345,10 +339,10 @@ func insertTaskBlock(data string, block []string, branch, label string) string {
 				break
 			}
 		}
-		return insertBlockSorted(lines, 0, end, block, priority)
+		return insertBlockSorted(lines, 0, end, block, p)
 	}
 	if start, end := findCategorySection(lines, label); start >= 0 {
-		return insertBlockSorted(lines, start+1, end, block, priority)
+		return insertBlockSorted(lines, start+1, end, block, p)
 	}
 	idx := len(lines)
 	if branchesStart, _, _ := findBranchesSection(lines); branchesStart >= 0 {
@@ -439,36 +433,35 @@ func findCategorySection(lines []string, category string) (int, int) {
 	return -1, -1
 }
 
-func priorityFromBlock(block []string) string {
+func priorityFromBlock(block []string) priority {
 	for _, line := range block[1:] {
 		trimmed := strings.TrimSpace(line)
 		if !strings.HasPrefix(strings.ToLower(trimmed), "- priority:") {
 			break
 		}
-		value := strings.ToLower(strings.TrimSpace(trimmed[len("- priority:"):]))
-		if validPriority(value) {
-			return value
+		if p, err := parsePriority(trimmed[len("- priority:"):]); err == nil {
+			return p
 		}
 	}
-	return ""
+	return priorityNone
 }
 
-func insertBlockSorted(lines []string, start, end int, block []string, priority string) string {
+func insertBlockSorted(lines []string, start, end int, block []string, p priority) string {
 	idx := trimBlankEnd(lines, end, start)
 	for i := start; i < end; i++ {
 		parts := taskLine.FindStringSubmatch(lines[i])
 		if parts == nil || strings.TrimSpace(parts[3]) == "" || strings.HasPrefix(lines[i], " ") || strings.HasPrefix(lines[i], "\t") {
 			continue
 		}
-		oldPriority := ""
+		oldPriority := priorityNone
 		for j := i + 1; j < end; j++ {
 			trimmed := strings.TrimSpace(lines[j])
 			if !strings.HasPrefix(strings.ToLower(trimmed), "- priority:") {
 				break
 			}
-			oldPriority = strings.ToLower(strings.TrimSpace(trimmed[len("- priority:"):]))
+			oldPriority, _ = parsePriority(trimmed[len("- priority:"):])
 		}
-		if priorityRank(oldPriority) > priorityRank(priority) {
+		if oldPriority.rank() > p.rank() {
 			idx = i
 			break
 		}
@@ -517,7 +510,7 @@ func insertLines(lines []string, index int, addition []string) []string {
 }
 
 func normalizedTaskLine(selected task, title string, done bool) string {
-	indent := selected.raw[:len(selected.raw)-len(strings.TrimLeft(selected.raw, " \t"))]
+	indent := taskIndent(selected.raw)
 	mark := " "
 	if done {
 		mark = "x"
@@ -530,51 +523,28 @@ func normalizedTaskLine(selected task, title string, done bool) string {
 }
 
 func toggleTask(path string, selected task) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	lines := strings.Split(string(data), "\n")
-	if !taskUnchanged(lines, selected) {
-		return errTaskChanged
-	}
-	lines[selected.line] = normalizedTaskLine(selected, selected.text, !selected.done)
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	return replaceFile(path, []byte(strings.Join(lines, "\n")), info.Mode().Perm())
+	return rewriteTask(path, selected, func(lines []string) string {
+		lines[selected.line] = normalizedTaskLine(selected, selected.text, !selected.done)
+		return strings.Join(lines, "\n")
+	})
 }
 
-func setTaskPriority(path string, selected task, priority string) error {
-	if !validPriority(priority) {
-		return errors.New("priority must be high, medium, or low")
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	lines := strings.Split(string(data), "\n")
-	if !taskUnchanged(lines, selected) {
-		return errTaskChanged
-	}
-	updated := append([]string{}, lines[:selected.line]...)
-	updated = append(updated, normalizedTaskLine(selected, selected.text, selected.done))
-	indent := selected.raw[:len(selected.raw)-len(strings.TrimLeft(selected.raw, " \t"))]
-	for _, line := range metadataLines(priority) {
-		updated = append(updated, indent+line)
-	}
-	for _, line := range selected.meta {
-		if !strings.HasPrefix(strings.ToLower(line), strings.ToLower(indent+"  - Priority:")) {
-			updated = append(updated, line)
+func setTaskPriority(path string, selected task, p priority) error {
+	return rewriteTask(path, selected, func(lines []string) string {
+		updated := append([]string{}, lines[:selected.line]...)
+		updated = append(updated, normalizedTaskLine(selected, selected.text, selected.done))
+		indent := taskIndent(selected.raw)
+		for _, line := range metadataLines(p) {
+			updated = append(updated, indent+line)
 		}
-	}
-	updated = append(updated, lines[selected.line+1+len(selected.meta):]...)
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	return replaceFile(path, []byte(strings.Join(updated, "\n")), info.Mode().Perm())
+		for _, line := range selected.meta {
+			if !strings.HasPrefix(strings.ToLower(line), strings.ToLower(indent+"  - Priority:")) {
+				updated = append(updated, line)
+			}
+		}
+		updated = append(updated, lines[selected.line+1+len(selected.meta):]...)
+		return strings.Join(updated, "\n")
+	})
 }
 
 func setTaskLabel(path string, selected task, label string) error {
@@ -588,48 +558,27 @@ func setTaskLabel(path string, selected task, label string) error {
 			return err
 		}
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	lines := strings.Split(string(data), "\n")
-	if selected.line < 0 || selected.line >= len(lines) || lines[selected.line] != selected.raw || selected.bodyEnd > len(lines) {
-		return errTaskChanged
-	}
-	for i, raw := range selected.meta {
-		if selected.line+1+i >= len(lines) || lines[selected.line+1+i] != raw {
-			return errTaskChanged
-		}
-	}
-	for i, raw := range selected.bodyRaw {
-		if selected.bodyStart+i >= len(lines) || lines[selected.bodyStart+i] != raw {
-			return errTaskChanged
-		}
-	}
 	if selected.headingLabel && strings.EqualFold(taskLabel(selected), label) {
 		return nil
 	}
-	indent := selected.raw[:len(selected.raw)-len(strings.TrimLeft(selected.raw, " \t"))]
-	block := []string{normalizedTaskLine(selected, selected.text, selected.done)}
-	for _, line := range selected.meta {
-		if !strings.HasPrefix(line, indent+"  - Labels: ") {
-			block = append(block, line)
+	return rewriteTask(path, selected, func(lines []string) string {
+		indent := taskIndent(selected.raw)
+		block := []string{normalizedTaskLine(selected, selected.text, selected.done)}
+		for _, line := range selected.meta {
+			if !strings.HasPrefix(line, indent+"  - Labels: ") {
+				block = append(block, line)
+			}
 		}
-	}
-	body := append([]string(nil), selected.bodyRaw...)
-	for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
-		body = body[:len(body)-1]
-	}
-	block = append(block, body...)
-	remaining := append([]string{}, lines[:selected.line]...)
-	remaining = append(remaining, lines[selected.bodyEnd:]...)
-	remaining = removeEmptyLabelHeading(remaining, selected)
-	updated := insertTaskBlock(strings.Join(remaining, "\n"), block, selected.branch, label)
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	return replaceFile(path, []byte(updated), info.Mode().Perm())
+		body := append([]string(nil), selected.bodyRaw...)
+		for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
+			body = body[:len(body)-1]
+		}
+		block = append(block, body...)
+		remaining := append([]string{}, lines[:selected.line]...)
+		remaining = append(remaining, lines[selected.bodyEnd:]...)
+		remaining = removeEmptyLabelHeading(remaining, selected)
+		return insertTaskBlock(strings.Join(remaining, "\n"), block, selected.branch, label)
+	})
 }
 
 func removeEmptyLabelHeading(lines []string, selected task) []string {
@@ -677,23 +626,6 @@ func replaceFile(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
-}
-
-func taskSummary(t task) string {
-	var details []string
-	if t.priority != "" {
-		details = append(details, strings.ToUpper(t.priority[:1]))
-	}
-	for _, label := range t.labels {
-		details = append(details, "#"+label)
-	}
-	if t.branch != "" {
-		details = append(details, "@"+t.branch)
-	}
-	if len(details) == 0 {
-		return t.text
-	}
-	return t.text + "  " + strings.Join(details, " ")
 }
 
 func taskLocation(t task) string {

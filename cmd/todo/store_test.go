@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,7 +23,7 @@ func TestMarkdownPreserved(t *testing.T) {
 	if err := toggleTask(path, tasks[0]); err != nil {
 		t.Fatal(err)
 	}
-	if err := addTask(path, "third"); err != nil {
+	if err := addTaskWithOptions(path, "third", priorityNone, nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(path)
@@ -36,7 +38,7 @@ func TestMarkdownPreserved(t *testing.T) {
 
 func TestBranchesAndMetadata(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	if err := addTask(path, "general task"); err != nil {
+	if err := addTaskWithOptions(path, "general task", priorityNone, nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := addTaskWithOptions(path, "branch task", "high", nil, "feature/login"); err != nil {
@@ -365,7 +367,7 @@ func TestGeneralInsertedBeforeExistingBranches(t *testing.T) {
 	if err := addTaskWithOptions(path, "branch task", "", nil, "feature/login"); err != nil {
 		t.Fatal(err)
 	}
-	if err := addTask(path, "general task"); err != nil {
+	if err := addTaskWithOptions(path, "general task", priorityNone, nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)
@@ -471,7 +473,10 @@ func TestBareItemsBecomeCheckboxesOnlyWhenEdited(t *testing.T) {
 func TestNewTasksSortedPriorityAndEditsStayInPlace(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
 	for _, scope := range []struct{ label, branch string }{{}, {label: "Work"}, {branch: "feature/login"}} {
-		for _, item := range []struct{ title, priority string }{{"none", ""}, {"low", "low"}, {"high", "high"}, {"medium", "medium"}} {
+		for _, item := range []struct {
+			title    string
+			priority priority
+		}{{"none", ""}, {"low", "low"}, {"high", "high"}, {"medium", "medium"}} {
 			if err := addTaskWithOptions(path, item.title+scope.label+scope.branch, item.priority, labelSlice(scope.label), scope.branch); err != nil {
 				t.Fatal(err)
 			}
@@ -482,7 +487,7 @@ func TestNewTasksSortedPriorityAndEditsStayInPlace(t *testing.T) {
 		t.Fatalf("tasks = %+v, error = %v", tasks, err)
 	}
 	for i := 0; i < len(tasks); i += 4 {
-		for j, want := range []string{"high", "medium", "low", ""} {
+		for j, want := range []priority{priorityHigh, priorityMedium, priorityLow, priorityNone} {
 			if tasks[i+j].priority != want {
 				t.Fatalf("scope %d priority %d = %q, want %q: %+v", i/4, j, tasks[i+j].priority, want, tasks)
 			}
@@ -555,5 +560,90 @@ func TestScanSource(t *testing.T) {
 	}
 	if len(all) != 6 {
 		t.Fatalf("all-file matches: %+v", all)
+	}
+}
+
+func TestParsePriority(t *testing.T) {
+	for _, item := range []struct {
+		input string
+		want  priority
+		err   bool
+	}{
+		{"", priorityNone, false},
+		{" High ", priorityHigh, false},
+		{"MEDIUM", priorityMedium, false},
+		{"low", priorityLow, false},
+		{"urgent", priorityNone, true},
+	} {
+		t.Run(item.input, func(t *testing.T) {
+			got, err := parsePriority(item.input)
+			if got != item.want || (err != nil) != item.err {
+				t.Fatalf("parsePriority(%q) = %q, %v", item.input, got, err)
+			}
+		})
+	}
+}
+
+func TestPriorityCyclesAndTitles(t *testing.T) {
+	p := priorityNone
+	var seen []string
+	for range 4 {
+		p = p.next()
+		seen = append(seen, p.title())
+	}
+	if got := strings.Join(seen, ","); got != "High,Medium,Low," {
+		t.Fatalf("priority cycle = %q", got)
+	}
+	if priority("urgent").next() != priorityNone || priority("urgent").rank() != priorityNone.rank() {
+		t.Fatal("unknown priority should behave like no priority")
+	}
+}
+
+func TestChangedTaskErrorLeavesUIHintsToCaller(t *testing.T) {
+	if strings.Contains(errTaskChanged.Error(), "press") {
+		t.Fatalf("store error mentions a UI key: %q", errTaskChanged)
+	}
+	if got := errorStatus(fmt.Errorf("save: %w", errTaskChanged)); !strings.Contains(got, "press r to reload") {
+		t.Fatalf("TUI status lost the reload hint: %q", got)
+	}
+}
+
+func TestSortedMatchesOrderBeforeLimit(t *testing.T) {
+	matches := []sourceTodo{{path: "b.go", line: 1}, {path: "a.go", line: 9}, {path: "a.go", line: 2}, {path: "c.go", line: 1}}
+	got := sortedMatches(matches, 3)
+	if len(got) != 3 || got[0] != (sourceTodo{path: "a.go", line: 2}) || got[1].line != 9 || got[2].path != "b.go" {
+		t.Fatalf("matches were limited before sorting: %+v", got)
+	}
+	if got := sortedMatches(nil, 3); len(got) != 0 {
+		t.Fatalf("empty scan = %+v", got)
+	}
+}
+
+func TestBuiltInScanLimitIsDeterministic(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // Force the built-in scanner.
+	dir := t.TempDir()
+	for i := range 40 {
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%02d.go", i)), []byte("// TODO: item\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range 5 {
+		matches, err := scanSource(dir, 3, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(matches) != 3 || matches[0].path != "f00.go" || matches[2].path != "f02.go" {
+			t.Fatalf("limited scan picked arbitrary files: %+v", matches)
+		}
+	}
+}
+
+func TestGitOutputReportsGitError(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("Git is unavailable")
+	}
+	_, err := gitOutput(t.TempDir(), "rev-parse", "--show-toplevel")
+	if err == nil || !strings.Contains(err.Error(), "git rev-parse:") || !strings.Contains(strings.ToLower(err.Error()), "not a git repository") {
+		t.Fatalf("git error lost its message: %v", err)
 	}
 }

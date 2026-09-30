@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -34,12 +35,31 @@ type sourcePreviewMsg struct {
 }
 type editorFinishedMsg struct{ err error }
 
+type sortOrder string
+
+const (
+	sortPriority sortOrder = "priority"
+	sortBranch   sortOrder = "branch"
+	sortCategory sortOrder = "category"
+)
+
+func (s sortOrder) next() sortOrder {
+	switch s {
+	case sortPriority:
+		return sortBranch
+	case sortBranch:
+		return sortCategory
+	default:
+		return sortPriority
+	}
+}
+
 type model struct {
 	file                  string
 	project               projectContext
 	allTasks              []task
 	indexMode             bool
-	indexSort             string
+	indexSort             sortOrder
 	indexPriorityExplicit bool
 	indexCursor           int
 	general               []task
@@ -65,7 +85,7 @@ type model struct {
 	previewLine           int
 	previewError          string
 	input                 textinput.Model
-	inputMode             string
+	categoryInput         bool
 	editTask              task
 	modal                 *taskModal
 	status                string
@@ -78,7 +98,7 @@ func newModel(file string, project projectContext) (model, error) {
 	input.Prompt = "New task: "
 	input.Placeholder = "What needs doing?"
 	input.SetWidth(72)
-	m := model{file: file, project: project, input: input, width: 100, height: 30, sourceLoading: true, indexSort: "priority"}
+	m := model{file: file, project: project, input: input, width: 100, height: 30, sourceLoading: true, indexSort: sortPriority}
 	if err := m.reload(); err != nil {
 		return model{}, err
 	}
@@ -170,7 +190,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.modal != nil {
 			return m.updateTaskModalPaste(msg)
 		}
-		if m.inputMode == "category" {
+		if m.categoryInput {
 			msg.Content = stripLabelSpaces(msg.Content)
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
@@ -184,8 +204,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.modal != nil {
 			return m.updateTaskModal(msg)
 		}
-		if m.inputMode != "" {
-			return m.updateInput(msg)
+		if m.categoryInput {
+			return m.updateCategoryInput(msg)
 		}
 		if m.indexMode {
 			return m.updateIndex(msg)
@@ -195,7 +215,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "i":
 			m.indexMode = true
-			m.indexSort = "priority"
+			m.indexSort = sortPriority
 			m.indexPriorityExplicit = false
 			m.indexCursor = 0
 			m.status = ""
@@ -254,18 +274,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "a":
 			if m.activePane() == branchPane {
-				return m.startTaskModal("add-branch")
+				return m.startTaskModal(modalAddBranch)
 			}
-			return m.startTaskModal("add-general")
+			return m.startTaskModal(modalAddGeneral)
 		case "b":
-			return m.startTaskModal("add-branch")
+			return m.startTaskModal(modalAddBranch)
 		case "c", "l":
-			return m.startInput("category")
+			return m.startCategoryInput()
 		case "e":
 			if m.activePane() == sourcePane {
 				return m, m.openSource()
 			}
-			return m.startTaskModal("edit")
+			return m.startTaskModal(modalEdit)
 		case "p":
 			m.cyclePriority()
 		case "space", "d":
@@ -275,7 +295,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.openSource()
 			}
 			if !m.enterSelectedGroup() {
-				return m.startTaskModal("edit")
+				return m.startTaskModal(modalEdit)
 			}
 		case "v":
 			m.focus = branchPane
@@ -350,92 +370,77 @@ func (m model) activePane() pane {
 	return m.focus
 }
 
-func (m model) startInput(mode string) (tea.Model, tea.Cmd) {
-	if mode == "category" {
-		selected, ok := m.selectedTask()
-		if !ok {
-			m.status = "Select a Markdown task to edit its category"
-			return m, nil
-		}
-		if selected.branch != "" {
-			m.status = "Categories are only for general tasks"
-			return m, nil
-		}
-		m.editTask = selected
-		m.input.Prompt = "Category: "
-		m.input.SetValue(taskLabel(selected))
+func (m model) startCategoryInput() (tea.Model, tea.Cmd) {
+	selected, ok := m.selectedTask()
+	if !ok {
+		m.status = "Select a Markdown task to edit its category"
+		return m, nil
 	}
-	m.inputMode = mode
+	if selected.branch != "" {
+		m.status = "Categories are only for general tasks"
+		return m, nil
+	}
+	m.editTask = selected
+	m.input.Prompt = "Category: "
+	m.input.SetValue(taskLabel(selected))
+	m.categoryInput = true
 	m.status = ""
 	return m, m.input.Focus()
 }
 
-func (m model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m model) updateCategoryInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		m.inputMode = ""
+		m.categoryInput = false
 		m.input.Blur()
 		m.input.SetValue("")
 		m.status = ""
 		return m, nil
 	case "enter":
-		mode := m.inputMode
 		oldTask := m.editTask
 		newLabel := normalizeLabelInput(m.input.Value())
-		var err error
-		switch mode {
-		case "category":
-			err = setTaskLabel(m.file, m.editTask, m.input.Value())
-		}
-		if err != nil {
-			m.status = err.Error()
+		if err := setTaskLabel(m.file, m.editTask, m.input.Value()); err != nil {
+			m.status = errorStatus(err)
 			return m, nil
 		}
-		m.inputMode = ""
+		m.categoryInput = false
 		m.input.Blur()
 		m.input.SetValue("")
-		if mode == "category" && !m.indexMode {
-			switch m.activePane() {
-			case generalPane:
-				m.generalLabel = newLabel
-				m.generalCursor = 0
-			}
+		if !m.indexMode && m.activePane() == generalPane {
+			m.generalLabel = newLabel
+			m.generalCursor = 0
 		}
 		if err := m.refresh(); err != nil {
 			m.status = err.Error()
 			return m, nil
 		}
-		if mode == "category" && m.indexMode {
+		if m.indexMode {
 			m.selectIndexTask(oldTask)
-		} else if mode == "category" {
-			if m.activePane() == generalPane {
-				if newLabel != "" {
-					root := m
-					root.generalLabel = ""
-					for i, row := range root.generalRows() {
-						if row.kind == rowLabel && strings.EqualFold(row.name, newLabel) {
-							m.generalRootCursor = i
-							break
-						}
-					}
-				}
-				for i, row := range m.generalRows() {
-					if row.kind == rowTask && row.todo.text == oldTask.text && row.todo.branch == oldTask.branch && strings.EqualFold(taskLabel(row.todo), newLabel) {
-						m.generalCursor = i
+		} else if m.activePane() == generalPane {
+			if newLabel != "" {
+				root := m
+				root.generalLabel = ""
+				for i, row := range root.generalRows() {
+					if row.kind == rowLabel && strings.EqualFold(row.name, newLabel) {
+						m.generalRootCursor = i
 						break
 					}
+				}
+			}
+			for i, row := range m.generalRows() {
+				if row.kind == rowTask && row.todo.text == oldTask.text && row.todo.branch == oldTask.branch && strings.EqualFold(taskLabel(row.todo), newLabel) {
+					m.generalCursor = i
+					break
 				}
 			}
 		}
 		m.status = ""
 		return m, nil
 	}
-	if m.inputMode == "category" {
-		if msg.Code == tea.KeySpace {
-			return m, nil
-		}
-		msg.Text = stripLabelSpaces(msg.Text)
+	if msg.Code == tea.KeySpace {
+		return m, nil
 	}
+	msg.Text = stripLabelSpaces(msg.Text)
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd
@@ -464,7 +469,7 @@ func (m *model) toggleSelected() {
 		return
 	}
 	if err := toggleTask(m.file, selected); err != nil {
-		m.status = err.Error()
+		m.status = errorStatus(err)
 		return
 	}
 	if err := m.refresh(); err != nil {
@@ -475,6 +480,13 @@ func (m *model) toggleSelected() {
 		m.selectNavigationTask(selected)
 	}
 	m.status = ""
+}
+
+func errorStatus(err error) string {
+	if errors.Is(err, errTaskChanged) {
+		return "Task changed on disk; press r to reload"
+	}
+	return err.Error()
 }
 
 func (m *model) blockMissingBranch(t task) bool {
@@ -494,9 +506,8 @@ func (m *model) cyclePriority() {
 	if m.blockMissingBranch(selected) {
 		return
 	}
-	next := map[string]string{"": "high", "high": "medium", "medium": "low", "low": ""}[selected.priority]
-	if err := setTaskPriority(m.file, selected, next); err != nil {
-		m.status = err.Error()
+	if err := setTaskPriority(m.file, selected, selected.priority.next()); err != nil {
+		m.status = errorStatus(err)
 		return
 	}
 	if err := m.refresh(); err != nil {
@@ -543,8 +554,22 @@ func editorProcess(path string, line int) *exec.Cmd {
 	return exec.Command(parts[0], args...)
 }
 
+// reload is for startup and explicit refreshes. Otherwise Git is only asked
+// for branches when a branch task modal opens, keeping quick edits free of
+// subprocess calls.
 func (m *model) reload() error {
+	m.checkLocalBranches()
 	return m.readTasks(true)
+}
+
+func (m *model) checkLocalBranches() (branches []string, current string) {
+	branches, current, verified := m.project.localBranchState()
+	m.branchesVerified = verified
+	m.localBranchNames = make(map[string]bool, len(branches))
+	for _, branch := range branches {
+		m.localBranchNames[branch] = true
+	}
+	return branches, current
 }
 
 func (m *model) refresh() error {
@@ -557,12 +582,6 @@ func (m *model) readTasks(sortByPriority bool) error {
 	tasks, err := loadTasks(m.file)
 	if err != nil {
 		return err
-	}
-	branches, verified := m.project.localBranchesChecked()
-	m.branchesVerified = verified
-	m.localBranchNames = make(map[string]bool, len(branches))
-	for _, branch := range branches {
-		m.localBranchNames[branch] = true
 	}
 	if sortByPriority {
 		m.allTasks = sortedTasksByPriority(tasks)
@@ -684,7 +703,7 @@ func (m model) indexTasks() []task {
 	sort.SliceStable(tasks, func(i, j int) bool {
 		a, b := tasks[i], tasks[j]
 		switch m.indexSort {
-		case "branch":
+		case sortBranch:
 			if c := compareIndexGroup(a.branch, b.branch); c != 0 {
 				return c < 0
 			}
@@ -693,7 +712,7 @@ func (m model) indexTasks() []task {
 					return c < 0
 				}
 			}
-		case "category":
+		case sortCategory:
 			if c := compareIndexGroup(taskLabel(a), taskLabel(b)); c != 0 {
 				return c < 0
 			}
@@ -706,8 +725,8 @@ func (m model) indexTasks() []task {
 		if a.done != b.done {
 			return !a.done
 		}
-		if m.indexSort == "priority" && m.indexPriorityExplicit {
-			return priorityRank(a.priority) < priorityRank(b.priority)
+		if m.indexSort == sortPriority && m.indexPriorityExplicit {
+			return a.priority.rank() < b.priority.rank()
 		}
 		return false
 	})
@@ -722,19 +741,6 @@ func compareIndexGroup(a, b string) int {
 		return -1
 	}
 	return strings.Compare(strings.ToLower(a), strings.ToLower(b))
-}
-
-func priorityRank(priority string) int {
-	switch priority {
-	case "high":
-		return 0
-	case "medium":
-		return 1
-	case "low":
-		return 2
-	default:
-		return 3
-	}
 }
 
 func (m *model) selectIndexTask(selected task) {
@@ -778,28 +784,21 @@ func (m model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.moveCursor(1)
 	case "s":
 		selected, ok := m.selectedTask()
-		switch m.indexSort {
-		case "priority":
-			m.indexSort = "branch"
-		case "branch":
-			m.indexSort = "category"
-		default:
-			m.indexSort = "priority"
-		}
-		m.indexPriorityExplicit = m.indexSort == "priority"
+		m.indexSort = m.indexSort.next()
+		m.indexPriorityExplicit = m.indexSort == sortPriority
 		if ok {
 			m.selectIndexTask(selected)
 		}
 	case "p":
 		m.cyclePriority()
 	case "c", "l":
-		return m.startInput("category")
+		return m.startCategoryInput()
 	case "b":
-		return m.startTaskModal("add-branch")
+		return m.startTaskModal(modalAddBranch)
 	case "space", "d":
 		m.toggleSelected()
 	case "enter", "e":
-		return m.startTaskModal("edit")
+		return m.startTaskModal(modalEdit)
 	case "r":
 		m.project = currentProject()
 		if err := m.reload(); err != nil {

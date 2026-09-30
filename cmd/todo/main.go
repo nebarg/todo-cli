@@ -12,12 +12,12 @@ import (
 
 func main() {
 	fileFlag := flag.String("file", "", "markdown file (default: repository root/todo.md)")
-	priority := flag.String("priority", "", "high, medium, or low for a new task")
+	priorityFlag := flag.String("priority", "", "high, medium, or low for a new task")
 	categoryFlag := flag.String("category", "", "one category for a new task")
 	onBranch := flag.Bool("branch", false, "put a new task under the current Git branch")
 	branchName := flag.String("branch-name", "", "put a new task under this existing local Git branch")
 	allFiles := flag.Bool("all-files", false, "include Markdown, hidden, and ignored text in scan")
-	flag.StringVar(priority, "p", "", "shorthand for -priority")
+	flag.StringVar(priorityFlag, "p", "", "shorthand for -priority")
 	flag.StringVar(categoryFlag, "c", "", "shorthand for -category")
 	flag.StringVar(categoryFlag, "l", "", "")
 	flag.StringVar(categoryFlag, "label", "", "") // Accept older command lines.
@@ -92,18 +92,22 @@ func main() {
 		if branch != "" && !project.hasLocalBranch(branch) {
 			fail(fmt.Errorf("branch %q does not exist locally", branch))
 		}
+		p, err := parsePriority(*priorityFlag)
+		if err != nil {
+			fail(err)
+		}
 		title := strings.Join(args, " ")
 		var categories []string
 		if *categoryFlag != "" {
 			categories = []string{*categoryFlag}
 		}
-		if err := addTaskWithOptions(file, title, *priority, categories, branch); err != nil {
+		if err := addTaskWithOptions(file, title, p, categories, branch); err != nil {
 			fail(err)
 		}
 		fmt.Printf("Added to %s: %s\n", file, title)
 		return
 	}
-	if *priority != "" || *categoryFlag != "" || *onBranch || *branchName != "" || *allFiles {
+	if *priorityFlag != "" || *categoryFlag != "" || *onBranch || *branchName != "" || *allFiles {
 		fmt.Fprintln(os.Stderr, "task flags need task text")
 		os.Exit(2)
 	}

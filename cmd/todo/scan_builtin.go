@@ -9,40 +9,28 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 )
 
 // scanBuiltIn keeps file TODOs usable when ripgrep is not installed.
-func scanBuiltIn(parent context.Context, dir string, limit int, allFiles bool) ([]sourceTodo, error) {
-	files, err := sourceFiles(parent, dir, allFiles)
+func scanBuiltIn(ctx context.Context, dir string, limit int, allFiles bool) ([]sourceTodo, error) {
+	files, err := sourceFiles(ctx, dir, allFiles)
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithCancel(parent)
-	defer cancel()
 	jobs := make(chan string, 128)
 	found := make(chan sourceTodo, 128)
-	workers := runtime.GOMAXPROCS(0)
-	if workers > 8 {
-		workers = 8
-	}
-	if workers < 1 {
-		workers = 1
-	}
 	var wg sync.WaitGroup
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range min(runtime.GOMAXPROCS(0), 8) {
+		wg.Go(func() {
 			for path := range jobs {
 				if ctx.Err() != nil {
 					return
 				}
 				scanFile(ctx, dir, path, allFiles, found)
 			}
-		}()
+		})
 	}
 	go func() {
 		defer close(jobs)
@@ -57,26 +45,13 @@ func scanBuiltIn(parent context.Context, dir string, limit int, allFiles bool) (
 	go func() { wg.Wait(); close(found) }()
 
 	var matches []sourceTodo
-	capped := false
 	for match := range found {
-		if limit == 0 || len(matches) < limit {
-			matches = append(matches, match)
-		}
-		if limit > 0 && len(matches) >= limit && !capped {
-			capped = true
-			cancel()
-		}
+		matches = append(matches, match)
 	}
-	if parent.Err() != nil && !capped {
-		return nil, parent.Err()
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
-	sort.Slice(matches, func(i, j int) bool {
-		if matches[i].path == matches[j].path {
-			return matches[i].line < matches[j].line
-		}
-		return matches[i].path < matches[j].path
-	})
-	return matches, nil
+	return sortedMatches(matches, limit), nil
 }
 
 func sourceFiles(ctx context.Context, dir string, allFiles bool) ([]string, error) {

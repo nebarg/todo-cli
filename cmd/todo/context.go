@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
+	"time"
 )
 
 type projectContext struct {
@@ -35,44 +38,54 @@ func (project projectContext) currentBranch() string {
 	return branch
 }
 
-func (project projectContext) localBranches() []string {
-	branches, _ := project.localBranchesChecked()
-	return branches
-}
-
-func (project projectContext) localBranchesChecked() ([]string, bool) {
+// localBranchState lists local branches and the current branch in one pass.
+// verified is false when there is no Git repository to check against.
+func (project projectContext) localBranchState() (branches []string, current string, verified bool) {
 	if project.root == "" {
 		if project.branch == "" {
-			return nil, false
+			return nil, "", false
 		}
-		return []string{project.branch}, false
+		return []string{project.branch}, project.branch, false
 	}
 	output, err := gitOutput(project.root, "for-each-ref", "--format=%(refname:short)", "refs/heads")
 	if err != nil {
-		return nil, false
+		return nil, "", false
 	}
-	var branches []string
 	for branch := range strings.SplitSeq(output, "\n") {
 		if branch != "" {
 			branches = append(branches, branch)
 		}
 	}
+	current = project.currentBranch()
 	// An unborn current branch has no ref yet, but is still the active branch.
-	if current := project.currentBranch(); current != "" && !slices.Contains(branches, current) {
+	if current != "" && !slices.Contains(branches, current) {
 		branches = append(branches, current)
 	}
 	sort.Strings(branches)
-	return branches, true
+	return branches, current, true
 }
 
 func (project projectContext) hasLocalBranch(name string) bool {
-	return slices.Contains(project.localBranches(), name)
+	branches, _, _ := project.localBranchState()
+	return slices.Contains(branches, name)
 }
 
+const gitTimeout = 5 * time.Second
+
 func gitOutput(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
-	return strings.TrimSpace(string(out)), err
+	if err != nil {
+		if message := strings.TrimSpace(stderr.String()); message != "" {
+			return "", fmt.Errorf("git %s: %s", args[0], message)
+		}
+		return "", fmt.Errorf("git %s: %w", args[0], err)
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func defaultFile(project projectContext) string {

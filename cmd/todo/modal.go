@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -13,8 +14,16 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+type modalMode int
+
+const (
+	modalAddGeneral modalMode = iota
+	modalAddBranch
+	modalEdit
+)
+
 type taskModal struct {
-	mode         string
+	mode         modalMode
 	selected     task
 	project      projectContext
 	addBranch    string
@@ -30,26 +39,28 @@ type taskModal struct {
 	err          string
 }
 
-func (m model) startTaskModal(mode string) (tea.Model, tea.Cmd) {
+func (m model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
 	modal := &taskModal{mode: mode, project: m.project}
-	if mode == "add-general" && m.activePane() == generalPane {
+	if mode == modalAddGeneral && m.activePane() == generalPane {
 		modal.addLabel = m.generalLabel
 	}
-	if mode == "add-branch" {
-		modal.branches = m.project.localBranches()
-		modal.addBranch = m.project.currentBranch()
+	if mode == modalAddBranch {
+		modal.branches, modal.addBranch = m.checkLocalBranches()
 		if !m.indexMode && m.activePane() == branchPane && m.branchFilter != "" {
 			modal.addBranch = m.branchFilter
 		}
-		if modal.addBranch == "" || !m.project.hasLocalBranch(modal.addBranch) {
+		if !slices.Contains(modal.branches, modal.addBranch) {
 			modal.branchCursor = -1
 		}
 	}
-	if mode == "edit" {
+	if mode == modalEdit {
 		selected, ok := m.selectedTask()
 		if !ok {
 			m.status = "Select a Markdown task to edit"
 			return m, nil
+		}
+		if selected.branch != "" {
+			m.checkLocalBranches()
 		}
 		if m.blockMissingBranch(selected) {
 			return m, nil
@@ -63,10 +74,10 @@ func (m model) startTaskModal(mode string) (tea.Model, tea.Cmd) {
 	modal.title.SetHeight(2)
 	modal.scope = textinput.New()
 	modal.scope.Prompt = ""
-	if mode == "add-general" {
+	if mode == modalAddGeneral {
 		modal.scope.Placeholder = "Optional category"
 		modal.scope.SetValue(modal.addLabel)
-	} else if mode == "add-branch" {
+	} else if mode == modalAddBranch {
 		modal.scope.Placeholder = "Search local branches"
 		modal.scope.SetValue(modal.addBranch)
 	}
@@ -74,7 +85,7 @@ func (m model) startTaskModal(mode string) (tea.Model, tea.Cmd) {
 	modal.details.Prompt = ""
 	modal.details.ShowLineNumbers = false
 	modal.details.Placeholder = "Add context, steps, or links…"
-	if mode == "edit" {
+	if mode == modalEdit {
 		modal.title.SetValue(modal.selected.text)
 		modal.details.SetValue(modal.selected.details)
 	}
@@ -95,7 +106,7 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "ctrl+enter":
 		if err := modal.save(m.file); err != nil {
-			modal.err = err.Error()
+			modal.err = errorStatus(err)
 			return m, nil
 		}
 		mode := modal.mode
@@ -104,7 +115,7 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.status = err.Error()
 			return m, nil
 		}
-		if mode == "add-general" {
+		if mode == modalAddGeneral {
 			m.focus = generalPane
 			m.generalLabel = modal.addLabel
 			if modal.addLabel != "" {
@@ -122,7 +133,7 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 					m.generalCursor = i
 				}
 			}
-		} else if mode == "add-branch" {
+		} else if mode == modalAddBranch {
 			m.indexMode = false
 			m.focus = branchPane
 			branchRoot := m
@@ -144,14 +155,14 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		return m, nil
 	case "tab":
-		if modal.mode == "add-branch" && modal.field == 1 {
+		if modal.mode == modalAddBranch && modal.field == 1 {
 			modal.acceptBranch()
 		}
 		return m, modal.focusField((modal.field + 1) % (modal.detailsField() + 1))
 	case "shift+tab":
 		return m, modal.focusField((modal.field + modal.detailsField()) % (modal.detailsField() + 1))
 	case "down":
-		if modal.mode == "add-branch" && modal.field == 1 {
+		if modal.mode == modalAddBranch && modal.field == 1 {
 			if count := len(modal.matchingBranches()); count > 0 {
 				modal.branchCursor = (modal.branchCursor + 1) % count
 			}
@@ -164,8 +175,8 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, modal.focusField(modal.field + 1)
 		}
 	case "enter":
-		if modal.field == 1 && modal.mode != "edit" {
-			if modal.mode == "add-branch" {
+		if modal.field == 1 && modal.mode != modalEdit {
+			if modal.mode == modalAddBranch {
 				modal.acceptBranch()
 			}
 			return m, modal.focusField(modal.detailsField())
@@ -174,8 +185,8 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if modal.field == 0 && modal.title.Line() == 0 {
 			return m, nil
 		}
-		if modal.field == 1 && modal.mode != "edit" {
-			if modal.mode == "add-branch" {
+		if modal.field == 1 && modal.mode != modalEdit {
+			if modal.mode == modalAddBranch {
 				if count := len(modal.matchingBranches()); count > 0 {
 					modal.branchCursor = (modal.branchCursor - 1 + count) % count
 				}
@@ -191,8 +202,8 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	if modal.field == 0 {
 		modal.title, cmd = modal.title.Update(msg)
-	} else if modal.field == 1 && modal.mode != "edit" {
-		if modal.mode == "add-general" {
+	} else if modal.field == 1 && modal.mode != modalEdit {
+		if modal.mode == modalAddGeneral {
 			if msg.Code == tea.KeySpace {
 				return m, nil
 			}
@@ -201,7 +212,7 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			modal.scope.SetValue("")
 		}
 		modal.scope, cmd = modal.scope.Update(msg)
-		if modal.mode == "add-branch" {
+		if modal.mode == modalAddBranch {
 			modal.branchFresh = false
 			modal.resetBranchCursor()
 		}
@@ -217,14 +228,14 @@ func (m model) updateTaskModalPaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	if modal.field == 0 {
 		modal.title, cmd = modal.title.Update(msg)
-	} else if modal.field == 1 && modal.mode != "edit" {
-		if modal.mode == "add-general" {
+	} else if modal.field == 1 && modal.mode != modalEdit {
+		if modal.mode == modalAddGeneral {
 			msg.Content = stripLabelSpaces(msg.Content)
 		} else if modal.branchFresh {
 			modal.scope.SetValue("")
 		}
 		modal.scope, cmd = modal.scope.Update(msg)
-		if modal.mode == "add-branch" {
+		if modal.mode == modalAddBranch {
 			modal.branchFresh = false
 			modal.resetBranchCursor()
 		}
@@ -235,7 +246,7 @@ func (m model) updateTaskModalPaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 }
 
 func (f *taskModal) detailsField() int {
-	if f.mode == "edit" {
+	if f.mode == modalEdit {
 		return 1
 	}
 	return 2
@@ -249,8 +260,8 @@ func (f *taskModal) focusField(field int) tea.Cmd {
 	if field == 0 {
 		return f.title.Focus()
 	}
-	if field == 1 && f.mode != "edit" {
-		if f.mode == "add-branch" {
+	if field == 1 && f.mode != modalEdit {
+		if f.mode == modalAddBranch {
 			f.branchFresh = true
 		}
 		return f.scope.Focus()
@@ -259,12 +270,12 @@ func (f *taskModal) focusField(field int) tea.Cmd {
 }
 
 func (f *taskModal) save(path string) error {
-	if f.mode == "edit" {
+	if f.mode == modalEdit {
 		return editTaskContent(path, f.selected, f.taskTitle(), f.details.Value())
 	}
 	var labels []string
 	branch := ""
-	if f.mode == "add-general" {
+	if f.mode == modalAddGeneral {
 		f.addLabel = normalizeLabelInput(f.scope.Value())
 		if f.addLabel != "" {
 			labels = []string{f.addLabel}
@@ -282,7 +293,7 @@ func (f *taskModal) save(path string) error {
 		}
 		branch = f.addBranch
 	}
-	return addTaskWithDetails(path, f.taskTitle(), f.details.Value(), "", labels, branch)
+	return addTaskWithDetails(path, f.taskTitle(), f.details.Value(), priorityNone, labels, branch)
 }
 
 func (f *taskModal) taskTitle() string {
@@ -333,9 +344,6 @@ func (f *taskModal) chosenBranch() string {
 		if branch == query && query != "" {
 			return branch
 		}
-	}
-	if query != "" && f.project.hasLocalBranch(query) {
-		return query // The branch may have been created after the picker opened.
 	}
 	return ""
 }
@@ -396,7 +404,7 @@ func (f *taskModal) branchSuggestions(width int) []string {
 
 func (f *taskModal) dimensions(width, height int) (int, int) {
 	modalHeight := min(height-4, 20)
-	if f.mode == "add-branch" {
+	if f.mode == modalAddBranch {
 		modalHeight = min(height, max(modalHeight, 13))
 	}
 	return min(width-2, 76), modalHeight
@@ -404,22 +412,22 @@ func (f *taskModal) dimensions(width, height int) (int, int) {
 
 func (f *taskModal) resize(width, height int) {
 	modalWidth, modalHeight := f.dimensions(width, height)
-	f.compact = f.mode != "edit" && (modalHeight < 15 || f.mode == "add-branch" && modalHeight < 18)
+	f.compact = f.mode != modalEdit && (modalHeight < 15 || f.mode == modalAddBranch && modalHeight < 18)
 	innerWidth := max(1, modalWidth-6)
 	f.title.SetWidth(innerWidth)
 	f.title.SetHeight(2)
-	if f.mode != "edit" {
+	if f.mode != modalEdit {
 		f.scope.SetWidth(max(1, innerWidth/2))
 	}
 	f.details.SetWidth(innerWidth)
 	detailsSpace := modalHeight - 11
-	if f.mode == "add-branch" && !f.compact {
+	if f.mode == modalAddBranch && !f.compact {
 		detailsSpace = modalHeight - 15
-	} else if f.mode != "edit" && !f.compact {
+	} else if f.mode != modalEdit && !f.compact {
 		detailsSpace = modalHeight - 13
-	} else if f.mode != "edit" {
+	} else if f.mode != modalEdit {
 		detailsSpace = modalHeight - 10
-		if f.mode == "add-branch" {
+		if f.mode == modalAddBranch {
 			detailsSpace--
 		}
 	}
@@ -429,9 +437,9 @@ func (f *taskModal) resize(width, height int) {
 func (f *taskModal) render(width, height int) string {
 	innerWidth := max(1, width-6)
 	heading := "Add general task"
-	if f.mode == "add-branch" {
+	if f.mode == modalAddBranch {
 		heading = "Add branch task"
-	} else if f.mode == "edit" {
+	} else if f.mode == modalEdit {
 		heading = "Edit task"
 	}
 	headingStyle := titleStyle
@@ -444,20 +452,20 @@ func (f *taskModal) render(width, height int) string {
 		detailsLabel = titleStyle.Render("Details")
 	}
 	lines := []string{headingStyle.Render(ansi.Truncate(heading, innerWidth, "…"))}
-	compact := f.mode != "edit" && (height < 15 || f.mode == "add-branch" && height < 18)
-	if f.mode == "edit" {
+	compact := f.mode != modalEdit && (height < 15 || f.mode == modalAddBranch && height < 18)
+	if f.mode == modalEdit {
 		lines = append(lines, f.editLocation(innerWidth))
 	}
-	if f.mode == "edit" || !compact {
+	if f.mode == modalEdit || !compact {
 		lines = append(lines, "")
 	}
 	lines = append(lines, f.title.View())
-	if f.mode != "edit" {
-		if f.mode != "add-branch" || !compact {
+	if f.mode != modalEdit {
+		if f.mode != modalAddBranch || !compact {
 			lines = append(lines, "")
 		}
 		scopeName := "Category"
-		if f.mode == "add-branch" {
+		if f.mode == modalAddBranch {
 			scopeName = "Branch"
 		}
 		scopeStyle := mutedStyle
@@ -465,7 +473,7 @@ func (f *taskModal) render(width, height int) string {
 			scopeStyle = titleStyle
 		}
 		lines = append(lines, scopeStyle.Render(scopeName), f.scope.View())
-		if f.mode == "add-branch" {
+		if f.mode == modalAddBranch {
 			lines = append(lines, f.branchSuggestions(max(1, innerWidth/2))...)
 		}
 		if !compact {
@@ -475,11 +483,11 @@ func (f *taskModal) render(width, height int) string {
 		lines = append(lines, "")
 	}
 	lines = append(lines, detailsLabel, f.details.View())
-	if !compact && !(f.mode == "edit" && height < 13) {
+	if !compact && !(f.mode == modalEdit && height < 13) {
 		lines = append(lines, "")
 	}
 	help := "↑/↓/tab navigate · ctrl+enter save · esc cancel"
-	if f.mode == "add-branch" && f.field == 1 {
+	if f.mode == modalAddBranch && f.field == 1 {
 		help = "↑/↓ cycle · tab next · ctrl+enter save · esc cancel"
 		if compact {
 			help = "↑/↓ cycle · ctrl+enter save · esc cancel"
@@ -507,19 +515,19 @@ func (f *taskModal) cursor(x, y int) *tea.Cursor {
 		cursor = f.title.Cursor()
 		if cursor != nil {
 			cursor.X += x + 3
-			if f.mode != "edit" && f.compact {
+			if f.mode != modalEdit && f.compact {
 				cursor.Y += y + 2
-			} else if f.mode == "edit" {
+			} else if f.mode == modalEdit {
 				cursor.Y += y + 4
 			} else {
 				cursor.Y += y + 3
 			}
 		}
-	} else if f.field == 1 && f.mode != "edit" {
+	} else if f.field == 1 && f.mode != modalEdit {
 		cursor = f.scope.Cursor()
 		if cursor != nil {
 			cursor.X += x + 3
-			if f.compact && f.mode == "add-branch" {
+			if f.compact && f.mode == modalAddBranch {
 				cursor.Y += y + 5
 			} else if f.compact {
 				cursor.Y += y + 6
@@ -531,13 +539,13 @@ func (f *taskModal) cursor(x, y int) *tea.Cursor {
 		cursor = f.details.Cursor()
 		if cursor != nil {
 			cursor.X += x + 3
-			if f.compact && f.mode == "add-branch" {
+			if f.compact && f.mode == modalAddBranch {
 				cursor.Y += y + 9
 			} else if f.compact {
 				cursor.Y += y + 8
-			} else if f.mode == "edit" {
+			} else if f.mode == modalEdit {
 				cursor.Y += y + 8
-			} else if f.mode == "add-branch" {
+			} else if f.mode == modalAddBranch {
 				cursor.Y += y + 12
 			} else {
 				cursor.Y += y + 10

@@ -5,11 +5,17 @@ A small Markdown-backed TODO app with a full-width terminal task list.
 ## Build and run
 
 ```sh
-go build -o todo .
+go build ./cmd/todo
 ./todo
 ```
 
-Put the built `todo` binary in a directory on your `PATH` to run it as `todo` from anywhere. `go run .` also works during development.
+Or install it straight onto your `PATH` (in `$(go env GOPATH)/bin`):
+
+```sh
+go install github.com/nebarg/todo-cli/cmd/todo@latest
+```
+
+During development, `go run ./cmd/todo` and `go test ./...` work from the repository root.
 
 With no arguments, `todo` opens the dashboard. With task text, it adds a task and exits:
 

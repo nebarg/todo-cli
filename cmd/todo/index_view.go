@@ -8,17 +8,17 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func priorityStyle(priority string) lipgloss.Style {
+func priorityStyle(p priority) lipgloss.Style {
 	color := colorMuted
-	switch priority {
-	case "high":
+	switch p {
+	case priorityHigh:
 		color = colorHigh
-	case "medium":
+	case priorityMedium:
 		color = colorMedium
-	case "low":
+	case priorityLow:
 		color = colorLow
 	}
-	return lipgloss.NewStyle().Bold(priority != "").Foreground(color)
+	return lipgloss.NewStyle().Bold(p != priorityNone).Foreground(color)
 }
 
 func indexColumn(value string, width int) string {

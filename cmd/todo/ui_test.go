@@ -154,7 +154,7 @@ func TestTaskDetailsShownOnDetailPage(t *testing.T) {
 }
 
 func TestTaskRowsKeepTitlesAlignedAndShowDetails(t *testing.T) {
-	for priority, foreground := range map[string]string{
+	for priority, foreground := range map[priority]string{
 		"high": "240;119;119", "medium": "244;162;97", "low": "244;211;94",
 	} {
 		selected := renderTaskRow(task{text: "Highlighted title", priority: priority, details: "Extra context"}, 30, true)
@@ -406,7 +406,7 @@ func TestChangingCategoryKeepsTaskSelected(t *testing.T) {
 	m.enterSelectedGroup()
 	opened, _ := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
 	m = opened.(model)
-	if m.inputMode != "category" {
+	if !m.categoryInput {
 		t.Fatal("c did not open category editing")
 	}
 	if got := m.input.Prompt; got != "Category: " {
@@ -416,7 +416,7 @@ func TestChangingCategoryKeepsTaskSelected(t *testing.T) {
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(model)
 	selected, ok := m.selectedTask()
-	if m.inputMode != "" || !ok || selected.text != "Fix login" || taskLabel(selected) != "backend" {
+	if m.categoryInput || !ok || selected.text != "Fix login" || taskLabel(selected) != "backend" {
 		t.Fatalf("relabel lost selection: %+v", m.generalRows())
 	}
 }
@@ -430,7 +430,7 @@ func TestLabelInputBlocksSpaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, _ := m.startInput("category")
+	opened, _ := m.startCategoryInput()
 	m = opened.(model)
 	m.input.SetValue("a")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
@@ -463,7 +463,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.enterSelectedGroup()
-	opened, _ := m.startTaskModal("add-general")
+	opened, _ := m.startTaskModal(modalAddGeneral)
 	m = opened.(model)
 	if m.modal.addLabel != "auth" {
 		t.Fatal("add form did not inherit selected label")
@@ -476,7 +476,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	}
 	m.focus = branchPane
 	m.enterSelectedGroup()
-	opened, _ = m.startTaskModal("add-branch")
+	opened, _ = m.startTaskModal(modalAddBranch)
 	m = opened.(model)
 	if m.modal.addBranch != "feature/login" {
 		t.Fatalf("add form chose %q instead of selected branch", m.modal.addBranch)
@@ -487,7 +487,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	if m.branchFilter != "feature/login" || len(m.branchRows()) != 2 || m.branchRows()[1].todo.text != "New branch task" {
 		t.Fatalf("new task was not added to branch: %+v", m.branchRows())
 	}
-	opened, _ = m.startTaskModal("add-branch")
+	opened, _ = m.startTaskModal(modalAddBranch)
 	m = opened.(model)
 	if m.modal.addLabel != "" {
 		t.Fatal("branch add form unexpectedly inherited a category")
@@ -566,7 +566,7 @@ func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 	m.branchCursor = 0 // feature/a is selected; main is the current Git branch.
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(model)
-	if m.modal == nil || m.modal.mode != "add-branch" || m.modal.addBranch != "main" {
+	if m.modal == nil || m.modal.mode != modalAddBranch || m.modal.addBranch != "main" {
 		t.Fatalf("a did not target the current branch from the branch list: %+v", m.modal)
 	}
 	m.modal.title.SetValue("First main task")
@@ -593,7 +593,7 @@ func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 	m.focus = generalPane
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
 	m = updated.(model)
-	if m.modal == nil || m.modal.mode != "add-branch" || m.modal.addBranch != "main" {
+	if m.modal == nil || m.modal.mode != modalAddBranch || m.modal.addBranch != "main" {
 		t.Fatalf("b no longer explicitly targets the current Git branch: %+v", m.modal)
 	}
 }
@@ -670,7 +670,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	m = updated.(model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(model)
-	if m.modal == nil || m.modal.mode != "add-branch" || m.modal.scope.Value() != "feature/new" {
+	if m.modal == nil || m.modal.mode != modalAddBranch || m.modal.scope.Value() != "feature/new" {
 		t.Fatalf("branch form did not prefill the current Git branch: %+v", m.modal)
 	}
 	m.modal.resize(56, 16)
@@ -702,7 +702,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	m.indexMode = true
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
 	m = updated.(model)
-	if m.modal == nil || m.modal.mode != "add-branch" || m.modal.scope.Value() != "feature/new" {
+	if m.modal == nil || m.modal.mode != modalAddBranch || m.modal.scope.Value() != "feature/new" {
 		t.Fatal("All Tasks did not use the current Git branch")
 	}
 	m.modal.title.SetValue("Task from All tasks")
@@ -720,7 +720,7 @@ func TestAddFormAcceptsSymbolCategory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, _ := m.startTaskModal("add-general")
+	opened, _ := m.startTaskModal(modalAddGeneral)
 	m = opened.(model)
 	m.modal.title.SetValue("Version task")
 	m.modal.scope.SetValue("+v1")
@@ -739,7 +739,7 @@ func TestBranchPickerSearchAndSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, _ := m.startTaskModal("add-branch")
+	opened, _ := m.startTaskModal(modalAddBranch)
 	m = opened.(model)
 	m.modal.title.SetValue("Check auth")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
@@ -781,7 +781,7 @@ func TestBranchPickerSearchAndSelection(t *testing.T) {
 	if m.modal != nil || !ok || selected.branch != "fix/auth" {
 		t.Fatalf("task was not saved under the selected branch: %+v", selected)
 	}
-	opened, _ = m.startTaskModal("add-branch")
+	opened, _ = m.startTaskModal(modalAddBranch)
 	m = opened.(model)
 	m.modal.scope.SetValue("main")
 	m.modal.resetBranchCursor()
@@ -794,6 +794,66 @@ func TestBranchPickerSearchAndSelection(t *testing.T) {
 	}
 }
 
+func TestBranchCreatedAfterStartupIsNotMissing(t *testing.T) {
+	dir := t.TempDir()
+	project := testGitProject(t, dir, "main")
+	m, err := newModel(filepath.Join(dir, "todo.md"), project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitOutput(dir, "branch", "feature/new"); err != nil {
+		t.Fatal(err)
+	}
+	opened, _ := m.startTaskModal(modalAddBranch)
+	m = opened.(model)
+	m.modal.title.SetValue("Late branch task")
+	m.modal.scope.SetValue("new")
+	m.modal.resetBranchCursor()
+	if got := m.modal.matchingBranches(); len(got) != 1 || got[0] != "feature/new" {
+		t.Fatalf("branch search used a stale branch list: %v", got)
+	}
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	m = updated.(model)
+	if m.modal != nil {
+		t.Fatalf("save failed: %s", m.modal.err)
+	}
+	m.branchFilter = ""
+	if rows := m.branchRows(); len(rows) != 1 || rows[0].name != "feature/new" || rows[0].missingGitBranch {
+		t.Fatalf("new branch was marked missing: %+v", rows)
+	}
+}
+
+func TestEditModalRefreshesBranchState(t *testing.T) {
+	dir := t.TempDir()
+	project := testGitProject(t, dir, "main", "feature/x")
+	path := filepath.Join(dir, "todo.md")
+	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/x\n\n- [ ] Branch task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.focus = branchPane
+	m.branchFilter = "feature/x"
+	if _, err := gitOutput(dir, "branch", "-D", "feature/x"); err != nil {
+		t.Fatal(err)
+	}
+	opened, _ := m.startTaskModal(modalEdit)
+	m = opened.(model)
+	if m.modal != nil || m.status != missingBranchStatus {
+		t.Fatalf("edit opened for a branch deleted after startup: status %q", m.status)
+	}
+	if _, err := gitOutput(dir, "branch", "feature/x"); err != nil {
+		t.Fatal(err)
+	}
+	opened, _ = m.startTaskModal(modalEdit)
+	m = opened.(model)
+	if m.modal == nil || m.branchMissing("feature/x") {
+		t.Fatalf("edit stayed blocked after the branch was restored: status %q", m.status)
+	}
+}
+
 func TestBranchPickerRejectsDeletedBranch(t *testing.T) {
 	dir := t.TempDir()
 	project := testGitProject(t, dir, "main", "feature/old")
@@ -802,7 +862,7 @@ func TestBranchPickerRejectsDeletedBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, _ := m.startTaskModal("add-branch")
+	opened, _ := m.startTaskModal(modalAddBranch)
 	m = opened.(model)
 	m.modal.title.SetValue("Do not save")
 	m.modal.scope.SetValue("feature/old")
@@ -826,7 +886,7 @@ func TestBranchPickerFitsCompactAndRegularModals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, _ := m.startTaskModal("add-branch")
+	opened, _ := m.startTaskModal(modalAddBranch)
 	m = opened.(model)
 	m.modal.scope.SetValue("")
 	m.modal.branchCursor = 0
@@ -1195,7 +1255,10 @@ func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, item := range []struct{ sort, want string }{
+	for _, item := range []struct {
+		sort sortOrder
+		want string
+	}{
 		{"priority", "General open,Auth open,Branch open first,Branch open second,General done,Auth done,Branch done"},
 		{"branch", "Branch open first,Branch open second,Branch done,Auth open,Auth done,General open,General done"},
 		{"category", "Auth open,Auth done,Branch open first,Branch open second,Branch done,General open,General done"},
@@ -1315,10 +1378,10 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
 	m = updated.(model)
-	if m.inputMode != "category" || m.indexSort != "priority" {
+	if !m.categoryInput || m.indexSort != "priority" {
 		t.Fatal("c should edit the selected task's category without changing sort")
 	}
-	for priority, want := range map[string]color.Color{"high": colorHigh, "medium": colorMedium, "low": colorLow} {
+	for priority, want := range map[priority]color.Color{"high": colorHigh, "medium": colorMedium, "low": colorLow} {
 		if got := priorityStyle(priority).GetForeground(); got != want {
 			t.Errorf("%s priority color = %v, want %v", priority, got, want)
 		}
@@ -1355,7 +1418,7 @@ func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 	if !ok || selected.text != "Bare" || selected.priority != "medium" {
 		t.Fatalf("second p selected %+v", selected)
 	}
-	for _, want := range []string{"low", "", "high"} {
+	for _, want := range []priority{priorityLow, priorityNone, priorityHigh} {
 		updated, _ = m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
 		m = updated.(model)
 		selected, ok = m.selectedTask()
@@ -1434,7 +1497,7 @@ func TestPriorityChangeKeepsCategoryTaskWithDetailsSelected(t *testing.T) {
 	}
 	m.enterSelectedGroup()
 	m.generalCursor = 1
-	for _, want := range []string{"", "high", "medium", "low"} {
+	for _, want := range []priority{priorityNone, priorityHigh, priorityMedium, priorityLow} {
 		updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
 		m = updated.(model)
 		selected, ok := m.selectedTask()
