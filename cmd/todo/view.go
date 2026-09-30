@@ -189,7 +189,7 @@ func (m *model) footerHints() []keyHint {
 	index := keyHint{"i", "all tasks"}
 	switch {
 	case m.indexMode:
-		return []keyHint{{"d", "done"}, {"e", "edit"}, {"p", "priority"}, {"s", "sort"}, {"c", "category"}, {"b", "branch task"}, back, reload}
+		return []keyHint{{"d", "done"}, {"e", "edit"}, {"p", "priority"}, {"s", "sort"}, {"c", "category"}, {"a", "add"}, {"b", "branch task"}, back, reload}
 	case m.focus == detailPane && m.viewingMissingBranch():
 		return []keyHint{back}
 	case m.viewingMissingBranch():

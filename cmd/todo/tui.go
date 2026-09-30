@@ -811,6 +811,8 @@ func (m *model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.cyclePriority()
 	case "c":
 		return m.startCategoryInput()
+	case "a":
+		return m.startTaskModal(modalAddGeneral)
 	case "b":
 		return m.startTaskModal(modalAddBranch)
 	case "space", "d":

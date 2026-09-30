@@ -275,6 +275,19 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	if m.indexMode || m.branchFilter != "feature/index" {
 		t.Fatalf("branch add from All tasks did not open the new section: %q", m.branchFilter)
 	}
+	m.indexMode, m.focus, m.generalCategory = true, generalPane, "newarea"
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m = updated.(*model)
+	if m.modal == nil || m.modal.mode != modalAddGeneral || m.modal.scope.Value() != "" {
+		t.Fatal("a in All tasks did not open an uncategorised general add form")
+	}
+	m.modal.title.SetValue("General from All tasks")
+	m.modal.scope.SetValue("docs")
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	m = updated.(*model)
+	if selected, ok := m.selectedTask(); m.modal != nil || m.indexMode || m.generalCategory != "docs" || !ok || selected.Text != "General from All tasks" {
+		t.Fatalf("general add from All tasks did not open the new task: category %q, %+v", m.generalCategory, selected)
+	}
 }
 
 func TestAddFormAcceptsSymbolCategory(t *testing.T) {

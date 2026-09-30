@@ -47,7 +47,7 @@ const (
 
 func (m *model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
 	modal := &taskModal{mode: mode, project: m.project}
-	if mode == modalAddGeneral && m.activePane() == generalPane {
+	if mode == modalAddGeneral && !m.indexMode && m.activePane() == generalPane {
 		modal.targetCategory = m.generalCategory
 	}
 	if mode == modalAddBranch {
@@ -128,6 +128,7 @@ func (m *model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		moved := modal.mode == modalEdit && !m.indexMode && (modal.targetBranch != modal.selected.Branch ||
 			!strings.EqualFold(modal.targetCategory, modal.selected.Category))
 		if (modal.mode == modalAddGeneral || moved) && !modal.branchScope() {
+			m.indexMode = false
 			m.focus = generalPane
 			m.generalCategory = modal.targetCategory
 			if modal.targetCategory != "" {
