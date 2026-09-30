@@ -28,8 +28,11 @@ func clearModel(t *testing.T) (*model, string) {
 
 func press(m *model, key string) *model {
 	msg := tea.KeyPressMsg{Code: []rune(key)[0], Text: key}
-	if key == "esc" {
+	switch key {
+	case "esc":
 		msg = tea.KeyPressMsg{Code: tea.KeyEsc}
+	case "enter":
+		msg = tea.KeyPressMsg{Code: tea.KeyEnter}
 	}
 	updated, _ := m.Update(msg)
 	return updated.(*model)

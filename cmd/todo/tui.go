@@ -107,7 +107,7 @@ func newModel(file string, project projectContext) (*model, error) {
 	if err := m.reload(); err != nil {
 		return nil, err
 	}
-	m.preselectCurrentBranch()
+	m.openCurrentBranch()
 	return m, nil
 }
 
@@ -247,11 +247,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.detailScroll = 0
 		case "1":
-			m.focus = generalPane
-			m.detailScroll = 0
+			m.jumpToTab(generalPane)
 		case "2":
-			m.focus = branchPane
-			m.detailScroll = 0
+			m.jumpToTab(branchPane)
 		case "3":
 			m.focus = sourcePane
 			m.detailScroll = 0
@@ -314,11 +312,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.enterSelectedGroup() {
 				return m.startTaskModal(modalEdit)
 			}
-		case "v":
-			m.focus = branchPane
-			m.branchFilter = ""
-			m.branchCursor = m.branchRootCursor
-			m.status = ""
 		case "r":
 			m.project = currentProject()
 			if err := m.reload(); err != nil {

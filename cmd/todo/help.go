@@ -21,7 +21,6 @@ var (
 		{"→ enter", "open"},
 		{"← esc", "back"},
 		{"i", "all tasks"},
-		{"v", "branch list"},
 	}}
 	helpTasks = helpSection{"Tasks", []keyHint{
 		{"d space", "toggle done"},

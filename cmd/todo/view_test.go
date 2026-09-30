@@ -208,6 +208,7 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 	if strings.Contains(general, "General") || !regexp.MustCompile(`▸ Docs +1/2 │`).MatchString(general) {
 		t.Fatalf("general list = %s", general)
 	}
+	m.branchFilter = ""
 	branches := ansi.Strip(m.renderNavigationPane(m.branchRows(), 0, branchPane, 60, 20))
 	if strings.Contains(branches, "Branches") || !regexp.MustCompile(`▸ main  current +1/2 │`).MatchString(branches) {
 		t.Fatalf("branch list = %s", branches)

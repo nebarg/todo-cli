@@ -166,19 +166,14 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: '2', Text: "2"})
 	m = updated.(*model)
-	branches := m.branchRows()
-	if len(branches) != 2 || branches[m.branchCursor].name != "fix/api" {
-		t.Fatalf("current branch was not preselected: cursor %d rows %+v", m.branchCursor, branches)
-	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	m = updated.(*model)
 	if m.branchFilter != "fix/api" || len(m.branchRows()) != 1 || m.branchRows()[0].todo.Text != "Branch API" {
-		t.Fatalf("branch did not open: %+v", m.branchRows())
+		t.Fatalf("current branch did not open on startup: %+v", m.branchRows())
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
 	m = updated.(*model)
-	if m.branchFilter != "" || m.branchCursor != 1 {
-		t.Fatal("left arrow did not return to selected branch")
+	branches := m.branchRows()
+	if m.branchFilter != "" || len(branches) != 2 || branches[m.branchCursor].name != "fix/api" {
+		t.Fatalf("left arrow did not return to the current branch row: cursor %d rows %+v", m.branchCursor, branches)
 	}
 	m.branchFilter = "feature/login"
 	m.branchCursor = 0
@@ -320,5 +315,85 @@ func TestEnteringBranchRechecksIt(t *testing.T) {
 	m = updated.(*model)
 	if selected, ok := m.selectedTask(); !ok || !selected.Done {
 		t.Fatalf("d did not complete the task on a restored branch: status %q", m.status)
+	}
+}
+
+func TestPressingATabAgainReturnsToItsTopLevel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "# auth\n\n- [ ] Login task\n\n# Branches\n\n## feature/login\n\n- [ ] Branch login\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = press(m, "enter")
+	m = press(m, "2")
+	m = press(m, "enter")
+	m = press(m, "1")
+	if m.focus != generalPane || m.generalCategory != "auth" {
+		t.Fatalf("switching to General left @auth: focus %v, category %q", m.focus, m.generalCategory)
+	}
+	m = press(m, "1")
+	if m.generalCategory != "" || m.branchFilter != "feature/login" {
+		t.Fatalf("1 again: category %q, branch %q", m.generalCategory, m.branchFilter)
+	}
+	m = press(m, "1")
+	if m.focus != generalPane || m.generalCategory != "" {
+		t.Fatal("1 at the top of General changed the view")
+	}
+	m = press(m, "2")
+	if m.focus != branchPane || m.branchFilter != "feature/login" {
+		t.Fatalf("switching to Branches left the branch: %q", m.branchFilter)
+	}
+	m = press(m, "2")
+	if m.branchFilter != "" {
+		t.Fatal("2 again did not return to the branch list")
+	}
+}
+
+func TestTwoTogglesBetweenBranchListAndCurrentBranch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "- [ ] General task\n\n# Branches\n\n## feature/other\n\n- [ ] Other task\n\n## main\n\n- [ ] Main task\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{branch: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.focus != generalPane || m.branchFilter != "main" {
+		t.Fatalf("startup: focus %v, branch %q", m.focus, m.branchFilter)
+	}
+	steps := []struct{ key, branch string }{
+		{"2", "main"},
+		{"2", ""},
+		{"1", ""},
+		{"2", ""},
+		{"2", "main"},
+		{"esc", ""},
+		{"k", ""},
+		{"enter", "feature/other"},
+		{"1", "feature/other"},
+		{"2", "feature/other"},
+		{"2", ""},
+	}
+	for i, step := range steps {
+		m = press(m, step.key)
+		if m.branchFilter != step.branch {
+			t.Fatalf("step %d (%s): branch %q, want %q", i, step.key, m.branchFilter, step.branch)
+		}
+	}
+	if rows := m.branchRows(); rows[m.branchCursor].name != "feature/other" {
+		t.Fatal("leaving a branch lost its row")
+	}
+
+	m, err = newModel(path, projectContext{branch: "fix/none"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m = press(press(m, "2"), "2"); m.branchFilter != "" || m.focus != branchPane {
+		t.Fatalf("branch without tasks opened %q", m.branchFilter)
 	}
 }

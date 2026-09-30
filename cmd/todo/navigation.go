@@ -200,10 +200,7 @@ func (m *model) enterSelectedGroup() bool {
 		m.generalCategory = row.name
 		m.generalCursor = 0
 	case rowBranch:
-		m.branchRootCursor = m.branchCursor
-		m.branchFilter = row.name
-		m.branchCursor = 0
-		m.recheckBranch(row.name)
+		m.openBranch(m.branchCursor, row.name)
 	default:
 		return false
 	}
@@ -212,35 +209,58 @@ func (m *model) enterSelectedGroup() bool {
 	return true
 }
 
-func (m *model) leaveGroup() bool {
+// jumpToTab focuses a tab, or leaves its opened category or branch when it
+// already has focus. At the top of Branches it opens the current branch.
+func (m *model) jumpToTab(p pane) {
+	switch {
+	case m.focus != p:
+		m.focus = p
+		m.detailScroll = 0
+	case p == branchPane && m.branchFilter == "":
+		m.openCurrentBranch()
+	default:
+		m.leaveGroup()
+	}
+}
+
+func (m *model) openBranch(rootCursor int, name string) {
+	m.branchRootCursor = rootCursor
+	m.branchFilter = name
+	m.branchCursor = 0
+	m.recheckBranch(name)
+}
+
+func (m *model) leaveGroup() {
 	switch m.focus {
 	case generalPane:
 		if m.generalCategory == "" {
-			return false
+			return
 		}
 		m.generalCategory = ""
 		m.generalCursor = m.generalRootCursor
 	case branchPane:
 		if m.branchFilter == "" {
-			return false
+			return
 		}
 		m.branchFilter = ""
 		m.branchCursor = m.branchRootCursor
 	default:
-		return false
+		return
 	}
 	m.detailScroll = 0
 	m.status = ""
-	return true
 }
 
-func (m *model) preselectCurrentBranch() {
+// openCurrentBranch opens the current Git branch's tasks, if it has any.
+func (m *model) openCurrentBranch() {
 	if m.project.branch == "" || m.branchFilter != "" {
 		return
 	}
 	for i, row := range m.branchRows() {
 		if row.name == m.project.branch {
-			m.branchCursor = i
+			m.openBranch(i, row.name)
+			m.detailScroll = 0
+			m.status = ""
 			return
 		}
 	}

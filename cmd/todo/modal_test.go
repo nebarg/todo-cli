@@ -61,10 +61,10 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	if len(m.branchRows()) != 3 || m.branchRows()[m.branchCursor].todo.Text != "Another branch task" {
 		t.Fatalf("new task was not added inside branch: %+v", m.branchRows())
 	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: '2', Text: "2"})
 	m = updated.(*model)
 	if m.branchFilter != "" || m.branchRows()[m.branchCursor].name != "feature/login" {
-		t.Fatal("v did not return to the branch list")
+		t.Fatal("2 did not return to the branch list")
 	}
 }
 
@@ -173,6 +173,7 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.focus = branchPane
+	m.leaveGroup()
 	if _, err := gitOutput(repo, "symbolic-ref", "HEAD", "refs/heads/feature/new"); err != nil {
 		t.Fatal(err)
 	}
