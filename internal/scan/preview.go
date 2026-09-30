@@ -12,15 +12,16 @@ type ContextLine struct {
 	Text   string
 }
 
-// ReadContext returns the lines surrounding line in the file at path.
-func ReadContext(path string, line int) ([]ContextLine, error) {
+// ReadContext returns up to radius lines either side of line in the file at
+// path.
+func ReadContext(path string, line, radius int) ([]ContextLine, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }() // Read-only, so a close error cannot lose data.
-	start := max(line-4, 1)
-	end := line + 4
+	start := max(line-radius, 1)
+	end := line + radius
 	var result []ContextLine
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)

@@ -92,7 +92,7 @@ func TestInactiveTabsShareTheBarBackground(t *testing.T) {
 
 func TestScanErrorVisibleInDetails(t *testing.T) {
 	m := &model{focus: sourcePane, sourceError: "permission denied"}
-	got := strings.Join(m.sourceDetails(60), "\n")
+	got := strings.Join(m.sourceDetails(60, 20), "\n")
 	if !strings.Contains(got, "permission denied") {
 		t.Fatalf("scan error missing from detail pane: %s", got)
 	}
@@ -449,5 +449,37 @@ func TestFilesListShowsTheTodoBeforeItsFile(t *testing.T) {
 		if got := truncatePath(long, c.width); got != c.want {
 			t.Errorf("truncatePath(%d) = %q, want %q", c.width, got, c.want)
 		}
+	}
+}
+
+func TestFileTodoDetailsFillThePageAroundTheTodo(t *testing.T) {
+	var preview []scan.ContextLine
+	for n := 1; n <= 60; n++ {
+		preview = append(preview, scan.ContextLine{Number: n, Text: fmt.Sprintf("\tline %d", n)})
+	}
+	preview[29].Text = "// todo00000000000 this is urgent " + strings.Repeat("x", 80)
+	item := scan.Match{Path: "classes copy/Clients.class.php", Line: 30, Note: "this is urgent", Level: "00000000000"}
+	m := &model{focus: detailPane, detailFrom: sourcePane, source: []scan.Match{item},
+		preview: preview, previewPath: item.Path, previewLine: item.Line}
+	lines := m.sourceDetails(60, 12)
+	plain := make([]string, len(lines))
+	for i, line := range lines {
+		plain[i] = ansi.Strip(line)
+		if ansi.StringWidth(line) > 60 {
+			t.Fatalf("line %d is wider than the page: %q", i, plain[i])
+		}
+	}
+	if plain[0] != "0x9+ this is urgent" || plain[1] != "" || len(lines) != 12 {
+		t.Fatalf("details = %q", plain)
+	}
+	if got := strings.Join(plain, "\n"); strings.Contains(got, item.Path) {
+		t.Fatalf("details repeat the path from the status bar:\n%s", got)
+	}
+	if plain[2] != "  26 │     line 26" || !strings.HasPrefix(plain[6], "  30 │ // todo") || !strings.HasSuffix(strings.TrimRight(plain[6], " "), "…") || plain[11] != "  35 │     line 35" {
+		t.Fatalf("context is not centred on the TODO, or wrapped:\n%s", strings.Join(plain, "\n"))
+	}
+	m.source[0].Line, m.previewLine, preview[1].Text = 2, 2, "// TODO near the top"
+	if lines := m.sourceDetails(60, 12); !strings.HasPrefix(ansi.Strip(lines[2]), "   1 │") {
+		t.Fatalf("a TODO near the top of the file did not start at line 1: %q", ansi.Strip(lines[2]))
 	}
 }

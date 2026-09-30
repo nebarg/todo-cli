@@ -132,6 +132,10 @@ func (m *model) scanCmd() tea.Cmd {
 	}
 }
 
+// previewRadius is how many lines either side of a file TODO are read, enough
+// to fill the detail page of a tall terminal.
+const previewRadius = 40
+
 func (m *model) previewCmd() tea.Cmd {
 	selected, ok := m.selectedSource()
 	if !ok {
@@ -139,7 +143,7 @@ func (m *model) previewCmd() tea.Cmd {
 	}
 	path := filepath.Join(m.scanDir(), selected.Path)
 	return func() tea.Msg {
-		lines, err := scan.ReadContext(path, selected.Line)
+		lines, err := scan.ReadContext(path, selected.Line, previewRadius)
 		return sourcePreviewMsg{path: selected.Path, line: selected.Line, lines: lines, err: err}
 	}
 }

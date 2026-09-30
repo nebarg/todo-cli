@@ -150,7 +150,7 @@ The file stays readable without the app. When the app writes a task, it re-sorts
 
 `todo scan [directory]` lists case-insensitive `TODO` and `@todo` comments with their file and line. A marker counts when it starts the comment, as in `// TODO fix`, or is followed by `:` or `(` anywhere in it, so `* @return todo` doesn't match. [todo-system markers](#todo-system-syntax) count anywhere in a comment.
 
-The dashboard's Files tab shows the same results, up to 1,000 matches, with the comment text first and a shortened path beside it. The status bar shows the full path of the highlighted TODO.
+The dashboard's Files tab shows the same results, up to 1,000 matches, with the comment text first and a shortened path beside it. The status bar shows the full path of the highlighted TODO. `→` opens a detail page with the TODO's text and as much of the surrounding code as fits, and `e` opens the file in your editor.
 
 - Scanning covers the working directory and below, and uses ripgrep (`rg`) if it's installed.
 - It skips gitignored, hidden, binary and Markdown files. `todo -all-files scan` includes them, apart from binaries.

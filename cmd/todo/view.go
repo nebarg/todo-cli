@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -521,10 +522,18 @@ func (m *model) renderSourcePane(width, height int) string {
 	return m.renderPanel(width, height, lines)
 }
 
-// renderSourceRow shows a file TODO's level, its text, and where it is.
-// Levels of zeros must be cleared first, so they are red; other levels are
-// yellow, and a TODO without one has a dim dot. A levelWidth of 0 means no
-// row has a level, so the column is left out.
+// levelMark is a file TODO's level label and colour: red for levels of
+// zeros, yellow for the rest, and a dim dot without a level.
+func levelMark(level string) (string, lipgloss.Style) {
+	switch {
+	case level == "":
+		return "·", mutedStyle
+	case strings.Trim(level, "0") == "":
+		return levelLabel(level), lipgloss.NewStyle().Foreground(colorHigh)
+	}
+	return levelLabel(level), lipgloss.NewStyle().Foreground(colorMedium)
+}
+
 // levelLabel keeps a level short: four or more zeros are written as 0x4 up
 // to 0x9, and 0x9+ for anything longer; the list still sorts by the real
 // count.
@@ -538,16 +547,12 @@ func levelLabel(level string) string {
 	return fmt.Sprintf("0x%d", len(level))
 }
 
+// renderSourceRow shows a file TODO's level, its text, and where it is.
+// A levelWidth of 0 means no row has a level, so the column is left out.
 func renderSourceRow(item scan.Match, width, levelWidth int, selected bool) string {
-	level, levelStyle := "·", mutedStyle
-	switch {
-	case levelWidth == 0:
+	level, levelStyle := levelMark(item.Level)
+	if levelWidth == 0 {
 		level = ""
-	case item.Level == "":
-	case strings.Trim(item.Level, "0") == "":
-		level, levelStyle = levelLabel(item.Level), lipgloss.NewStyle().Foreground(colorHigh)
-	default:
-		level, levelStyle = item.Level, lipgloss.NewStyle().Foreground(colorMedium)
 	}
 	if levelWidth > 0 {
 		level += strings.Repeat(" ", levelWidth-ansi.StringWidth(level)+1)
@@ -584,7 +589,7 @@ func (m *model) renderDetailPane(width, height int) string {
 	innerWidth := max(1, width-4)
 	lines := []string{renderBreadcrumb(m.breadcrumb(detailPane), "", innerWidth), ""}
 	if m.activePane() == sourcePane {
-		lines = append(lines, m.sourceDetails(innerWidth)...)
+		lines = append(lines, m.sourceDetails(innerWidth, m.panelContentHeight(height)-len(lines))...)
 	} else if row, ok := m.selectedNavigationRow(); ok && row.kind != rowTask {
 		lines = append(lines, m.groupDetails(row, innerWidth)...)
 	} else {
@@ -633,32 +638,50 @@ func (m *model) taskDetails(width int) []string {
 	return wrapLines(result, width)
 }
 
-func (m *model) sourceDetails(width int) []string {
+// sourceDetails shows a file TODO's text, then as much of the file around
+// it as fits in height. The status bar names the file, so it isn't repeated.
+func (m *model) sourceDetails(width, height int) []string {
 	item, ok := m.selectedSource()
 	if !ok {
 		if m.sourceError != "" {
-			return wrapLines([]string{"", "Scan failed", m.sourceError, "", "Press r to try again"}, width)
+			return wrapLines([]string{"Scan failed", m.sourceError, "", "Press r to try again"}, width)
 		}
-		return []string{"", mutedStyle.Render("No file TODO selected.")}
+		return []string{mutedStyle.Render("No file TODO selected.")}
 	}
-	result := []string{"", mutedStyle.Render("FILE TODO"), item.Path + ":" + fmt.Sprint(item.Line),
-		"", cleanDisplay(item.Text), "", mutedStyle.Render("CONTEXT")}
+	title := taskTitleStyle.Render(cleanDisplay(item.Note))
+	if item.Level != "" {
+		label, style := levelMark(item.Level)
+		title = style.Bold(true).Render(label) + " " + title
+	}
+	result := append(wrapLines([]string{title}, width), "")
 	switch {
 	case m.previewPath != item.Path || m.previewLine != item.Line:
-		result = append(result, mutedStyle.Render("Loading preview…"))
+		return append(result, mutedStyle.Render("Loading preview…"))
 	case m.previewError != "":
-		result = append(result, mutedStyle.Render(m.previewError))
-	default:
-		for _, line := range m.preview {
-			prefix := fmt.Sprintf("%4d │ ", line.Number)
-			row := prefix + cleanDisplay(line.Text)
-			if line.Number == item.Line {
-				row = selectedStyle.Render(ansi.Truncate(row, width, "…"))
-			}
-			result = append(result, row)
-		}
+		return append(result, wrapLines([]string{mutedStyle.Render(m.previewError)}, width)...)
 	}
-	return wrapLines(result, width)
+	return append(result, contextWindow(m.preview, item.Line, width, height-len(result))...)
+}
+
+// contextWindow shows the source lines that fit in height, centred on the
+// TODO's line where the file allows. Long lines are cut rather than wrapped,
+// so the line numbers stay in one column.
+func contextWindow(lines []scan.ContextLine, target, width, height int) []string {
+	at := slices.IndexFunc(lines, func(line scan.ContextLine) bool { return line.Number == target })
+	height = max(1, height)
+	end := min(len(lines), max(0, at-(height-1)/2)+height)
+	start := max(0, end-height)
+	var result []string
+	for _, line := range lines[start:end] {
+		gutter := fmt.Sprintf("%4d │ ", line.Number)
+		text := ansi.Truncate(cleanDisplay(strings.ReplaceAll(line.Text, "\t", "    ")), max(1, width-ansi.StringWidth(gutter)), "…")
+		if line.Number == target {
+			result = append(result, selectedStyle.Width(width).Render(gutter+text))
+			continue
+		}
+		result = append(result, mutedStyle.Render(gutter)+text)
+	}
+	return result
 }
 
 func wrapLines(lines []string, width int) []string {
