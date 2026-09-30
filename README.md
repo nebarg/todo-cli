@@ -1,25 +1,20 @@
 # todo-cli
 
-A small Markdown-backed TODO app with a full-width terminal task list.
+A small TODO app that keeps your tasks in a Markdown file, with a terminal dashboard for working through them.
 
-It looks best in a terminal using a [Nerd Font](https://www.nerdfonts.com/): the Git and branch icons come from it, and without one they show as empty boxes.
+Use a terminal with a [Nerd Font](https://www.nerdfonts.com/) for the Git and branch icons; without one they show as empty boxes.
 
-## Build and run
-
-```sh
-go build ./cmd/todo
-./todo
-```
-
-Or install it straight onto your `PATH` (in `$(go env GOPATH)/bin`):
+## Install
 
 ```sh
 go install github.com/nebarg/todo-cli/cmd/todo@latest
 ```
 
-During development, run these from the repository root: `go run ./cmd/todo`, `go test ./...`, and `go tool golangci-lint run ./...` for linting (the linter is pinned in `go.mod`, configured in `.golangci.yml`).
+Or build from a checkout with `go build ./cmd/todo`.
 
-With no arguments, `todo` opens the dashboard. With task text, it adds a task and exits:
+## Command line
+
+With no arguments, `todo` opens the dashboard. With text, it adds a task and exits:
 
 ```sh
 todo Test login failures
@@ -27,45 +22,94 @@ todo -p high @tests Fix flaky login test
 todo -b Fix the bug on this branch
 ```
 
-Run `todo clear-done` to remove every done task, with its details, and list what was removed. Inside a Git repository it also deletes any branch section whose local Git branch no longer exists, including its open tasks. A category or branch heading left with nothing under it is removed too; a heading with its own notes stays.
+| Option | Effect |
+| --- | --- |
+| `-p` / `-priority high\|medium\|low` | Set the priority. A trailing `'!high'` in the text does the same; quote it, as shells treat `!` as history expansion |
+| `@category` as the first word | File the task under a category. `-c` / `-category` does the same; use one or the other |
+| `-b` / `-branch` | Add to the current Git branch |
+| `-branch-name feature/login` | Add to another local Git branch |
+| `-file path/to/tasks.md` | Use another task file, for the dashboard too |
 
-Flags go before the task text. `-p` accepts `high`, `medium`, or `low`; ending the task text with `'!high'` does the same (quote it, since most shells treat an unquoted `!` as history expansion). Start the task text with `@category` to file it under a category (for example `todo @boundary Fix the thing`); only the first word counts, so an `@` later in the title stays part of it. `-c` or `-category` does the same as a flag; use one or the other, not both. Categories can contain any characters except whitespace, so names such as `+v1` and `bug-fix` work. An optional leading `@` or `#` is treated as a prefix. `-b` puts the task under the current Git branch. Use `-branch-name feature/login` to choose an existing local Git branch explicitly. `todo add scan` adds a task literally named “scan”.
+Flags go before the task text. `todo add scan` adds a task literally named “scan”.
 
-Inside a Git repository, the default file is `todo.md` at the repository root. Outside Git, it is `todo.md` in the current directory. Use `-file path/to/tasks.md` to choose another file. The file is created when you add the first task.
+Other commands:
+
+- `todo clear-done` removes every done task and lists what went. Inside a Git repository it also deletes branch sections whose local branch no longer exists, open tasks included.
+- `todo scan [directory]` lists TODO comments in source files. See [TODOs in source files](#todos-in-source-files).
+
+The task file is `todo.md` at the repository root, or in the current directory outside Git. It's created when you add the first task.
 
 ## Dashboard
 
-The dashboard shows one full-width list at a time. Press `1`, `2`, or `3` to switch between **General**, **Git Branches**, and **Files**, and each tab returns to where you left it. Press `1` again to leave an opened category; press `2` again to switch between the branch list and the current branch’s tasks; `tab` and `shift+tab` cycle between them. General shows only tasks outside branch sections: its `▸ category` rows open to show matching category tasks, followed by a blank line and the generic tasks. Git Branches lists every branch with TODOs, with the current branch marked *current* in green; when the current branch has tasks, the tab opens on them at startup. Category and branch rows show their completed/total count right-aligned. A saved TODO group whose local Git branch no longer exists shows `⚠ branch-name  missing`, in red with *missing* in italics; its tasks remain visible but read only, and inside the branch, the status bar explains that the branch no longer exists. Opening a branch re-checks that its Git branch still exists, so the warning and read-only lock are current while you view its tasks; press `r` to refresh every branch's status in the list. Open a branch to see its tasks directly; a breadcrumb such as `General › @Docs  1/2` shows where you are and that group's completed/total count. Press `←` or `esc` to go back one level. Tasks are not indented beneath categories. The top bar has the tabs on the left and the repository and current Git branch on the right, marked with a Git icon (needs a Nerd Font); on narrow terminals the repository name, then the branch, give way to the tabs. Each tab shows its completed/total count (Files shows the number of matches, or `…` while scanning). Open tasks with a priority have a filled `●` coloured red (high), yellow (medium), or cyan (low); an empty grey `○` means no priority. The `?` help lists the same legend. Completed tasks have a dim `✓`, so titles stay aligned. A `⋯` at the right edge of a row means the task has more details. The footer lists the most useful keys for the selected row, dropping the least important ones on narrow terminals; press `?` for every key.
+### Tabs
 
-Press `i` for a full-screen list of every task in the Markdown file. Each row starts with the task and its details; the last column shows its category or branch. A branch has a `` (Nerd Font branch) icon, while a category has an `@` prefix. Priority colours the task's `○` as in the dashboard; completed tasks are dim. The list starts in priority order when the dashboard opens or reloads. Press `s` to cycle through priority, branch, and category sorting. Press `p` to change a selected task's priority, `c` to edit its category, `a` to add a general task, or `b` to add a branch task; after saving, the dashboard opens with the new task selected. Completed tasks sort after open tasks: at the end of the whole list in priority order, or at the end of their branch, category, or general group in the other orders. The General and Branches panes also keep completed tasks at the end of each task group. Tasks without a category or branch come after named groups when sorting by category or branch. File TODOs from source scanning are not included in this Markdown task list.
+- **1 General**: tasks outside branch sections. `▸ category` rows open to show that category's tasks; uncategorised tasks follow.
+- **2 Branches**: every branch with tasks. At startup it opens on the current branch's tasks, if it has any.
+- **3 Files**: TODO comments found in source files. Scanning runs in the background, and these are read only.
 
-Press `X` to clear done tasks from where you are: an opened category or branch, the whole General or Branches tab at its top level, or every task in the full-screen list. Branches whose Git branch no longer exists are deleted outright, open tasks included: inside one, `X` deletes that branch, and the Branches tab and full-screen list delete every missing branch along with the done tasks. The footer offers `X` only when there is something to clear, for example `X clear 3 done + 1 missing`. A dialog says what goes, names the missing branches, and lists any category or branch headings left empty, which are removed too; only `y` removes them, and any other key cancels. Afterwards, `u` undoes the clear until the file next changes; if it was changed outside the app in the meantime, the undo is refused rather than overwriting that change.
+Each tab returns to where you left it. Press `1` again to leave an opened category, and `2` again to switch between the branch list and the current branch. `←` or `esc` goes back one level.
 
-A status bar along the bottom of the General and Branches panels describes the highlighted row: a task's status and priority (for example `Open  ·  ● High priority`), or how many of a category's or branch's tasks are done. Press `→` on a task to open a full-width detail page with its title and description; the same status bar sits at the bottom. Press `←` or `esc` to return to the same list position. For a file TODO, the detail page shows nearby source lines. File scanning starts in the background when the dashboard opens, so task navigation remains available while the scan runs. Source matches are read only.
+A branch whose local Git branch has been deleted shows as `⚠ branch-name  missing` in red. Its tasks stay visible but read only. Opening a branch re-checks it; `r` re-checks them all.
+
+### Reading the list
+
+- `●` in red, yellow or cyan: high, medium or low priority. `○`: no priority.
+- `✓`: done. Done tasks sit at the end of each group.
+- `⋯` at the end of a row: the task has details. Press `→` to read them.
+- Counts such as `1/2` are done/total, for tabs, categories and branches. Files shows its number of matches, or `…` while scanning.
+- The status bar under the list describes the highlighted row, and the footer shows the main keys for it.
+
+The list keeps rows still while you work, so cycling `p` doesn't make a row jump. It re-sorts when it opens and when you press `r`.
+
+### All tasks
+
+Press `i` for a full-screen list of every Markdown task, with its category (`@auth`) or branch in the last column. `s` cycles between priority, branch and category order, and `i`, `esc` or `←` returns to the dashboard. The task keys work here too, with `enter` opening the edit form.
+
+### Adding and editing
+
+`a` adds a task where you are:
+
+- in General, a general task, or one in the opened category
+- in Branches, to the opened branch, or the current Git branch at the top level
+- in Files or All tasks, a general task
+
+`b` adds to the current Git branch from anywhere, or to the opened branch.
+
+In the form:
+
+- `tab` / `shift+tab` move between Task, Category or Branch, and Details.
+- `enter` adds a new line in Task or Details, `ctrl+enter` saves, and `esc` cancels.
+- A trailing `!high` in the title sets the priority.
+- The Branch field suggests local Git branches as you type. You can only pick a branch that exists.
+- When editing, changing the category or branch moves the task. A heading left empty is removed.
+
+`c` changes just the category of a general task, without the form.
+
+### Clearing done tasks
+
+`X` clears done tasks from where you are: the opened category or branch, the whole tab, or everything in the All tasks view. Missing branches go too, open tasks included. Inside a missing branch, `X` deletes that branch.
+
+A dialog shows what will be removed, including headings left empty. Only `y` goes ahead. Afterwards `u` undoes it, until the file next changes.
+
+### Keys
 
 | Key | Action |
 | --- | --- |
-| `tab` / `shift+tab` | Cycle between lists |
-| `1` / `2` / `3` | Show General / Git Branches / Files; press `1` again to leave an opened category, and `2` again to switch between the branch list and the current branch |
-| `i` | Open the full-screen Markdown task list; press `i`, `esc`, or `←` to return |
-| `s` in the full-screen list | Cycle priority / branch / category sorting |
-| `↑` / `↓`, `d` / `space`, `e` / `enter` in the full-screen list | Move, complete or reopen, edit a task |
-| `enter` / `→` on a category or branch | Open its matching tasks |
-| `←` inside a category or branch | Return to its list |
-| `→` on a task, `←` or `esc` in details | Open the detail page / return to the task list |
-| `a` | Add to General (including from the full-screen list), an opened category, the current Git branch from the branch list, or an opened branch |
-| `b` | Add a branch task from any pane |
-| `d` or `space` | Complete or reopen a selected Markdown task |
-| `e` or `enter` on a task | Open the edit form for a Markdown task; open a file TODO in your editor |
-| `p` / `c` | Cycle priority / edit the category on a Markdown task |
-| `X` | Clear done tasks and missing branches from the opened category or branch, the current tab, or the full-screen list, after confirming with `y`; inside a missing branch, delete it |
-| `u` | Undo the last clear |
-| `enter` on a file TODO | Open that file at the line in `$VISUAL` or `$EDITOR` |
-| `r` | Reload Markdown and Git branches, and rescan source files |
-| `?` | Show all keys; any key closes it |
-| `q` or `ctrl+c` | Quit |
+| `1` `2` `3`, `tab` / `shift+tab` | Switch tab |
+| `↑` `↓` / `j` `k` | Move |
+| `→` | Open a category or branch, or a task's details |
+| `←` / `esc` | Back |
+| `i` | All tasks (`s` to change the sort) |
+| `a` / `b` | Add a task / add a branch task |
+| `e` / `enter` | Edit a task, or open a file TODO in your editor. `enter` also opens a category or branch |
+| `d` / `space` | Mark done or reopen |
+| `p` / `c` | Cycle priority / change category |
+| `X` / `u` | Clear done / undo the clear |
+| `r` | Reload the file and Git branches, and rescan files |
+| `?` | Help |
+| `q` / `ctrl+c` | Quit |
 
-The add form starts with a full-width, two-line task input, followed by a shorter **Category** or **Branch** field and **Details**. The heading is a breadcrumb such as `General › New task`. Category or Branch and Details have captions above their inputs; the focused field has a yellow bar beside it and its caption turns yellow. Save errors replace the key hints at the bottom of the form. Use `tab` or `↓` to move through fields, `shift+tab` or `↑` to move back, `ctrl+enter` to save, and `esc` to cancel. `Enter` adds a line in Task or Details; Task lines are joined into one Markdown checklist title when saved. Category is optional; type an existing category or a new one to create its Markdown heading. Branch is required for a branch task. The Branch field searches local Git branches as you type and shows two matches at a time, with a scroll indicator when more are available. `↑` and `↓` cycle through matches, wrapping at either end; `enter` or `tab` accepts the highlighted branch, and `shift+tab` returns to Task. Typing replaces the prefilled current branch. Saving creates a Markdown branch section if needed, but only for a Git branch that still exists locally. The edit form has the same fields as the add form, and its breadcrumb shows where the task is now, e.g. `General › @auth › Edit task`. Change Category to move a general task to another category (clear it to make the task generic), or pick another local branch to move a branch task; the list follows the task to its new place, and a heading left empty by the move is removed. `c` from a task list still changes a category without opening the form. The app adds the Markdown indentation for details. Pressing `a` at the General root adds a generic task, even if a category row is selected. Open a category first to prefill its category. In the Git Branches list, `a` uses the current Git branch when the form opens, even if another branch is highlighted. Inside a branch’s task list, `a` and `b` use that branch. Elsewhere, `b` opens the branch add form with the current Git branch. Category editing uses a one-line prompt with `enter` to save; clearing it makes the task generic. Spaces are ignored in the category input, including pasted spaces. File TODOs open at the selected line in Vim, Neovim, VS Code, Codium, or Cursor; other editors open the file normally. VS Code-style editors use `--wait` so the dashboard reloads when editing finishes.
+File TODOs open in `$VISUAL`, then `$EDITOR`, falling back to `vi`. Vim, Neovim, VS Code, Codium and Cursor open at the TODO's line. When the editor exits, the Files tab rescans.
 
 ## Markdown format
 
@@ -86,12 +130,33 @@ The add form starts with a full-width, two-line task input, followed by a shorte
 - [ ] Fix the flaky login test
 ```
 
-Tasks before the first heading are generic. The app writes categories as `# Category`; when reading an external file, any non-branch heading defines a category. `# Branches` contains `## branch-name` headings, with tasks directly below each branch. The full-screen list includes all of them. A non-branch task has at most one category; categories can be entered as `auth`, `@auth`, or `#auth`, and the dashboard shows them as `@auth`. New categories can use punctuation and symbols but cannot contain whitespace; `Branches` is reserved. Existing categories in older files remain readable and can be renamed. Indent description paragraphs, lists, or code blocks by two spaces beneath a task; they appear on the detail page. Priority is a trailing `!high`, `!medium`, or `!low` at the end of the task line; the dashboard shows it as a coloured `●` rather than as part of the title. Only a final `!word` that names a priority counts, so titles such as `Ship it!` or `Fix !important CSS` are left alone. Typing a trailing `!high` in the add or edit form's Task field sets the priority. An older `- Priority: High` line under a task is no longer read as a priority; it shows as part of the description. Indented checkboxes are treated as part of the description, not separate tasks. Bare list items such as `- Buy milk` are readable and become `- [ ] Buy milk` when edited. The file stays readable without the app: whenever the app writes a task, it re-sorts that task's section (the general list, one category, or one branch) so open tasks run high, medium, low, then no priority, with done tasks at the bottom. Each task moves with its details, tasks of equal priority keep your order, and other sections, notes above a section's first task, and nested headings are left alone. A section written as a compact list without blank lines stays compact. The dashboard itself keeps rows still while you work, so cycling `p` does not make the row jump; it re-sorts when it opens and when you press `r`. Categories come only from Markdown headings; an old `- Labels:` line under a task is treated as part of its description. Other Markdown is preserved when tasks are changed.
+- **Sections:** tasks before the first heading are general. `## branch-name` headings under `# Branches` are branch sections, and headings nested inside a branch stay part of it. Any other heading is a category.
+- **Categories** can't contain spaces, and `Branches` is reserved. `auth`, `@auth` and `#auth` all mean the same category.
+- **Details** are everything under a task until the next task or heading: paragraphs, lists, code, even indented checkboxes. The app writes them indented by two spaces.
+- **Priority** is a trailing `!high`, `!medium` or `!low`. Only a last word that names a priority counts, so `Ship it!` and `Fix !important CSS` stay as they are. Old `- Priority:` and `- Labels:` lines now read as details.
+- **Plain list items** such as `- Buy milk` are read as tasks, and become `- [ ] Buy milk` when edited.
+
+The file stays readable without the app. When the app writes a task, it re-sorts that task's section: open tasks high, medium, low, then no priority, with done tasks last.
+
+- Tasks move with their details, and tasks of equal priority keep your order.
+- Notes above the first task and nested headings stay put, as do other sections.
+- A compact list without blank lines stays compact.
+- All other Markdown is preserved.
 
 ## TODOs in source files
 
-Run `todo scan [directory]` for a plain list with filename and line number. The dashboard shows the same results automatically, limited to the first 1,000 matches. Scanning starts at the repository root by default. It uses ripgrep (`rg`) when available and falls back to a built-in parallel scanner otherwise.
+`todo scan [directory]` lists case-insensitive `TODO` and `@todo` comments with their file and line. The dashboard's Files tab shows the same results, up to 1,000 matches.
 
-The search finds case-insensitive `TODO` and `@todo` markers in common code comment forms. It skips hidden, ignored, and binary files. Markdown files are excluded so the task file and documentation do not appear as code TODOs. The built-in scanner uses Git's tracked and unignored file list when inside a repository; elsewhere it skips hidden files and common dependency/build directories.
+- Scanning starts at the repository root and uses ripgrep (`rg`) if it's installed.
+- It skips hidden, ignored, binary and Markdown files.
+- `todo -all-files scan` includes Markdown and ignored or hidden text files. `.git` is always skipped.
 
-Use `todo -all-files scan [directory]` to include Markdown and normally ignored or hidden text files. Git's internal `.git` directory stays excluded.
+## Development
+
+```sh
+go run ./cmd/todo
+go test ./...
+go tool golangci-lint run ./...
+```
+
+The linter version is pinned in `go.mod` and configured in `.golangci.yml`.
