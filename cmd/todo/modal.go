@@ -213,10 +213,10 @@ func (m *model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	modal.err = ""
 	var cmd tea.Cmd
-	switch {
-	case modal.field == titleField:
+	switch modal.field {
+	case titleField:
 		modal.title, cmd = modal.title.Update(msg)
-	case modal.field == scopeField:
+	case scopeField:
 		if !modal.branchScope() {
 			if msg.Code == tea.KeySpace {
 				return m, nil
@@ -240,10 +240,10 @@ func (m *model) updateTaskModalPaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 	modal := m.modal
 	modal.err = ""
 	var cmd tea.Cmd
-	switch {
-	case modal.field == titleField:
+	switch modal.field {
+	case titleField:
 		modal.title, cmd = modal.title.Update(msg)
-	case modal.field == scopeField:
+	case scopeField:
 		if !modal.branchScope() {
 			msg.Content = stripCategorySpaces(msg.Content)
 		} else if modal.branchFresh {

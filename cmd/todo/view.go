@@ -51,6 +51,9 @@ func (m *model) View() tea.View {
 		modalWidth, modalHeight := m.modal.dimensions(width, height)
 		content = overlay(content, m.modal.render(modalWidth, modalHeight), width, height)
 	}
+	if m.confirmClear != nil {
+		content = overlay(content, m.confirmClear.render(), width, height)
+	}
 	if m.helpOpen {
 		content = overlay(content, renderHelp(), width, height)
 	}
@@ -184,16 +187,26 @@ func renderHints(hints []keyHint) string {
 }
 
 func (m *model) footerHints() []keyHint {
+	hints := m.contextHints()
+	if m.lastClear != nil {
+		hints = append([]keyHint{{"u", "undo clear"}}, hints...)
+	}
+	return hints
+}
+
+func (m *model) contextHints() []keyHint {
 	back := keyHint{"←", "back"}
 	reload := keyHint{"r", "reload"}
 	index := keyHint{"i", "all tasks"}
 	switch {
 	case m.indexMode:
-		return []keyHint{{"d", "done"}, {"e", "edit"}, {"p", "priority"}, {"s", "sort"}, {"c", "category"}, {"a", "add"}, {"b", "branch task"}, back, reload}
+		hints := []keyHint{{"d", "done"}, {"e", "edit"}, {"p", "priority"}, {"s", "sort"}, {"c", "category"}, {"a", "add"}, {"b", "branch task"}}
+		return append(append(hints, m.clearHint()...), back, reload)
 	case m.focus == detailPane && m.viewingMissingBranch():
 		return []keyHint{back}
 	case m.viewingMissingBranch():
-		return []keyHint{back, {"a", "add"}, {"→", "details"}, index, reload}
+		hints := []keyHint{back, {"a", "add"}, {"→", "details"}}
+		return append(append(hints, m.clearHint()...), index, reload)
 	case m.focus == detailPane && m.activePane() == sourcePane:
 		return []keyHint{back, {"e", "open file"}}
 	case m.focus == detailPane && m.activePane() == branchPane:
@@ -208,7 +221,7 @@ func (m *model) footerHints() []keyHint {
 		if m.focus == generalPane {
 			hints = append(hints, keyHint{"b", "branch task"})
 		}
-		return append(hints, index, reload)
+		return append(append(hints, m.clearHint()...), index, reload)
 	}
 	hints := []keyHint{{"d", "done"}, {"e", "edit"}, {"p", "priority"}}
 	if m.focus == generalPane {
@@ -221,7 +234,8 @@ func (m *model) footerHints() []keyHint {
 	if len(m.breadcrumb(m.focus)) > 1 {
 		hints = append(hints, back)
 	}
-	return append(hints, keyHint{"→", "details"}, index, reload)
+	hints = append(hints, keyHint{"→", "details"})
+	return append(append(hints, m.clearHint()...), index, reload)
 }
 
 // viewingMissingBranch is true inside a branch whose Git branch is gone, where
@@ -251,15 +265,15 @@ func (m *model) breadcrumb(kind pane) []string {
 
 func renderBreadcrumb(parts []string, suffix string, width int) string {
 	last := len(parts) - 1
-	line := ""
+	var line strings.Builder
 	for _, part := range parts[:last] {
-		line += mutedStyle.Render(part + " › ")
+		line.WriteString(mutedStyle.Render(part + " › "))
 	}
-	line += titleStyle.Render(parts[last])
+	line.WriteString(titleStyle.Render(parts[last]))
 	if suffix != "" {
-		line += mutedStyle.Render("  " + suffix)
+		line.WriteString(mutedStyle.Render("  " + suffix))
 	}
-	return ansi.Truncate(line, width, "…")
+	return ansi.Truncate(line.String(), width, "…")
 }
 
 func (m *model) panelStyle(width, height int) lipgloss.Style {

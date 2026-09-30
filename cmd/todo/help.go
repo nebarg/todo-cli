@@ -32,7 +32,7 @@ var (
 		{"b", "add branch task"},
 		{"s", "sort all tasks"},
 	}}
-	helpApp = []keyHint{{"r", "reload"}, {"?", "help"}, {"q", "quit"}}
+	helpApp = []keyHint{{"X", "clear done"}, {"r", "reload"}, {"?", "help"}, {"q", "quit"}}
 )
 
 func renderHelp() string {

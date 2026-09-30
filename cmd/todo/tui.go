@@ -91,6 +91,8 @@ type model struct {
 	editTask              store.Task
 	modal                 *taskModal
 	helpOpen              bool
+	confirmClear          *clearConfirmation
+	lastClear             *store.Removal
 	status                string
 	width                 int
 	height                int
@@ -207,6 +209,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.helpOpen = false
 			return m, nil
 		}
+		if m.confirmClear != nil {
+			return m.updateClearConfirmation(msg)
+		}
 		if m.modal != nil {
 			return m.updateTaskModal(msg)
 		}
@@ -298,6 +303,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cyclePriority()
 		case "space", "d":
 			m.toggleSelected()
+		case "X":
+			m.startClearDone()
+		case "u":
+			m.undoClear()
 		case "enter":
 			if m.activePane() == sourcePane {
 				return m, m.openSource()
@@ -592,7 +601,10 @@ func (m *model) refresh() error {
 	return m.readTasks(false)
 }
 
+// readTasks also drops any pending undo of a clear: whatever caused the
+// reload may have changed the file since.
 func (m *model) readTasks(sortByPriority bool) error {
+	m.lastClear = nil
 	previous, hadSelection := m.selectedTask()
 	previousTasks := m.allTasks
 	tasks, err := store.Load(m.file)
@@ -817,6 +829,10 @@ func (m *model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.startTaskModal(modalAddBranch)
 	case "space", "d":
 		m.toggleSelected()
+	case "X":
+		m.startClearDone()
+	case "u":
+		m.undoClear()
 	case "enter", "e":
 		return m.startTaskModal(modalEdit)
 	case "r":

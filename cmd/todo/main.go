@@ -3,8 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -23,7 +25,7 @@ func main() {
 	flag.StringVar(categoryFlag, "c", "", "shorthand for -category")
 	flag.BoolVar(onBranch, "b", false, "shorthand for -branch")
 	flag.Usage = func() {
-		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags] [@category] [task text]\n\nFlags:\n", os.Args[0])
+		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags] [@category] [task text]\n       %s [-file path] clear-done\n\nFlags:\n", os.Args[0], os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -57,6 +59,17 @@ func main() {
 		}
 		for _, match := range matches {
 			fmt.Printf("%s:%d: %s\n", match.Path, match.Line, match.Text)
+		}
+		return
+	}
+
+	if len(args) > 0 && args[0] == "clear-done" {
+		if len(args) > 1 || *priorityFlag != "" || *categoryFlag != "" || *onBranch || *branchName != "" || *allFiles {
+			fmt.Fprintln(os.Stderr, "usage: todo [-file path] clear-done")
+			os.Exit(2)
+		}
+		if err := clearDone(os.Stdout, file, missingBranches(project)); err != nil {
+			fail(err)
 		}
 		return
 	}
@@ -115,6 +128,58 @@ func main() {
 	}
 	if _, err := tea.NewProgram(m).Run(); err != nil {
 		fail(err)
+	}
+}
+
+// clearDone removes every done task from file, and every task of a branch
+// missing from Git, with any headings left empty, and lists what went.
+func clearDone(out io.Writer, file string, missing func(string) bool) error {
+	tasks, err := store.Load(file)
+	if err != nil {
+		return err
+	}
+	targets := pickClearTargets(tasks, missing)
+	if len(targets.tasks) == 0 {
+		_, err := fmt.Fprintf(out, "No done tasks in %s\n", file)
+		return err
+	}
+	removal, err := store.PlanRemove(file, targets.tasks)
+	if err != nil {
+		return err
+	}
+	if err := removal.Apply(); err != nil {
+		return err
+	}
+	var report strings.Builder
+	fmt.Fprintf(&report, "Removed %s from %s:\n", targets.summary(), file)
+	for _, t := range slices.Backward(removal.Tasks) {
+		fmt.Fprintf(&report, "  %s\n", t.Text)
+	}
+	if len(targets.branches) > 0 {
+		fmt.Fprintf(&report, "Deleted branches missing from Git: %s\n", strings.Join(targets.branches, ", "))
+	}
+	var headings []string
+	for _, category := range removal.Categories {
+		headings = append(headings, "@"+category)
+	}
+	for _, branch := range removal.Branches {
+		if !slices.Contains(targets.branches, branch) {
+			headings = append(headings, branch)
+		}
+	}
+	if len(headings) > 0 {
+		fmt.Fprintf(&report, "Removed empty headings: %s\n", strings.Join(headings, ", "))
+	}
+	_, err = io.WriteString(out, report.String())
+	return err
+}
+
+// missingBranches reports branches Git no longer has; without Git to ask,
+// nothing counts as missing.
+func missingBranches(project projectContext) func(string) bool {
+	branches, _, verified := project.localBranchState()
+	return func(branch string) bool {
+		return verified && branch != "" && !slices.Contains(branches, branch)
 	}
 }
 
