@@ -2,8 +2,10 @@ package main
 
 import (
 	"image/color"
+	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Nerd Font glyphs: the Octicons branch and the Git logo.
@@ -23,6 +25,7 @@ var (
 	colorSelection    color.Color
 	colorBar          color.Color
 	colorModal        color.Color
+	colorField        color.Color
 	colorGreen        color.Color
 	colorGit          color.Color
 	colorPurple       color.Color
@@ -56,6 +59,7 @@ func applyTheme(dark bool) {
 	colorSelection = hex("#C3DAFE", "#2457A6")
 	colorBar = hex("#E2E8F0", "#17253A")
 	colorModal = hex("#F7FAFC", "#111E2F")
+	colorField = hex("#E6ECF3", "#1D2C42")
 	colorGreen = hex("#2F855A", "#80C99B")
 	colorGit = hex("#C2410C", "#F05032")
 	colorPurple = hex("#6B46C1", "#B7A4EB")
@@ -71,4 +75,14 @@ func applyTheme(dark bool) {
 	statusBarStyle = lipgloss.NewStyle().Foreground(colorHigh).Background(colorBar)
 	statusStyle = lipgloss.NewStyle().Foreground(colorStrong)
 	keyStyle = lipgloss.NewStyle().Bold(true).Foreground(colorFocus)
+}
+
+// onBackground paints s onto bg. Nested styles end with a full reset, which
+// would otherwise let the terminal background show through the rest of the
+// line, so bg is re-applied after every reset.
+func onBackground(s string, bg color.Color) string {
+	seq := ansi.NewStyle().BackgroundColor(bg).String()
+	s = strings.ReplaceAll(s, "\x1b[m", "\x1b[m"+seq)
+	s = strings.ReplaceAll(s, "\x1b[0m", "\x1b[0m"+seq)
+	return seq + strings.ReplaceAll(s, "\x1b[49m", seq)
 }

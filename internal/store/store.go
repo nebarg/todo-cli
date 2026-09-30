@@ -129,21 +129,12 @@ func taskIndent(raw string) string {
 // creates the file or section if needed.
 func Add(path, title, details string, p Priority, category, branch string) error {
 	title = strings.TrimSpace(title)
-	branch = strings.TrimSpace(branch)
 	if title == "" || strings.ContainsAny(title, "\r\n") {
 		return errors.New("enter a single-line task")
 	}
-	if strings.ContainsAny(branch, "\r\n") {
-		return errors.New("branch name must be one line")
-	}
-	if category != "" {
-		category = NormalizeCategory(category)
-		if err := validateCategory(category); err != nil {
-			return err
-		}
-	}
-	if branch != "" && category != "" {
-		return errors.New("branch tasks cannot have a category")
+	category, branch, err := validScope(category, branch)
+	if err != nil {
+		return err
 	}
 	data, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -183,15 +174,75 @@ func formattedDetails(details string) []string {
 	return result
 }
 
-// Edit replaces the title and details of selected, keeping its metadata.
-func Edit(path string, selected Task, title, details string) error {
+// Edit replaces the title and details of selected, keeping its metadata, and
+// files it under category or branch (not both). A task that keeps its section
+// is edited in place.
+func Edit(path string, selected Task, title, details, category, branch string) error {
 	title = strings.TrimSpace(title)
 	if title == "" || strings.ContainsAny(title, "\r\n") {
 		return errors.New("enter a single-line task title")
 	}
+	category, branch, err := validScope(category, branch)
+	if err != nil {
+		return err
+	}
 	return rewriteTask(path, selected, func(lines []string) string {
-		return strings.Join(editedTaskLines(lines, selected, title, details), "\n")
+		if branch == selected.Branch && strings.EqualFold(category, selected.Category) {
+			return strings.Join(editedTaskLines(lines, selected, title, details), "\n")
+		}
+		return movedTaskLines(lines, selected, taskBlock(selected, title, details), category, branch)
 	})
+}
+
+// validScope normalises a task's destination section; a blank category is
+// the general list.
+func validScope(category, branch string) (string, string, error) {
+	branch = strings.TrimSpace(branch)
+	if strings.ContainsAny(branch, "\r\n") {
+		return "", "", errors.New("branch name must be one line")
+	}
+	if strings.TrimSpace(category) == "" {
+		return "", branch, nil
+	}
+	category = NormalizeCategory(category)
+	if err := validateCategory(category); err != nil {
+		return "", "", err
+	}
+	if branch != "" {
+		return "", "", errors.New("branch tasks cannot have a category")
+	}
+	return category, branch, nil
+}
+
+// taskBlock is selected's lines with a new title and details, keeping the
+// original details text when it has not changed.
+func taskBlock(selected Task, title, details string) []string {
+	block := []string{normalizedTaskLine(selected, title, selected.Done)}
+	block = append(block, selected.meta...)
+	if strings.Join(formattedDetails(details), "\n") == strings.Join(formattedDetails(selected.Details), "\n") {
+		body := append([]string(nil), selected.bodyRaw...)
+		for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
+			body = body[:len(body)-1]
+		}
+		return append(block, body...)
+	}
+	if body := formattedDetails(details); len(body) > 0 {
+		block = append(block, "")
+		block = append(block, body...)
+	}
+	return block
+}
+
+// movedTaskLines removes selected from lines, drops a heading it leaves empty,
+// and files block under category or branch.
+func movedTaskLines(lines []string, selected Task, block []string, category, branch string) string {
+	remaining := append([]string{}, lines[:selected.Line]...)
+	remaining = append(remaining, lines[selected.bodyEnd:]...)
+	remaining = removeEmptyCategoryHeading(remaining, selected)
+	if selected.Branch != "" && selected.Branch != branch {
+		remaining = removeEmptyBranchHeading(remaining, selected.Branch)
+	}
+	return insertTaskBlock(strings.Join(remaining, "\n"), block, branch, category)
 }
 
 func editedTaskLines(lines []string, selected Task, title, details string) []string {
@@ -536,28 +587,15 @@ func SetCategory(path string, selected Task, category string) error {
 	if selected.Branch != "" {
 		return errors.New("branch tasks do not have categories")
 	}
-	blank := strings.TrimSpace(category) == ""
-	category = NormalizeCategory(category)
-	if !blank {
-		if err := validateCategory(category); err != nil {
-			return err
-		}
+	category, _, err := validScope(category, "")
+	if err != nil {
+		return err
 	}
 	if strings.EqualFold(selected.Category, category) {
 		return nil
 	}
 	return rewriteTask(path, selected, func(lines []string) string {
-		block := []string{normalizedTaskLine(selected, selected.Text, selected.Done)}
-		block = append(block, selected.meta...)
-		body := append([]string(nil), selected.bodyRaw...)
-		for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
-			body = body[:len(body)-1]
-		}
-		block = append(block, body...)
-		remaining := append([]string{}, lines[:selected.Line]...)
-		remaining = append(remaining, lines[selected.bodyEnd:]...)
-		remaining = removeEmptyCategoryHeading(remaining, selected)
-		return insertTaskBlock(strings.Join(remaining, "\n"), block, selected.Branch, category)
+		return movedTaskLines(lines, selected, taskBlock(selected, selected.Text, selected.Details), category, "")
 	})
 }
 
@@ -581,6 +619,23 @@ func removeEmptyCategoryHeading(lines []string, selected Task) []string {
 		end++
 	}
 	return append(append([]string{}, lines[:start]...), lines[end:]...)
+}
+
+func removeEmptyBranchHeading(lines []string, branch string) []string {
+	start, end, level := findBranchesSection(lines)
+	if start < 0 {
+		return lines
+	}
+	branchStart, branchEnd := findBranchSection(lines, start, end, level, branch)
+	if branchStart < 0 {
+		return lines
+	}
+	for _, line := range lines[branchStart+1 : branchEnd] {
+		if strings.TrimSpace(line) != "" {
+			return lines
+		}
+	}
+	return append(append([]string{}, lines[:branchStart]...), lines[branchEnd:]...)
 }
 
 func replaceFile(path string, data []byte, mode os.FileMode) error {

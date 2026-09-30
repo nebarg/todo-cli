@@ -115,9 +115,9 @@ func TestIndexEditShowsTaskLocation(t *testing.T) {
 	}
 	m.indexMode = true
 	for _, item := range []struct{ task, location string }{
-		{"Plain task", "General task"},
-		{"Category task", "Category  @auth"},
-		{"Branch task", "Branch    " + branchIcon + " feature/ui"},
+		{"Plain task", "General › Edit task"},
+		{"Category task", "General › @auth › Edit task"},
+		{"Branch task", "Branches › " + branchIcon + " feature/ui › Edit task"},
 	} {
 		t.Run(item.task, func(t *testing.T) {
 			for i, task := range m.indexTasks() {
@@ -133,8 +133,9 @@ func TestIndexEditShowsTaskLocation(t *testing.T) {
 			}
 			for _, size := range [][2]int{{76, 20}, {54, 12}} {
 				m.modal.resize(size[0]+2, size[1]+4)
-				rendered := m.modal.render(size[0], size[1])
-				if !strings.Contains(ansi.Strip(rendered), item.location) || lipgloss.Width(rendered) != size[0] || lipgloss.Height(rendered) != size[1] {
+				width, height := m.modal.dimensions(size[0]+2, size[1]+4)
+				rendered := m.modal.render(width, height)
+				if !strings.Contains(ansi.Strip(rendered), item.location) || lipgloss.Width(rendered) != width || lipgloss.Height(rendered) != height {
 					t.Errorf("edit location missing or overflowing for %s at %dx%d: %s", item.task, size[0], size[1], ansi.Strip(rendered))
 				}
 			}

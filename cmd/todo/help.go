@@ -47,8 +47,8 @@ func renderHelp() string {
 	gap := strings.Repeat(" ", max(2, lipgloss.Width(body)-ansi.StringWidth(title)-ansi.StringWidth(closeHint)))
 	content := title + gap + closeHint + "\n\n" + body + "\n\n" + renderHints(helpApp)
 	return lipgloss.NewStyle().Padding(0, 2).
-		Border(lipgloss.RoundedBorder()).BorderForeground(colorFocus).
-		Background(colorModal).Render(content)
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorFocus).BorderBackground(colorModal).
+		Background(colorModal).Render(onBackground(content, colorModal))
 }
 
 func (s helpSection) render(keyWidth int) string {

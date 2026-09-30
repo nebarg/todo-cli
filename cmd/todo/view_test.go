@@ -299,6 +299,11 @@ func TestHelpOverlayOpensAndCloses(t *testing.T) {
 	if !m.helpOpen || !strings.Contains(ansi.Strip(view), "toggle done") || lipgloss.Width(view) != 56 || lipgloss.Height(view) != 16 {
 		t.Fatalf("help overlay did not open within the terminal: %s", ansi.Strip(view))
 	}
+	for line := range strings.SplitSeq(renderHelp(), "\n") {
+		if strings.Contains(line, "\x1b[m ") {
+			t.Fatalf("help lets the terminal background through after a reset: %q", line)
+		}
+	}
 	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	m = updated.(*model)
 	if m.helpOpen || cmd != nil {

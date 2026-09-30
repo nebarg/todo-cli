@@ -28,7 +28,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	m.enterSelectedGroup()
 	opened, _ := m.startTaskModal(modalAddGeneral)
 	m = opened.(*model)
-	if m.modal.addCategory != "auth" {
+	if m.modal.targetCategory != "auth" {
 		t.Fatal("add form did not inherit selected category")
 	}
 	m.modal.title.SetValue("New auth task")
@@ -41,8 +41,8 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	m.enterSelectedGroup()
 	opened, _ = m.startTaskModal(modalAddBranch)
 	m = opened.(*model)
-	if m.modal.addBranch != "feature/login" {
-		t.Fatalf("add form chose %q instead of selected branch", m.modal.addBranch)
+	if m.modal.targetBranch != "feature/login" {
+		t.Fatalf("add form chose %q instead of selected branch", m.modal.targetBranch)
 	}
 	m.modal.title.SetValue("New branch task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
@@ -52,7 +52,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	}
 	opened, _ = m.startTaskModal(modalAddBranch)
 	m = opened.(*model)
-	if m.modal.addCategory != "" {
+	if m.modal.targetCategory != "" {
 		t.Fatal("branch add form unexpectedly inherited a category")
 	}
 	m.modal.title.SetValue("Another branch task")
@@ -82,7 +82,7 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
-	if m.modal == nil || m.modal.addCategory != "" {
+	if m.modal == nil || m.modal.targetCategory != "" {
 		t.Fatalf("root add inherited selected category: %+v", m.modal)
 	}
 	m.modal.title.SetValue("General task")
@@ -101,7 +101,7 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
-	if m.modal == nil || m.modal.addCategory != "test" {
+	if m.modal == nil || m.modal.targetCategory != "test" {
 		t.Fatalf("category add did not inherit opened category: %+v", m.modal)
 	}
 	m.modal.title.SetValue("Another test task")
@@ -129,7 +129,7 @@ func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 	m.branchCursor = 0 // feature/a is selected; main is the current Git branch.
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
-	if m.modal == nil || m.modal.mode != modalAddBranch || m.modal.addBranch != "main" {
+	if m.modal == nil || m.modal.mode != modalAddBranch || m.modal.targetBranch != "main" {
 		t.Fatalf("a did not target the current branch from the branch list: %+v", m.modal)
 	}
 	m.modal.title.SetValue("First main task")
@@ -143,7 +143,7 @@ func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 	m.enterSelectedGroup()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
-	if m.modal == nil || m.modal.addBranch != "feature/a" {
+	if m.modal == nil || m.modal.targetBranch != "feature/a" {
 		t.Fatalf("a did not target the opened branch: %+v", m.modal)
 	}
 	m.modal.title.SetValue("Second feature task")
@@ -156,7 +156,7 @@ func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 	m.focus = generalPane
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
 	m = updated.(*model)
-	if m.modal == nil || m.modal.mode != modalAddBranch || m.modal.addBranch != "main" {
+	if m.modal == nil || m.modal.mode != modalAddBranch || m.modal.targetBranch != "main" {
 		t.Fatalf("b no longer explicitly targets the current Git branch: %+v", m.modal)
 	}
 }
@@ -178,7 +178,7 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
-	if m.modal == nil || m.modal.addBranch != "feature/new" || m.modal.scope.Value() != "feature/new" {
+	if m.modal == nil || m.modal.targetBranch != "feature/new" || m.modal.scope.Value() != "feature/new" {
 		t.Fatalf("branch list used a cached or selected branch: %+v", m.modal)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -186,7 +186,7 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 	m.branchFilter = "feature/old"
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
-	if m.modal == nil || m.modal.addBranch != "feature/old" {
+	if m.modal == nil || m.modal.targetBranch != "feature/old" {
 		t.Fatalf("opened branch did not override current Git branch: %+v", m.modal)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -194,7 +194,7 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 	m.indexMode = true
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
 	m = updated.(*model)
-	if m.modal == nil || m.modal.addBranch != "feature/new" {
+	if m.modal == nil || m.modal.targetBranch != "feature/new" {
 		t.Fatalf("All Tasks inherited a hidden branch filter: %+v", m.modal)
 	}
 }
@@ -497,7 +497,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if m.modal == nil || m.modal.field != 0 {
 		t.Fatal("add did not open the title field")
 	}
-	if help := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(help, "↑/↓/tab navigate · ctrl+enter save · esc cancel") || !strings.Contains(help, "Category") {
+	if help := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(help, "ctrl+enter save  esc cancel  tab next field") || !strings.Contains(help, "Category") {
 		t.Fatalf("add form has wrong labels or help: %s", help)
 	} else {
 		for line := range strings.SplitSeq(help, "\n") {
@@ -521,7 +521,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 			if lipgloss.Width(view) != size[0] || lipgloss.Height(view) != size[1] {
 				t.Errorf("modal size at %dx%d = %dx%d", size[0], size[1], lipgloss.Width(view), lipgloss.Height(view))
 			}
-			if !strings.Contains(ansi.Strip(view), "Add general task") {
+			if !strings.Contains(ansi.Strip(view), "General › New task") {
 				t.Error("modal heading missing")
 			}
 		})
@@ -542,7 +542,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if m.modal.field != 1 {
 		t.Fatal("down arrow did not focus category field")
 	}
-	if help := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(help, "↑/↓/tab navigate · ctrl+enter save · esc cancel") {
+	if help := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(help, "ctrl+enter save  esc cancel  tab next field") {
 		t.Fatalf("category help changed by focus: %s", help)
 	}
 	if rendered := m.modal.render(76, 20); !strings.Contains(rendered, titleStyle.Render("Category")) {
@@ -563,7 +563,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if m.modal.field != 2 {
 		t.Fatal("down arrow did not focus details")
 	}
-	if help := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(help, "↑/↓/tab navigate · ctrl+enter save · esc cancel") {
+	if help := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(help, "ctrl+enter save  esc cancel  tab next field") {
 		t.Fatalf("details help changed by focus: %s", help)
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: 'X', Text: "X"})
@@ -651,5 +651,170 @@ func TestModalDetailsFillRemainingHeight(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestOnBackgroundSurvivesNestedResets(t *testing.T) {
+	seq := ansi.NewStyle().BackgroundColor(colorModal).String()
+	got := onBackground(keyStyle.Render("esc")+" "+mutedStyle.Render("cancel"), colorModal)
+	if !strings.HasPrefix(got, seq) || strings.Count(got, "\x1b[m"+seq) != 2 {
+		t.Fatalf("background not restored after resets: %q", got)
+	}
+	if got := onBackground("a\x1b[49mb", colorModal); got != seq+"a"+seq+"b" {
+		t.Fatalf("default background not replaced: %q", got)
+	}
+}
+
+func TestTaskModalFieldsAndFocus(t *testing.T) {
+	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.width, m.height = 80, 24
+	opened, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m = opened.(*model)
+	focusedLine := func() string {
+		for line := range strings.SplitSeq(ansi.Strip(m.modal.render(76, 20)), "\n") {
+			if strings.Contains(line, "┃") {
+				return line
+			}
+		}
+		return ""
+	}
+	if line := focusedLine(); !strings.Contains(line, "What needs doing?") {
+		t.Fatalf("focus bar is not beside the task field: %q", line)
+	}
+	for line := range strings.SplitSeq(m.modal.render(76, 20), "\n") {
+		if strings.Contains(line, "\x1b[m ") {
+			t.Fatalf("modal line lets the terminal background through after a reset: %q", line)
+		}
+	}
+	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m = opened.(*model)
+	if line := focusedLine(); !strings.Contains(line, "Category") {
+		t.Fatalf("focus bar did not follow the category field: %q", line)
+	}
+	if got, want := m.modal.scope.Width(), 76-6; got != want {
+		t.Fatalf("category field width = %d, want the full %d", got, want)
+	}
+	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	m = opened.(*model)
+	plain := ansi.Strip(m.modal.render(76, 20))
+	lines := strings.Split(plain, "\n")
+	if m.modal.err == "" || !strings.Contains(lines[1], "General › New task") || !strings.Contains(lines[len(lines)-2], m.modal.err) || strings.Contains(plain, "ctrl+enter") {
+		t.Fatalf("error should replace the key hints and keep the heading: %s", plain)
+	}
+}
+
+func TestBranchFieldHintsDescribePicker(t *testing.T) {
+	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), projectContext{branch: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.width, m.height = 80, 24
+	opened, _ := m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
+	m = opened.(*model)
+	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m = opened.(*model)
+	if plain := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(plain, "Branches › New task") || !strings.Contains(plain, "↑↓ choose  tab accept") {
+		t.Fatalf("branch form heading or picker hints missing: %s", plain)
+	}
+}
+
+func TestEditFormMovesTaskToAnotherCategory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("# auth\n\n- [ ] Login task\n\n# docs\n\n- [ ] Write guide\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.width, m.height = 80, 24
+	m.generalCategory = "auth"
+	opened, _ := m.startTaskModal(modalEdit)
+	m = opened.(*model)
+	if m.modal.branchScope() || m.modal.scope.Value() != "auth" || !strings.Contains(ansi.Strip(m.modal.render(76, 20)), "Category") {
+		t.Fatalf("edit form did not offer the task's category: %q", m.modal.scope.Value())
+	}
+	m.modal.scope.SetValue("@docs")
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	m = updated.(*model)
+	if m.modal != nil {
+		t.Fatalf("save failed: %s", m.modal.err)
+	}
+	if selected, ok := m.selectedTask(); m.generalCategory != "docs" || !ok || selected.Text != "Login task" || selected.Category != "docs" {
+		t.Fatalf("view did not follow the moved task: category %q, selected %+v", m.generalCategory, selected)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "# auth") {
+		t.Fatalf("moving the last task left its heading behind: %s", data)
+	}
+	opened, _ = m.startTaskModal(modalEdit)
+	m = opened.(*model)
+	m.modal.scope.SetValue("")
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	m = updated.(*model)
+	if selected, ok := m.selectedTask(); m.modal != nil || m.generalCategory != "" || !ok || selected.Text != "Login task" || selected.Category != "" {
+		t.Fatalf("clearing the category did not move the task to General: %+v", selected)
+	}
+}
+
+func TestEditFormMovesTaskToAnotherBranch(t *testing.T) {
+	dir := t.TempDir()
+	project := testGitProject(t, dir, "main", "feature/a", "feature/b")
+	path := filepath.Join(dir, "todo.md")
+	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/a\n\n- [ ] Branch task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.width, m.height = 80, 24
+	m.focus, m.branchFilter = branchPane, "feature/a"
+	opened, _ := m.startTaskModal(modalEdit)
+	m = opened.(*model)
+	if !m.modal.branchScope() || m.modal.scope.Value() != "feature/a" || len(m.modal.branches) != 3 {
+		t.Fatalf("edit form did not offer the branch picker: %q %v", m.modal.scope.Value(), m.modal.branches)
+	}
+	m.modal.focusField(scopeField)
+	for _, r := range "b" {
+		updated, _ := m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		m = updated.(*model)
+	}
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	m = updated.(*model)
+	if m.modal != nil {
+		t.Fatalf("save failed: %s", m.modal.err)
+	}
+	if selected, ok := m.selectedTask(); m.branchFilter != "feature/b" || !ok || selected.Branch != "feature/b" {
+		t.Fatalf("view did not follow the task to its new branch: %q %+v", m.branchFilter, selected)
+	}
+}
+
+func TestEditFormKeepsBranchWithoutGit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/a\n\n- [ ] Branch task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.focus, m.branchFilter = branchPane, "feature/a"
+	opened, _ := m.startTaskModal(modalEdit)
+	m = opened.(*model)
+	m.modal.title.SetValue("Renamed branch task")
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	m = updated.(*model)
+	if m.modal != nil {
+		t.Fatalf("editing a branch task without Git failed: %s", m.modal.err)
+	}
+	if selected, ok := m.selectedTask(); !ok || selected.Text != "Renamed branch task" || selected.Branch != "feature/a" {
+		t.Fatalf("edit changed the task's branch: %+v", selected)
 	}
 }

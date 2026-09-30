@@ -24,32 +24,38 @@ const (
 )
 
 type taskModal struct {
-	mode         modalMode
-	selected     store.Task
-	project      projectContext
-	addBranch    string
-	addCategory  string
-	branches     []string
-	branchCursor int
-	branchFresh  bool
-	title        textarea.Model
-	scope        textinput.Model
-	details      textarea.Model
-	field        int // add: title, scope, details; edit: title, details
-	err          string
+	mode           modalMode
+	selected       store.Task
+	project        projectContext
+	targetBranch   string
+	targetCategory string
+	branches       []string
+	branchCursor   int
+	branchFresh    bool
+	title          textarea.Model
+	scope          textinput.Model
+	details        textarea.Model
+	field          int // titleField, scopeField or detailsField
+	err            string
 }
+
+const (
+	titleField = iota
+	scopeField
+	detailsField
+)
 
 func (m *model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
 	modal := &taskModal{mode: mode, project: m.project}
 	if mode == modalAddGeneral && m.activePane() == generalPane {
-		modal.addCategory = m.generalCategory
+		modal.targetCategory = m.generalCategory
 	}
 	if mode == modalAddBranch {
-		modal.branches, modal.addBranch = m.checkLocalBranches()
+		modal.branches, modal.targetBranch = m.checkLocalBranches()
 		if !m.indexMode && m.activePane() == branchPane && m.branchFilter != "" {
-			modal.addBranch = m.branchFilter
+			modal.targetBranch = m.branchFilter
 		}
-		if !slices.Contains(modal.branches, modal.addBranch) {
+		if !slices.Contains(modal.branches, modal.targetBranch) {
 			modal.branchCursor = -1
 		}
 	}
@@ -60,29 +66,32 @@ func (m *model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if selected.Branch != "" {
-			m.checkLocalBranches()
+			modal.branches, _ = m.checkLocalBranches()
 		}
 		if m.blockMissingBranch(selected) {
 			return m, nil
 		}
 		modal.selected = selected
+		modal.targetCategory, modal.targetBranch = selected.Category, selected.Branch
 	}
 	modal.title = textarea.New()
+	modal.title.SetStyles(fieldAreaStyles())
 	modal.title.Prompt = ""
 	modal.title.ShowLineNumbers = false
 	modal.title.Placeholder = "What needs doing?"
 	modal.title.SetHeight(2)
 	modal.scope = textinput.New()
+	modal.scope.SetStyles(fieldInputStyles())
 	modal.scope.Prompt = ""
-	switch mode {
-	case modalAddGeneral:
-		modal.scope.Placeholder = "Optional category"
-		modal.scope.SetValue(modal.addCategory)
-	case modalAddBranch:
+	if modal.branchScope() {
 		modal.scope.Placeholder = "Search local branches"
-		modal.scope.SetValue(modal.addBranch)
+		modal.scope.SetValue(modal.targetBranch)
+	} else {
+		modal.scope.Placeholder = "Optional category"
+		modal.scope.SetValue(modal.targetCategory)
 	}
 	modal.details = textarea.New()
+	modal.details.SetStyles(fieldAreaStyles())
 	modal.details.Prompt = ""
 	modal.details.ShowLineNumbers = false
 	modal.details.Placeholder = "Add context, steps, or links…"
@@ -110,42 +119,44 @@ func (m *model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			modal.err = errorStatus(err)
 			return m, nil
 		}
-		mode := modal.mode
 		m.modal = nil
 		if err := m.refresh(); err != nil {
 			m.status = err.Error()
 			return m, nil
 		}
-		if mode == modalAddGeneral {
+		// Follow a new task, or one moved to another section, to where it now lives.
+		moved := modal.mode == modalEdit && !m.indexMode && (modal.targetBranch != modal.selected.Branch ||
+			!strings.EqualFold(modal.targetCategory, modal.selected.Category))
+		if (modal.mode == modalAddGeneral || moved) && !modal.branchScope() {
 			m.focus = generalPane
-			m.generalCategory = modal.addCategory
-			if modal.addCategory != "" {
+			m.generalCategory = modal.targetCategory
+			if modal.targetCategory != "" {
 				root := *m
 				root.generalCategory = ""
 				for i, row := range root.generalRows() {
-					if row.kind == rowCategory && strings.EqualFold(row.name, modal.addCategory) {
+					if row.kind == rowCategory && strings.EqualFold(row.name, modal.targetCategory) {
 						m.generalRootCursor = i
 						break
 					}
 				}
 			}
 			for i, row := range m.generalRows() {
-				if row.kind == rowTask && row.todo.Branch == "" && row.todo.Text == modal.taskTitle() && strings.EqualFold(row.todo.Category, modal.addCategory) {
+				if row.kind == rowTask && row.todo.Branch == "" && row.todo.Text == modal.taskTitle() && strings.EqualFold(row.todo.Category, modal.targetCategory) {
 					m.generalCursor = i
 				}
 			}
-		} else if mode == modalAddBranch {
+		} else if modal.mode == modalAddBranch || moved {
 			m.indexMode = false
 			m.focus = branchPane
 			branchRoot := *m
 			branchRoot.branchFilter = ""
 			for i, row := range branchRoot.branchRows() {
-				if row.name == modal.addBranch {
+				if row.name == modal.targetBranch {
 					m.branchRootCursor = i
 					break
 				}
 			}
-			m.branchFilter = modal.addBranch
+			m.branchFilter = modal.targetBranch
 			for i, row := range m.branchRows() {
 				if row.kind == rowTask && row.todo.Text == modal.taskTitle() {
 					m.branchCursor = i
@@ -156,38 +167,38 @@ func (m *model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		return m, nil
 	case "tab":
-		if modal.mode == modalAddBranch && modal.field == 1 {
+		if modal.branchScope() && modal.field == scopeField {
 			modal.acceptBranch()
 		}
-		return m, modal.focusField((modal.field + 1) % (modal.detailsField() + 1))
+		return m, modal.focusField((modal.field + 1) % (detailsField + 1))
 	case "shift+tab":
-		return m, modal.focusField((modal.field + modal.detailsField()) % (modal.detailsField() + 1))
+		return m, modal.focusField((modal.field + detailsField) % (detailsField + 1))
 	case "down":
-		if modal.mode == modalAddBranch && modal.field == 1 {
+		if modal.branchScope() && modal.field == scopeField {
 			if count := len(modal.matchingBranches()); count > 0 {
 				modal.branchCursor = (modal.branchCursor + 1) % count
 			}
 			return m, nil
 		}
-		if modal.field == 0 && modal.title.Line() < strings.Count(modal.title.Value(), "\n") {
+		if modal.field == titleField && modal.title.Line() < strings.Count(modal.title.Value(), "\n") {
 			break
 		}
-		if modal.field < modal.detailsField() {
+		if modal.field < detailsField {
 			return m, modal.focusField(modal.field + 1)
 		}
 	case "enter":
-		if modal.field == 1 && modal.mode != modalEdit {
-			if modal.mode == modalAddBranch {
+		if modal.field == scopeField {
+			if modal.branchScope() {
 				modal.acceptBranch()
 			}
-			return m, modal.focusField(modal.detailsField())
+			return m, modal.focusField(detailsField)
 		}
 	case "up":
-		if modal.field == 0 && modal.title.Line() == 0 {
+		if modal.field == titleField && modal.title.Line() == 0 {
 			return m, nil
 		}
-		if modal.field == 1 && modal.mode != modalEdit {
-			if modal.mode == modalAddBranch {
+		if modal.field == scopeField {
+			if modal.branchScope() {
 				if count := len(modal.matchingBranches()); count > 0 {
 					modal.branchCursor = (modal.branchCursor - 1 + count) % count
 				}
@@ -195,17 +206,17 @@ func (m *model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, modal.focusField(0)
 		}
-		if modal.field == modal.detailsField() && modal.details.Line() == 0 {
+		if modal.field == detailsField && modal.details.Line() == 0 {
 			return m, modal.focusField(modal.field - 1)
 		}
 	}
 	modal.err = ""
 	var cmd tea.Cmd
 	switch {
-	case modal.field == 0:
+	case modal.field == titleField:
 		modal.title, cmd = modal.title.Update(msg)
-	case modal.field == 1 && modal.mode != modalEdit:
-		if modal.mode == modalAddGeneral {
+	case modal.field == scopeField:
+		if !modal.branchScope() {
 			if msg.Code == tea.KeySpace {
 				return m, nil
 			}
@@ -214,7 +225,7 @@ func (m *model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			modal.scope.SetValue("")
 		}
 		modal.scope, cmd = modal.scope.Update(msg)
-		if modal.mode == modalAddBranch {
+		if modal.branchScope() {
 			modal.branchFresh = false
 			modal.resetBranchCursor()
 		}
@@ -229,16 +240,16 @@ func (m *model) updateTaskModalPaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 	modal.err = ""
 	var cmd tea.Cmd
 	switch {
-	case modal.field == 0:
+	case modal.field == titleField:
 		modal.title, cmd = modal.title.Update(msg)
-	case modal.field == 1 && modal.mode != modalEdit:
-		if modal.mode == modalAddGeneral {
+	case modal.field == scopeField:
+		if !modal.branchScope() {
 			msg.Content = stripCategorySpaces(msg.Content)
 		} else if modal.branchFresh {
 			modal.scope.SetValue("")
 		}
 		modal.scope, cmd = modal.scope.Update(msg)
-		if modal.mode == modalAddBranch {
+		if modal.branchScope() {
 			modal.branchFresh = false
 			modal.resetBranchCursor()
 		}
@@ -248,11 +259,10 @@ func (m *model) updateTaskModalPaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (f *taskModal) detailsField() int {
-	if f.mode == modalEdit {
-		return 1
-	}
-	return 2
+// branchScope is true when the task is filed under a branch, so the scope
+// field picks a local branch rather than taking a category.
+func (f *taskModal) branchScope() bool {
+	return f.mode == modalAddBranch || f.mode == modalEdit && f.selected.Branch != ""
 }
 
 func (f *taskModal) focusField(field int) tea.Cmd {
@@ -260,11 +270,11 @@ func (f *taskModal) focusField(field int) tea.Cmd {
 	f.title.Blur()
 	f.scope.Blur()
 	f.details.Blur()
-	if field == 0 {
+	if field == titleField {
 		return f.title.Focus()
 	}
-	if field == 1 && f.mode != modalEdit {
-		if f.mode == modalAddBranch {
+	if field == scopeField {
+		if f.branchScope() {
 			f.branchFresh = true
 		}
 		return f.scope.Focus()
@@ -273,27 +283,28 @@ func (f *taskModal) focusField(field int) tea.Cmd {
 }
 
 func (f *taskModal) save(path string) error {
-	if f.mode == modalEdit {
-		return store.Edit(path, f.selected, f.taskTitle(), f.details.Value())
-	}
-	category, branch := "", ""
-	if f.mode == modalAddGeneral {
-		f.addCategory = store.NormalizeCategory(f.scope.Value())
-		category = f.addCategory
-	} else {
-		f.addBranch = f.chosenBranch()
-		if f.addBranch == "" {
+	if f.branchScope() {
+		f.targetBranch = f.chosenBranch()
+		if f.targetBranch == "" && f.mode == modalEdit && strings.TrimSpace(f.scope.Value()) == f.selected.Branch {
+			f.targetBranch = f.selected.Branch
+		}
+		if f.targetBranch == "" {
 			if len(f.branches) == 0 {
 				return errors.New("no local Git branches found")
 			}
 			return errors.New("choose an existing local Git branch")
 		}
-		if !f.project.hasLocalBranch(f.addBranch) {
-			return fmt.Errorf("branch %q no longer exists locally", f.addBranch)
+		// The task's own branch was checked when the form opened.
+		if f.targetBranch != f.selected.Branch && !f.project.hasLocalBranch(f.targetBranch) {
+			return fmt.Errorf("branch %q no longer exists locally", f.targetBranch)
 		}
-		branch = f.addBranch
+	} else {
+		f.targetCategory = store.NormalizeCategory(f.scope.Value())
 	}
-	return store.Add(path, f.taskTitle(), f.details.Value(), store.PriorityNone, category, branch)
+	if f.mode == modalEdit {
+		return store.Edit(path, f.selected, f.taskTitle(), f.details.Value(), f.targetCategory, f.targetBranch)
+	}
+	return store.Add(path, f.taskTitle(), f.details.Value(), store.PriorityNone, f.targetCategory, f.targetBranch)
 }
 
 func (f *taskModal) taskTitle() string {
@@ -374,7 +385,7 @@ func (f *taskModal) branchSuggestions(width int) []string {
 			if i == f.branchCursor {
 				mark = "› "
 				style = lipgloss.NewStyle().Foreground(colorGreen)
-				if f.field == 1 {
+				if f.field == scopeField {
 					style = style.Background(colorSelection)
 				}
 			}
@@ -404,7 +415,7 @@ func (f *taskModal) branchSuggestions(width int) []string {
 
 func (f *taskModal) dimensions(width, height int) (int, int) {
 	modalHeight := min(height-4, 20)
-	if f.mode == modalAddBranch {
+	if f.branchScope() {
 		modalHeight = min(height, max(modalHeight, 13))
 	}
 	return min(width-2, 76), modalHeight
@@ -412,7 +423,7 @@ func (f *taskModal) dimensions(width, height int) (int, int) {
 
 // isCompact drops spacer lines so add forms still fit short terminals.
 func (f *taskModal) isCompact(height int) bool {
-	return f.mode != modalEdit && (height < 15 || f.mode == modalAddBranch && height < 18)
+	return height < 15 || f.branchScope() && height < 18
 }
 
 func (f *taskModal) resize(width, height int) {
@@ -420,9 +431,7 @@ func (f *taskModal) resize(width, height int) {
 	innerWidth := max(1, modalWidth-6)
 	f.title.SetWidth(innerWidth)
 	f.title.SetHeight(2)
-	if f.mode != modalEdit {
-		f.scope.SetWidth(max(1, innerWidth/2))
-	}
+	f.scope.SetWidth(innerWidth)
 	f.details.SetWidth(innerWidth)
 	// Details takes whatever height the rest of the layout leaves, measured
 	// from the real content so the two can never drift apart.
@@ -434,80 +443,125 @@ func (f *taskModal) resize(width, height int) {
 const modalBorder = 1
 
 func (f *taskModal) render(width, height int) string {
-	return lipgloss.NewStyle().Width(width).Height(height).Padding(0, 2).
-		Border(lipgloss.RoundedBorder()).BorderForeground(colorFocus).
+	return lipgloss.NewStyle().Width(width).Height(height).Padding(0, 2, 0, 1).
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorFocus).BorderBackground(colorModal).
 		Background(colorModal).Render(strings.Join(f.contentLines(width, height), "\n"))
 }
 
+// contentLines lays out the form. Every line starts with a one-cell gutter
+// that holds the focus bar beside the active field.
 func (f *taskModal) contentLines(width, height int) []string {
 	innerWidth := max(1, width-6)
-	heading := "Add general task"
-	switch f.mode {
-	case modalAddBranch:
-		heading = "Add branch task"
-	case modalEdit:
-		heading = "Edit task"
-	}
-	headingStyle := titleStyle
-	if f.err != "" {
-		heading = f.err
-		headingStyle = lipgloss.NewStyle().Bold(true).Foreground(colorHigh)
-	}
-	detailsHeading := mutedStyle.Render("Details")
-	if f.field == f.detailsField() {
-		detailsHeading = titleStyle.Render("Details")
-	}
-	lines := []string{headingStyle.Render(ansi.Truncate(heading, innerWidth, "…"))}
 	compact := f.isCompact(height)
-	if f.mode == modalEdit {
-		lines = append(lines, f.editLocation(innerWidth))
-	}
-	if f.mode == modalEdit || !compact {
-		lines = append(lines, "")
-	}
-	lines = append(lines, f.title.View())
-	if f.mode != modalEdit {
-		if f.mode != modalAddBranch || !compact {
-			lines = append(lines, "")
+	var lines []string
+	add := func(focused bool, blocks ...string) {
+		gutter := " "
+		if focused {
+			gutter = lipgloss.NewStyle().Foreground(colorFocus).Render("┃")
 		}
-		scopeName := "Category"
-		if f.mode == modalAddBranch {
-			scopeName = "Branch"
-		}
-		scopeStyle := mutedStyle
-		if f.field == 1 {
-			scopeStyle = titleStyle
-		}
-		lines = append(lines, scopeStyle.Render(scopeName), f.scope.View())
-		if f.mode == modalAddBranch {
-			lines = append(lines, f.branchSuggestions(max(1, innerWidth/2))...)
-		}
-		if !compact {
-			lines = append(lines, "")
-		}
-	} else {
-		lines = append(lines, "")
-	}
-	lines = append(lines, detailsHeading, f.details.View())
-	if !compact && (f.mode != modalEdit || height >= 13) {
-		lines = append(lines, "")
-	}
-	help := "↑/↓/tab navigate · ctrl+enter save · esc cancel"
-	if f.mode == modalAddBranch && f.field == 1 {
-		help = "↑/↓ cycle · tab next · ctrl+enter save · esc cancel"
-		if compact {
-			help = "↑/↓ cycle · ctrl+enter save · esc cancel"
+		for _, block := range blocks {
+			for line := range strings.SplitSeq(block, "\n") {
+				lines = append(lines, onBackground(gutter+line, colorModal))
+			}
 		}
 	}
-	return append(lines, mutedStyle.Render(ansi.Truncate(help, innerWidth, "…")))
+	gap := func() { lines = append(lines, "") }
+
+	add(false, renderBreadcrumb(f.breadcrumb(), "", innerWidth))
+	if !compact {
+		gap()
+	}
+	add(f.field == titleField, onBackground(f.title.View(), colorField))
+	if !f.branchScope() || !compact {
+		gap()
+	}
+	scopeName := "Category"
+	if f.branchScope() {
+		scopeName = "Branch"
+	}
+	add(f.field == scopeField, f.label(scopeName, scopeField), onBackground(fieldStyle().Width(innerWidth).Render(f.scope.View()), colorField))
+	if f.branchScope() {
+		add(f.field == scopeField, f.branchSuggestions(innerWidth)...)
+	}
+	if !compact {
+		gap()
+	}
+	add(f.field == detailsField, f.label("Details", detailsField), onBackground(f.details.View(), colorField))
+	if !compact {
+		gap()
+	}
+	add(false, f.footer(innerWidth))
+	return lines
 }
 
-func (f *taskModal) editLocation(width int) string {
-	if f.selected.Branch != "" {
-		return ansi.Truncate(mutedStyle.Render("Branch    ")+lipgloss.NewStyle().Foreground(colorGreen).Render(branchIcon+" "+f.selected.Branch), width, "…")
+func (f *taskModal) breadcrumb() []string {
+	switch {
+	case f.mode == modalAddGeneral:
+		return []string{"General", "New task"}
+	case f.mode == modalAddBranch:
+		return []string{"Branches", "New task"}
+	case f.selected.Branch != "":
+		return []string{"Branches", branchIcon + " " + f.selected.Branch, "Edit task"}
+	case f.selected.Category != "":
+		return []string{"General", "@" + f.selected.Category, "Edit task"}
 	}
-	if category := f.selected.Category; category != "" {
-		return ansi.Truncate(mutedStyle.Render("Category  ")+lipgloss.NewStyle().Foreground(colorPurple).Render("@"+category), width, "…")
+	return []string{"General", "Edit task"}
+}
+
+func (f *taskModal) label(name string, field int) string {
+	if f.field == field {
+		return titleStyle.Render(name)
 	}
-	return mutedStyle.Render("General task")
+	return mutedStyle.Render(name)
+}
+
+func (f *taskModal) footer(width int) string {
+	if f.err != "" {
+		return lipgloss.NewStyle().Bold(true).Foreground(colorHigh).Render(ansi.Truncate(f.err, width, "…"))
+	}
+	hints := []keyHint{{"ctrl+enter", "save"}, {"esc", "cancel"}, {"tab", "next field"}}
+	if f.branchScope() && f.field == scopeField {
+		hints = []keyHint{{"ctrl+enter", "save"}, {"esc", "cancel"}, {"↑↓", "choose"}, {"tab", "accept"}}
+	}
+	return fitHints(hints, width)
+}
+
+func fieldStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Background(colorField)
+}
+
+// fieldAreaStyles fills a textarea with the field colour, without the default
+// cursor-line highlight, so every field reads as one block.
+func fieldAreaStyles() textarea.Styles {
+	styles := textarea.DefaultStyles(true)
+	state := textarea.StyleState{
+		Base:        fieldStyle(),
+		Text:        fieldStyle().Foreground(colorStrong),
+		CursorLine:  fieldStyle().Foreground(colorStrong),
+		Placeholder: fieldStyle().Foreground(colorMuted),
+		EndOfBuffer: fieldStyle().Foreground(colorField),
+		Prompt:      fieldStyle(),
+		Selection:   fieldStyle().Background(colorSelection),
+	}
+	styles.Focused = state
+	styles.Blurred = state
+	styles.Blurred.Text = fieldStyle().Foreground(colorText)
+	styles.Blurred.CursorLine = styles.Blurred.Text
+	styles.Cursor.Color = colorFocus
+	return styles
+}
+
+func fieldInputStyles() textinput.Styles {
+	styles := textinput.DefaultStyles(true)
+	state := textinput.StyleState{
+		Text:        fieldStyle().Foreground(colorStrong),
+		Placeholder: fieldStyle().Foreground(colorMuted),
+		Suggestion:  fieldStyle().Foreground(colorMuted),
+		Prompt:      fieldStyle(),
+	}
+	styles.Focused = state
+	styles.Blurred = state
+	styles.Blurred.Text = fieldStyle().Foreground(colorText)
+	styles.Cursor.Color = colorFocus
+	return styles
 }

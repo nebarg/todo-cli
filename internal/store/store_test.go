@@ -297,7 +297,7 @@ func TestEditTaskContentPreservesMetadataAndOtherTasks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Edit(path, tasks[0], "Renamed task", "New context.\n\n- [ ] Nested step"); err != nil {
+	if err := Edit(path, tasks[0], "Renamed task", "New context.\n\n- [ ] Nested step", tasks[0].Category, tasks[0].Branch); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := os.ReadFile(path)
@@ -313,7 +313,7 @@ func TestEditTaskContentPreservesMetadataAndOtherTasks(t *testing.T) {
 	if err != nil || len(tasks) != 2 || tasks[0].Priority != "high" || tasks[0].Details != "New context.\n\n- [ ] Nested step" {
 		t.Fatalf("reloaded tasks: %v, %+v", err, tasks)
 	}
-	if err := Edit(path, tasks[0], "Renamed task", ""); err != nil {
+	if err := Edit(path, tasks[0], "Renamed task", "", tasks[0].Category, tasks[0].Branch); err != nil {
 		t.Fatal(err)
 	}
 	tasks, err = Load(path)
@@ -334,7 +334,7 @@ func TestEditTaskContentRejectsChangedBody(t *testing.T) {
 	if err := os.WriteFile(path, []byte("- [ ] First\n\n  Edited elsewhere.\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Edit(path, tasks[0], "New title", "My edit"); !errors.Is(err, ErrTaskChanged) {
+	if err := Edit(path, tasks[0], "New title", "My edit", tasks[0].Category, tasks[0].Branch); !errors.Is(err, ErrTaskChanged) {
 		t.Fatalf("edit error = %v, want errTaskChanged", err)
 	}
 }
@@ -372,7 +372,7 @@ func TestExternalMarkdownIsReadWithoutChangingIt(t *testing.T) {
 	if got, _ := os.ReadFile(path); string(got) != original {
 		t.Fatalf("reading changed file: %q", got)
 	}
-	if err := Edit(path, tasks[0], "renamed generic", ""); err != nil {
+	if err := Edit(path, tasks[0], "renamed generic", "", tasks[0].Category, tasks[0].Branch); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := os.ReadFile(path); !strings.HasPrefix(string(got), "- [ ] renamed generic\n") || !strings.Contains(string(got), "  - Priority: urgent") {
@@ -484,5 +484,60 @@ func TestChangedTaskIsNotOverwritten(t *testing.T) {
 	}
 	if err := Toggle(path, tasks[0]); !errors.Is(err, ErrTaskChanged) {
 		t.Fatalf("toggleTask error = %v, want errTaskChanged", err)
+	}
+}
+
+func TestEditMovesTaskBetweenSections(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	original := "- [ ] Stay\n\n# auth\n\n- [ ] Move me\n  - Priority: High\n\n  Old details.\n\n# Branches\n\n## feature/a\n\n- [ ] Branch move\n\n## feature/b\n\n- [ ] Other branch\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	find := func(text string) Task {
+		t.Helper()
+		tasks, err := Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, task := range tasks {
+			if task.Text == text {
+				return task
+			}
+		}
+		t.Fatalf("task %q not found", text)
+		return Task{}
+	}
+	if err := Edit(path, find("Move me"), "Moved", "New details.", "@docs", ""); err != nil {
+		t.Fatal(err)
+	}
+	if moved := find("Moved"); moved.Category != "docs" || moved.Priority != PriorityHigh || moved.Details != "New details." {
+		t.Fatalf("category move lost content: %+v", moved)
+	}
+	if err := Edit(path, find("Moved"), "Moved", "New details.", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if moved := find("Moved"); moved.Category != "" || moved.Branch != "" {
+		t.Fatalf("blank category did not move the task to General: %+v", moved)
+	}
+	if err := Edit(path, find("Branch move"), "Branch move", "", "", "feature/b"); err != nil {
+		t.Fatal(err)
+	}
+	if moved := find("Branch move"); moved.Branch != "feature/b" {
+		t.Fatalf("branch move = %+v", moved)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, gone := range []string{"# auth", "# docs", "## feature/a"} {
+		if strings.Contains(string(data), gone+"\n") {
+			t.Errorf("moving left an empty %q heading: %s", gone, data)
+		}
+	}
+	if !strings.Contains(string(data), "- [ ] Stay") || !strings.Contains(string(data), "- [ ] Other branch") {
+		t.Fatalf("moving changed other tasks: %s", data)
+	}
+	if err := Edit(path, find("Stay"), "Stay", "", "docs", "feature/b"); err == nil {
+		t.Fatal("a task was allowed both a category and a branch")
 	}
 }
