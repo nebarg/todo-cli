@@ -91,7 +91,7 @@ func main() {
 		}
 		title := strings.Join(args, " ")
 		var categories []string
-		if strings.TrimSpace(*categoryFlag) != "" {
+		if *categoryFlag != "" {
 			categories = []string{*categoryFlag}
 		}
 		if err := addTaskWithOptions(file, title, *priority, categories, branch); err != nil {

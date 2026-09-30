@@ -92,28 +92,53 @@ func TestLabelPrefixesAreNormalized(t *testing.T) {
 	}
 }
 
-func TestLabelsRequireOneAlphanumericWord(t *testing.T) {
-	for _, label := range []string{"two words", "bug-fix", "under_score", "a?", "@", "@@auth", "emoji🙂"} {
+func TestCategoriesAllowSymbolsButNotWhitespace(t *testing.T) {
+	for _, label := range []string{"two words", " leading", "trailing ", "tab\tname", "line\nbreak", ""} {
 		path := filepath.Join(t.TempDir(), "TODO.md")
-		if err := addTaskWithOptions(path, "Task", "", []string{label}, ""); err == nil || !strings.Contains(err.Error(), "category must be one word") {
-			t.Errorf("label %q was accepted or gave an unclear error: %v", label, err)
+		if err := addTaskWithOptions(path, "Task", "", []string{label}, ""); err == nil || !strings.Contains(err.Error(), "category must be a single word without whitespace") {
+			t.Errorf("category %q was accepted or gave an unclear error: %v", label, err)
 		}
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("invalid label %q changed the file: %v", label, err)
+			t.Errorf("invalid category %q changed the file: %v", label, err)
 		}
 	}
-	for _, label := range []string{"auth", "A1", "@tests2", "#café3"} {
+	for _, label := range []string{"auth", "A1", "@tests2", "#café3", "+v1", "bug-fix", "under_score", "a?", "emoji🙂", "foo#", "@", "#"} {
 		path := filepath.Join(t.TempDir(), "TODO.md")
 		if err := addTaskWithOptions(path, "Task", "", []string{label}, ""); err != nil {
-			t.Fatalf("valid label %q rejected: %v", label, err)
+			t.Fatalf("valid category %q rejected: %v", label, err)
 		}
 		tasks, err := loadTasks(path)
 		if err != nil || len(tasks) != 1 || taskLabel(tasks[0]) != normalizeLabelInput(label) {
-			t.Fatalf("label %q was not saved correctly: %v, %+v", label, err, tasks)
+			t.Fatalf("category %q was not saved correctly: %v, %+v", label, err, tasks)
 		}
+	}
+	if _, name, ok := parseHeading("# auth ###"); !ok || name != "auth" {
+		t.Fatalf("closing Markdown hashes were not parsed correctly: %q", name)
 	}
 	if err := validateLabel("Branches"); err == nil {
 		t.Fatal("reserved branch heading was accepted as a category")
+	}
+}
+
+func TestChangingCategoryToSymbolName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "TODO.md")
+	if err := addTaskWithOptions(path, "Task", "", []string{"auth"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := loadTasks(path)
+	if err != nil || len(tasks) != 1 {
+		t.Fatalf("initial category: %v, %+v", err, tasks)
+	}
+	if err := setTaskLabel(path, tasks[0], "+v1"); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err = loadTasks(path)
+	if err != nil || len(tasks) != 1 || taskLabel(tasks[0]) != "+v1" {
+		t.Fatalf("symbol category was not saved: %v, %+v", err, tasks)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(data), "# +v1\n") || strings.Contains(string(data), "# auth\n") {
+		t.Fatalf("category heading was not updated: %v, %q", err, data)
 	}
 }
 

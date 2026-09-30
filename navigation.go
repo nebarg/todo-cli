@@ -53,11 +53,13 @@ func (m model) generalRows() []navigationRow {
 			label := display[key]
 			rows = append(rows, navigationRow{kind: rowLabel, name: label, count: counts[key], completed: completed[key]})
 		}
+		taskStart := len(rows)
 		for _, t := range m.general {
 			if taskLabel(t) == "" {
 				rows = append(rows, navigationRow{kind: rowTask, todo: t})
 			}
 		}
+		openTasksFirst(rows[taskStart:])
 		return rows
 	}
 	for _, t := range m.general {
@@ -65,6 +67,7 @@ func (m model) generalRows() []navigationRow {
 			rows = append(rows, navigationRow{kind: rowTask, todo: t})
 		}
 	}
+	openTasksFirst(rows)
 	return rows
 }
 
@@ -76,6 +79,7 @@ func (m model) branchRows() []navigationRow {
 				rows = append(rows, navigationRow{kind: rowTask, todo: t})
 			}
 		}
+		openTasksFirst(rows)
 		return rows
 	}
 	counts := make(map[string]int)
@@ -90,6 +94,32 @@ func (m model) branchRows() []navigationRow {
 		rows = append(rows, navigationRow{kind: rowBranch, name: name, count: counts[name], completed: completed[name]})
 	}
 	return rows
+}
+
+func openTasksFirst(rows []navigationRow) {
+	sort.SliceStable(rows, func(i, j int) bool {
+		return !rows[i].todo.done && rows[j].todo.done
+	})
+}
+
+func (m *model) selectNavigationTask(selected task) {
+	var rows []navigationRow
+	var cursor *int
+	switch m.activePane() {
+	case generalPane:
+		rows, cursor = m.generalRows(), &m.generalCursor
+	case branchPane:
+		rows, cursor = m.branchRows(), &m.branchCursor
+	default:
+		return
+	}
+	for i, row := range rows {
+		if row.kind == rowTask && row.todo.line == selected.line && row.todo.text == selected.text &&
+			row.todo.branch == selected.branch && strings.EqualFold(taskLabel(row.todo), taskLabel(selected)) {
+			*cursor = i
+			return
+		}
+	}
 }
 
 func sortedNames(counts map[string]int) []string {

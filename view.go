@@ -133,27 +133,27 @@ func (m model) renderFooter(width int) string {
 		return ansi.Truncate(m.input.View()+"  enter save · esc cancel", width, "…")
 	}
 	if m.indexMode {
-		hints := "i/esc back · ↑/↓ move · (d)one/space · (e)dit/enter · (p)riority sort · Shift+B branch sort · (c)ategory sort · (b)ranch add · (r)eload · (q)uit"
+		hints := "i/esc back · (d)one/space · (e)dit/enter · (s)ort · (p)riority · (c)ategory · (b)ranch add · (r)eload · (q)uit"
 		if width < 80 {
-			hints = "(b)ranch add · p/B/c sort · (e)dit/enter"
+			hints = "s sort · p priority · c category · e edit · d done"
 		}
 		if m.status != "" {
 			return mutedStyle.Render(ansi.Truncate(m.status, width, "…"))
 		}
 		return mutedStyle.Render(ansi.Truncate(hints, width, "…"))
 	}
-	hints := "↑/↓ move · → details · (d)one/space · (e)dit/enter · (p)riority · (c)ategory · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
+	hints := "→ details · (d)one/space · (e)dit/enter · (p)riority · (c)ategory · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
 	if m.focus == detailPane {
-		hints = "←/esc back · ↑/↓ scroll · (d)one/space · (e)dit/enter · (p)riority · (c)ategory · (q)uit"
+		hints = "←/esc back · (d)one/space · (e)dit/enter · (p)riority · (c)ategory · (q)uit"
 		if m.activePane() == sourcePane {
-			hints = "←/esc back · ↑/↓ scroll · (e)dit/enter file · (q)uit"
+			hints = "←/esc back · (e)dit/enter file · (q)uit"
 		} else if m.activePane() == branchPane {
-			hints = "←/esc back · ↑/↓ scroll · (d)one/space · (e)dit/enter · (p)riority · (q)uit"
+			hints = "←/esc back · (d)one/space · (e)dit/enter · (p)riority · (q)uit"
 		}
 	} else if m.focus == sourcePane {
-		hints = "↑/↓ move · → details · (e)dit/enter file · (i)ndex · (r)eload · (q)uit"
+		hints = "→ details · (e)dit/enter file · (i)ndex · (r)eload · (q)uit"
 	} else if m.focus == branchPane {
-		hints = "↑/↓ move · → open · (d)one/space · (e)dit/enter · (p)riority · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
+		hints = "→ open · (d)one/space · (e)dit/enter · (p)riority · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
 	}
 	if width < 80 {
 		switch m.focus {

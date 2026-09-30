@@ -44,8 +44,7 @@ func loadTasks(path string) ([]task, error) {
 	branchSectionLevel, branch, label, labelLine := 0, "", "", -1
 	for i := 0; i < len(lines); i++ {
 		raw := lines[i]
-		if heading := markdownHeading.FindStringSubmatch(raw); heading != nil {
-			level, name := len(heading[1]), strings.TrimSpace(strings.TrimRight(strings.TrimSpace(heading[2]), "#"))
+		if level, name, ok := parseHeading(raw); ok {
 			if strings.EqualFold(name, "Branches") && (level == 1 || (level == 2 && branchSectionLevel == 0)) {
 				branchSectionLevel, branch, label, labelLine = level, "", "", -1
 				continue
@@ -58,7 +57,7 @@ func loadTasks(path string) ([]task, error) {
 				continue
 			}
 			branchSectionLevel, branch = 0, ""
-			label, labelLine = strings.TrimPrefix(name, "@"), i
+			label, labelLine = headingCategoryName(name), i
 			continue
 		}
 		parts := taskLine.FindStringSubmatch(raw)
@@ -273,25 +272,32 @@ func trimTaskBlock(block []string) []string {
 
 func validateLabel(label string) error {
 	if label == "" {
-		return errors.New("category must be one word of letters and numbers")
+		return errors.New("category must be a single word without whitespace")
 	}
 	if strings.EqualFold(label, "Branches") {
 		return errors.New("Branches is reserved for the branch section")
 	}
 	for _, r := range label {
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-			return errors.New("category must be one word of letters and numbers")
+		if unicode.IsSpace(r) {
+			return errors.New("category must be a single word without whitespace")
 		}
 	}
 	return nil
 }
 
 func normalizeLabelInput(raw string) string {
-	label := strings.TrimSpace(raw)
-	if strings.HasPrefix(label, "@") || strings.HasPrefix(label, "#") {
+	label := raw
+	if len(label) > 1 && (strings.HasPrefix(label, "@") || strings.HasPrefix(label, "#")) {
 		label = label[1:]
 	}
 	return label
+}
+
+func headingCategoryName(name string) string {
+	if len(name) > 1 {
+		return strings.TrimPrefix(name, "@")
+	}
+	return name
 }
 
 func metadataLines(priority string) []string {
@@ -356,7 +362,15 @@ func parseHeading(line string) (int, string, bool) {
 	if parts == nil {
 		return 0, "", false
 	}
-	return len(parts[1]), strings.TrimSpace(strings.TrimRight(strings.TrimSpace(parts[2]), "#")), true
+	name := strings.TrimSpace(parts[2])
+	closing := len(name)
+	for closing > 0 && name[closing-1] == '#' {
+		closing--
+	}
+	if closing > 0 && closing < len(name) && (name[closing-1] == ' ' || name[closing-1] == '\t') {
+		name = strings.TrimSpace(name[:closing])
+	}
+	return len(parts[1]), name, true
 }
 
 func findBranchesSection(lines []string) (int, int, int) {
@@ -410,7 +424,7 @@ func findCategorySection(lines []string, category string) (int, int) {
 			branchesEnd += i
 			continue
 		}
-		if !strings.EqualFold(strings.TrimPrefix(name, "@"), category) {
+		if !strings.EqualFold(headingCategoryName(name), category) {
 			continue
 		}
 		end := len(lines)
@@ -624,7 +638,7 @@ func removeEmptyLabelHeading(lines []string, selected task) []string {
 	}
 	start := selected.headingLine
 	_, name, ok := parseHeading(lines[start])
-	if !ok || !strings.EqualFold(strings.TrimPrefix(name, "@"), taskLabel(selected)) {
+	if !ok || !strings.EqualFold(headingCategoryName(name), taskLabel(selected)) {
 		return lines
 	}
 	end := start + 1

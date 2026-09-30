@@ -255,7 +255,7 @@ func (f *taskModal) resize(width, height int) {
 		f.scope.SetWidth(max(1, innerWidth/2))
 	}
 	f.details.SetWidth(innerWidth)
-	detailsSpace := modalHeight - 9
+	detailsSpace := modalHeight - 11
 	if f.mode != "edit" && modalHeight >= 15 {
 		detailsSpace = modalHeight - 13
 	} else if f.mode != "edit" {
@@ -283,6 +283,9 @@ func (f *taskModal) render(width, height int) string {
 	}
 	lines := []string{headingStyle.Render(ansi.Truncate(heading, innerWidth, "…"))}
 	compact := f.mode != "edit" && height < 15
+	if f.mode == "edit" {
+		lines = append(lines, f.editLocation(innerWidth))
+	}
 	if f.mode == "edit" || !compact {
 		lines = append(lines, "")
 	}
@@ -305,13 +308,23 @@ func (f *taskModal) render(width, height int) string {
 		lines = append(lines, "")
 	}
 	lines = append(lines, detailsLabel, f.details.View())
-	if !compact {
+	if !compact && !(f.mode == "edit" && height < 13) {
 		lines = append(lines, "")
 	}
 	lines = append(lines, mutedStyle.Render(ansi.Truncate("↑/↓/tab navigate · ctrl+enter save · esc cancel", innerWidth, "…")))
 	return lipgloss.NewStyle().Width(width).Height(height).Padding(0, 2).
 		Border(lipgloss.RoundedBorder()).BorderForeground(colorFocus).
 		Background(lipgloss.Color("#111E2F")).Render(strings.Join(lines, "\n"))
+}
+
+func (f *taskModal) editLocation(width int) string {
+	if f.selected.branch != "" {
+		return ansi.Truncate(mutedStyle.Render("Branch    ")+lipgloss.NewStyle().Foreground(colorGreen).Render(" "+f.selected.branch), width, "…")
+	}
+	if category := taskLabel(f.selected); category != "" {
+		return ansi.Truncate(mutedStyle.Render("Category  ")+lipgloss.NewStyle().Foreground(colorPurple).Render("@"+category), width, "…")
+	}
+	return mutedStyle.Render("General task")
 }
 
 func (f *taskModal) cursor(x, y int) *tea.Cursor {
@@ -322,6 +335,8 @@ func (f *taskModal) cursor(x, y int) *tea.Cursor {
 			cursor.X += x + 3
 			if f.mode != "edit" && f.compact {
 				cursor.Y += y + 2
+			} else if f.mode == "edit" {
+				cursor.Y += y + 4
 			} else {
 				cursor.Y += y + 3
 			}
@@ -343,7 +358,7 @@ func (f *taskModal) cursor(x, y int) *tea.Cursor {
 			if f.compact {
 				cursor.Y += y + 8
 			} else if f.mode == "edit" {
-				cursor.Y += y + 7
+				cursor.Y += y + 8
 			} else {
 				cursor.Y += y + 10
 			}

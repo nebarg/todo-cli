@@ -466,6 +466,9 @@ func (m *model) toggleSelected() {
 		m.status = err.Error()
 		return
 	}
+	if !m.indexMode {
+		m.selectNavigationTask(selected)
+	}
 	m.status = ""
 }
 
@@ -663,14 +666,26 @@ func (m model) indexTasks() []task {
 			if c := compareIndexGroup(a.branch, b.branch); c != 0 {
 				return c < 0
 			}
+			if a.branch == "" {
+				if c := compareIndexGroup(taskLabel(a), taskLabel(b)); c != 0 {
+					return c < 0
+				}
+			}
 		case "category":
 			if c := compareIndexGroup(taskLabel(a), taskLabel(b)); c != 0 {
 				return c < 0
 			}
-		case "priority":
-			if m.indexPriorityExplicit {
-				return priorityRank(a.priority) < priorityRank(b.priority)
+			if taskLabel(a) == "" {
+				if c := compareIndexGroup(a.branch, b.branch); c != 0 {
+					return c < 0
+				}
 			}
+		}
+		if a.done != b.done {
+			return !a.done
+		}
+		if m.indexSort == "priority" && m.indexPriorityExplicit {
+			return priorityRank(a.priority) < priorityRank(b.priority)
 		}
 		return false
 	})
@@ -739,13 +754,24 @@ func (m model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.moveCursor(-1)
 	case "down", "j":
 		m.moveCursor(1)
-	case "p", "B", "c", "l":
+	case "s":
 		selected, ok := m.selectedTask()
-		m.indexSort = map[string]string{"p": "priority", "B": "branch", "c": "category", "l": "category"}[msg.String()]
-		m.indexPriorityExplicit = msg.String() == "p"
+		switch m.indexSort {
+		case "priority":
+			m.indexSort = "branch"
+		case "branch":
+			m.indexSort = "category"
+		default:
+			m.indexSort = "priority"
+		}
+		m.indexPriorityExplicit = m.indexSort == "priority"
 		if ok {
 			m.selectIndexTask(selected)
 		}
+	case "p":
+		m.cyclePriority()
+	case "c", "l":
+		return m.startInput("category")
 	case "b":
 		return m.startTaskModal("add-branch")
 	case "space", "d":

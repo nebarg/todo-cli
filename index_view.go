@@ -8,15 +8,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func priorityMarker(priority string) string {
-	switch priority {
-	case "high", "medium", "low":
-		return "!"
-	default:
-		return "-"
-	}
-}
-
 func priorityStyle(priority string) lipgloss.Style {
 	color := colorMuted
 	switch priority {
@@ -38,26 +29,25 @@ func indexColumn(value string, width int) string {
 func (m model) renderIndex(width, height int) string {
 	innerWidth := max(1, width-4)
 	tasks := m.indexTasks()
-	labelWidth := min(18, max(8, (innerWidth-22)/4))
-	branchWidth := min(26, max(10, (innerWidth-22)/3))
-	taskWidth := max(1, innerWidth-3-6-labelWidth-branchWidth)
+	scopeWidth := min(24, max(17, innerWidth/3))
+	taskWidth := max(1, innerWidth-2-scopeWidth)
 	heading := fmt.Sprintf("All tasks  %d/%d · Sort: %s", completedCount(tasks), len(tasks), m.indexSort)
-	lines := []string{titleStyle.Render(ansi.Truncate(heading, innerWidth, "…"))}
-	columns := indexColumn("PRI", 3) + "  " + indexColumn("CATEGORY", labelWidth) + "  " + indexColumn("BRANCH", branchWidth) + "  " + indexColumn("TASK: DETAILS", taskWidth)
+	lines := []string{titleStyle.Render(ansi.Truncate(heading, innerWidth, "…")), ""}
+	columns := indexColumn("TASK: DETAILS", taskWidth) + "  " + indexColumn("CATEGORY / BRANCH", scopeWidth)
 	lines = append(lines, mutedStyle.Render(columns))
-	visible := max(1, height-4)
+	visible := max(1, height-5)
 	start, end := visibleRange(m.indexCursor, len(tasks), visible)
 	if len(tasks) == 0 {
 		lines = append(lines, mutedStyle.Render("No tasks in the Markdown file"))
 	}
 	for i := start; i < end; i++ {
 		t := tasks[i]
-		label, branch := "-", "-"
+		scope := "-"
 		if taskLabel(t) != "" {
-			label = "@" + taskLabel(t)
+			scope = "@" + taskLabel(t)
 		}
 		if t.branch != "" {
-			branch = t.branch
+			scope = " " + t.branch
 		}
 		mark := "○ "
 		if t.done {
@@ -68,27 +58,29 @@ func (m model) renderIndex(width, height int) string {
 			title += ": " + details
 		}
 		selected := i == m.indexCursor
-		priority := priorityStyle(t.priority)
-		labelStyle := lipgloss.NewStyle().Foreground(colorPurple)
-		branchStyle := lipgloss.NewStyle().Foreground(colorGreen)
 		taskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
+		if t.priority != "" {
+			taskStyle = priorityStyle(t.priority)
+		}
 		if t.done {
 			taskStyle = mutedStyle
 		}
+		scopeStyle := mutedStyle
+		if t.branch != "" {
+			scopeStyle = lipgloss.NewStyle().Foreground(colorGreen)
+		} else if taskLabel(t) != "" {
+			scopeStyle = lipgloss.NewStyle().Foreground(colorPurple)
+		}
 		if selected {
-			priority = priority.Background(colorBlue)
-			labelStyle = labelStyle.Background(colorBlue)
-			branchStyle = branchStyle.Background(colorBlue)
 			taskStyle = taskStyle.Background(colorBlue)
+			scopeStyle = scopeStyle.Background(colorBlue)
 		}
 		gap := "  "
 		if selected {
 			gap = lipgloss.NewStyle().Background(colorBlue).Render(gap)
 		}
-		row := priority.Render(indexColumn(priorityMarker(t.priority), 3)) + gap +
-			labelStyle.Render(indexColumn(label, labelWidth)) + gap +
-			branchStyle.Render(indexColumn(branch, branchWidth)) + gap +
-			taskStyle.Render(indexColumn(title, taskWidth))
+		row := taskStyle.Render(indexColumn(title, taskWidth)) + gap +
+			scopeStyle.Render(indexColumn(scope, scopeWidth))
 		lines = append(lines, row)
 	}
 	return m.panelStyle(true, width, height).Render(strings.Join(lines, "\n"))

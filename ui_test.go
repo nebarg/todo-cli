@@ -535,6 +535,24 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	}
 }
 
+func TestAddFormAcceptsSymbolCategory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "TODO.md")
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, _ := m.startTaskModal("add-general")
+	m = opened.(model)
+	m.modal.title.SetValue("Version task")
+	m.modal.scope.SetValue("+v1")
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	m = updated.(model)
+	selected, ok := m.selectedTask()
+	if m.modal != nil || !ok || taskLabel(selected) != "+v1" || m.generalLabel != "+v1" {
+		t.Fatalf("symbol category did not save from the form: %+v", m.generalRows())
+	}
+}
+
 func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
 	m, err := newModel(path, projectContext{})
@@ -795,7 +813,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	if !m.indexMode || m.indexSort != "priority" {
 		t.Fatalf("index opened with sort %q", m.indexSort)
 	}
-	if got := indexTitles(m.indexTasks()); got != "High task,Medium task,Low task,Plain task" {
+	if got := indexTitles(m.indexTasks()); got != "Medium task,Low task,Plain task,High task" {
 		t.Fatalf("priority order = %q", got)
 	}
 	for _, size := range [][2]int{{120, 35}, {78, 16}, {60, 20}, {56, 19}} {
@@ -805,7 +823,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 			t.Errorf("index size at %dx%d = %dx%d", size[0], size[1], lipgloss.Width(view), lipgloss.Height(view))
 		}
 		plain := ansi.Strip(view)
-		for _, want := range []string{"All tasks  1/4", "!", "@zeta", "feature/a", "High task", "More context on another line."} {
+		for _, want := range []string{"All tasks  1/4", "TASK: DETAILS", "CATEGORY / BRANCH", "@zeta", " feature/a", "High task", "More context on another line."} {
 			if !strings.Contains(plain, want) && size[0] == 120 {
 				t.Errorf("index missing %q: %s", want, plain)
 			}
@@ -813,27 +831,102 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 		if strings.Contains(plain, "File TODOs") {
 			t.Error("source TODOs appeared in Markdown index")
 		}
+		if strings.Contains(plain, "PRI  ") {
+			t.Error("priority column is still visible")
+		}
+	}
+	rendered := m.renderIndex(120, 20)
+	plain := ansi.Strip(rendered)
+	lines := strings.Split(plain, "\n")
+	if len(lines) < 4 || strings.Trim(lines[2], " │") != "" || strings.Index(lines[3], "TASK: DETAILS") > strings.Index(lines[3], "CATEGORY / BRANCH") {
+		t.Fatalf("all tasks heading and columns are out of order: %s", plain)
+	}
+	if !strings.Contains(rendered, "38;2;244;162;97") {
+		t.Error("medium priority did not color the task")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'B', Text: "B"})
 	m = updated.(model)
-	if got := indexTitles(m.indexTasks()); got != "High task,Low task,Medium task,Plain task" {
+	if m.indexSort != "priority" {
+		t.Fatal("old branch sort shortcut still changed the sort")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+	m = updated.(model)
+	if got := indexTitles(m.indexTasks()); m.indexSort != "branch" || got != "High task,Low task,Medium task,Plain task" {
 		t.Fatalf("branch order = %q", got)
 	}
-	if selected, _ := m.selectedTask(); selected.text != "High task" {
+	if selected, _ := m.selectedTask(); selected.text != "Medium task" {
 		t.Fatal("sort lost selected task")
 	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	m = updated.(model)
-	if m.indexSort != "category" || !strings.Contains(ansi.Strip(m.renderIndex(120, 20)), "CATEGORY") {
+	if m.indexSort != "category" || !strings.Contains(ansi.Strip(m.renderIndex(120, 20)), "CATEGORY / BRANCH") {
 		t.Fatal("category sort or column heading is missing")
 	}
 	if got := indexTitles(m.indexTasks()); got != "Medium task,High task,Low task,Plain task" {
 		t.Fatalf("category order = %q", got)
 	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+	m = updated.(model)
+	if m.indexSort != "priority" || indexTitles(m.indexTasks()) != "Medium task,Low task,Plain task,High task" {
+		t.Fatal("sort did not cycle back to priority")
+	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(model)
 	if m.indexMode {
 		t.Fatal("Escape did not return to dashboard")
+	}
+}
+
+func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "- [x] General done\n  - Priority: High\n\n- [ ] General open\n  - Priority: Low\n\n# auth\n\n- [x] Auth done\n  - Priority: High\n\n- [ ] Auth open\n  - Priority: Low\n\n# Branches\n\n## feature/x\n\n- [x] Branch done\n  - Priority: High\n\n- [ ] Branch open first\n  - Priority: Low\n\n- [ ] Branch open second\n  - Priority: Low\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct{ sort, want string }{
+		{"priority", "General open,Auth open,Branch open first,Branch open second,General done,Auth done,Branch done"},
+		{"branch", "Branch open first,Branch open second,Branch done,Auth open,Auth done,General open,General done"},
+		{"category", "Auth open,Auth done,Branch open first,Branch open second,Branch done,General open,General done"},
+	} {
+		m.indexSort = item.sort
+		if got := indexTitles(m.indexTasks()); got != item.want {
+			t.Errorf("%s order = %q, want %q", item.sort, got, item.want)
+		}
+	}
+	if rows := m.generalRows(); rows[1].todo.text != "General open" || rows[2].todo.text != "General done" {
+		t.Fatalf("general tasks are out of order: %+v", rows)
+	}
+	m.generalLabel = "auth"
+	if rows := m.generalRows(); rows[0].todo.text != "Auth open" || rows[1].todo.text != "Auth done" {
+		t.Fatalf("category tasks are out of order: %+v", rows)
+	}
+	m.focus = branchPane
+	m.branchFilter = "feature/x"
+	if rows := m.branchRows(); rows[0].todo.text != "Branch open first" || rows[1].todo.text != "Branch open second" || rows[2].todo.text != "Branch done" {
+		t.Fatalf("branch tasks are out of order: %+v", rows)
+	}
+	m.branchCursor = 0
+	m.toggleSelected()
+	if selected, ok := m.selectedTask(); !ok || selected.text != "Branch open first" || !selected.done || m.branchCursor != 2 {
+		t.Fatalf("completed branch task did not stay selected at the end: %+v", m.branchRows())
+	}
+}
+
+func TestFooterOmitsObviousMovementHints(t *testing.T) {
+	m := model{}
+	for _, pane := range []pane{generalPane, branchPane, sourcePane, detailPane} {
+		m.focus = pane
+		if footer := ansi.Strip(m.renderFooter(120)); strings.Contains(footer, "↑/↓") || strings.Contains(footer, "move") || strings.Contains(footer, "scroll") {
+			t.Errorf("movement hint remains on pane %d: %q", pane, footer)
+		}
+	}
+	m.indexMode = true
+	if footer := ansi.Strip(m.renderFooter(120)); strings.Contains(footer, "↑/↓") || strings.Contains(footer, "move") {
+		t.Errorf("movement hint remains in All tasks: %q", footer)
 	}
 }
 
@@ -843,6 +936,45 @@ func indexTitles(tasks []task) string {
 		names[i] = t.text
 	}
 	return strings.Join(names, ",")
+}
+
+func TestIndexEditShowsTaskLocation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "- [ ] Plain task\n\n# auth\n\n- [ ] Category task\n\n# Branches\n\n## feature/ui\n\n- [ ] Branch task\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.indexMode = true
+	for _, item := range []struct{ task, location string }{
+		{"Plain task", "General task"},
+		{"Category task", "Category  @auth"},
+		{"Branch task", "Branch     feature/ui"},
+	} {
+		for i, task := range m.indexTasks() {
+			if task.text == item.task {
+				m.indexCursor = i
+				break
+			}
+		}
+		updated, _ := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+		m = updated.(model)
+		if m.modal == nil {
+			t.Fatalf("edit did not open for %s", item.task)
+		}
+		for _, size := range [][2]int{{76, 20}, {54, 12}} {
+			m.modal.resize(size[0]+2, size[1]+4)
+			rendered := m.modal.render(size[0], size[1])
+			if !strings.Contains(ansi.Strip(rendered), item.location) || lipgloss.Width(rendered) != size[0] || lipgloss.Height(rendered) != size[1] {
+				t.Errorf("edit location missing or overflowing for %s at %dx%d: %s", item.task, size[0], size[1], ansi.Strip(rendered))
+			}
+		}
+		updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+		m = updated.(model)
+	}
 }
 
 func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
@@ -866,8 +998,17 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	if m.modal == nil || m.modal.title.Value() != "First" {
 		t.Fatal("Edit did not open the indexed task")
 	}
-	if priorityMarker("high") != "!" || priorityMarker("medium") != "!" || priorityMarker("low") != "!" || priorityMarker("") != "-" {
-		t.Fatal("wrong priority markers")
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
+	m = updated.(model)
+	if selected, ok := m.selectedTask(); !ok || selected.text != "First" || selected.priority != "medium" || m.indexSort != "priority" {
+		t.Fatal("p should change the selected task's priority without changing sort")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	m = updated.(model)
+	if m.inputMode != "category" || m.indexSort != "priority" {
+		t.Fatal("c should edit the selected task's category without changing sort")
 	}
 	for priority, want := range map[string]color.Color{"high": colorHigh, "medium": colorMedium, "low": colorLow} {
 		if got := priorityStyle(priority).GetForeground(); got != want {
@@ -922,22 +1063,24 @@ func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 	if got := indexTitles(m.indexTasks()); !strings.HasPrefix(got, "Urgent,Routine,Bare,Another unprioritized") {
 		t.Fatalf("opening the full list unexpectedly resorted tasks: %q", got)
 	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
-	m = updated.(model)
+	for range 3 {
+		updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+		m = updated.(model)
+	}
 	if got := indexTitles(m.indexTasks()); !strings.HasPrefix(got, "Urgent,Bare,Routine") {
-		t.Fatalf("explicit full-list priority sort failed: %q", got)
+		t.Fatalf("cycling the full-list sort back to priority failed: %q", got)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(model)
-	if rows := m.generalRows(); rows[3].todo.text != "Routine" || rows[4].todo.text != "Bare" || m.generalCursor != 4 {
-		t.Fatalf("completing a task unexpectedly resorted the list: %+v", rows)
+	if rows := m.generalRows(); rows[3].todo.text != "Routine" || rows[4].todo.text != "Another unprioritized" || rows[5].todo.text != "Bare" || m.generalCursor != 5 {
+		t.Fatalf("completed task did not move after open tasks while staying selected: %+v", rows)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
 	m = updated.(model)
-	if rows := m.generalRows(); rows[3].todo.text != "Bare" || rows[4].todo.text != "Routine" {
-		t.Fatalf("reload did not sort by priority: %+v", rows)
+	if rows := m.generalRows(); rows[3].todo.text != "Routine" || rows[4].todo.text != "Another unprioritized" || rows[5].todo.text != "Bare" {
+		t.Fatalf("reload did not leave completed tasks last: %+v", rows)
 	}
 	items, err := loadTasks(path)
 	if err != nil {
