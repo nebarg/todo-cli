@@ -59,7 +59,7 @@ func sourceFiles(ctx context.Context, dir string, allFiles bool) ([]string, erro
 		cmd := exec.CommandContext(ctx, "git", "-C", dir, "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", ".")
 		if output, err := cmd.Output(); err == nil {
 			var files []string
-			for _, raw := range bytes.Split(output, []byte{0}) {
+			for raw := range bytes.SplitSeq(output, []byte{0}) {
 				if len(raw) == 0 {
 					continue
 				}
@@ -122,7 +122,7 @@ func shouldScanPath(path string, allFiles bool) bool {
 	if allFiles {
 		return true
 	}
-	for _, part := range strings.Split(slash, "/") {
+	for part := range strings.SplitSeq(slash, "/") {
 		if strings.HasPrefix(part, ".") {
 			return false
 		}
@@ -141,7 +141,7 @@ func scanFile(ctx context.Context, dir, relative string, allFiles bool, found ch
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // Read-only, so a close error cannot lose data.
 	probe := make([]byte, 8192)
 	n, _ := f.Read(probe)
 	if bytes.IndexByte(probe[:n], 0) >= 0 {

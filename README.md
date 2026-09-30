@@ -15,17 +15,17 @@ Or install it straight onto your `PATH` (in `$(go env GOPATH)/bin`):
 go install github.com/nebarg/todo-cli/cmd/todo@latest
 ```
 
-During development, `go run ./cmd/todo` and `go test ./...` work from the repository root.
+During development, run these from the repository root: `go run ./cmd/todo`, `go test ./...`, and `go tool golangci-lint run ./...` for linting (the linter is pinned in `go.mod`, configured in `.golangci.yml`).
 
 With no arguments, `todo` opens the dashboard. With task text, it adds a task and exits:
 
 ```sh
 todo Test login failures
-todo -p high -c tests Fix flaky login test
+todo -p high @tests Fix flaky login test
 todo -b Fix the bug on this branch
 ```
 
-Flags go before the task text. `-p` accepts `high`, `medium`, or `low`; `-c` or `-category` assigns one category. Categories can contain any characters except whitespace, so names such as `+v1` and `bug-fix` work. An optional leading `@` or `#` is treated as a prefix. `-b` puts the task under the current Git branch. Use `-branch-name feature/login` to choose an existing local Git branch explicitly. `todo add scan` adds a task literally named “scan”.
+Flags go before the task text. `-p` accepts `high`, `medium`, or `low`. Start the task text with `@category` to file it under a category (for example `todo @boundary Fix the thing`); only the first word counts, so an `@` later in the title stays part of it. `-c` or `-category` does the same as a flag; use one or the other, not both. Categories can contain any characters except whitespace, so names such as `+v1` and `bug-fix` work. An optional leading `@` or `#` is treated as a prefix. `-b` puts the task under the current Git branch. Use `-branch-name feature/login` to choose an existing local Git branch explicitly. `todo add scan` adds a task literally named “scan”.
 
 Inside a Git repository, the default file is `todo.md` at the repository root. Outside Git, it is `todo.md` in the current directory. Use `-file path/to/tasks.md` to choose another file. The file is created when you add the first task.
 
@@ -79,7 +79,7 @@ The add form starts with a full-width, two-line task input, followed by a shorte
 - [ ] Fix the flaky login test
 ```
 
-Tasks before the first heading are generic. The app writes categories as `# Category`; when reading an external file, any non-branch heading defines a category. `# Branches` contains `## branch-name` headings, with tasks directly below each branch. The full-screen list includes all of them. A non-branch task has at most one category; categories can be entered as `auth`, `@auth`, or `#auth`, and the dashboard shows them as `@auth`. New categories can use punctuation and symbols but cannot contain whitespace; `Branches` is reserved. Existing categories in older files remain readable and can be renamed. Indent description paragraphs, lists, or code blocks by two spaces beneath a task; they appear on the detail page. Keep priority directly below the checkbox, before the description. Indented checkboxes are treated as part of the description, not separate tasks. Bare list items such as `- Buy milk` are readable and become `- [ ] Buy milk` when edited. Changing priority edits the task in place; the dashboard sorts tasks by priority when it opens and when you press `r`, keeping rows still between reloads. Older `- Labels:` metadata remains readable; changing a task's category moves it to a heading. Other Markdown is preserved when tasks are changed.
+Tasks before the first heading are generic. The app writes categories as `# Category`; when reading an external file, any non-branch heading defines a category. `# Branches` contains `## branch-name` headings, with tasks directly below each branch. The full-screen list includes all of them. A non-branch task has at most one category; categories can be entered as `auth`, `@auth`, or `#auth`, and the dashboard shows them as `@auth`. New categories can use punctuation and symbols but cannot contain whitespace; `Branches` is reserved. Existing categories in older files remain readable and can be renamed. Indent description paragraphs, lists, or code blocks by two spaces beneath a task; they appear on the detail page. Keep priority directly below the checkbox, before the description. Indented checkboxes are treated as part of the description, not separate tasks. Bare list items such as `- Buy milk` are readable and become `- [ ] Buy milk` when edited. Changing priority edits the task in place; the dashboard sorts tasks by priority when it opens and when you press `r`, keeping rows still between reloads. Categories come only from Markdown headings; an old `- Labels:` line under a task is treated as part of its description. Other Markdown is preserved when tasks are changed.
 
 ## TODOs in source files
 

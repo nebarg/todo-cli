@@ -9,7 +9,7 @@ type navigationKind int
 
 const (
 	rowTask navigationKind = iota
-	rowLabel
+	rowCategory
 	rowBranch
 )
 
@@ -34,29 +34,28 @@ func completedCount(tasks []task) int {
 
 func (m *model) generalRows() []navigationRow {
 	var rows []navigationRow
-	if m.generalLabel == "" {
+	if m.generalCategory == "" {
 		counts := make(map[string]int)
 		completed := make(map[string]int)
 		display := make(map[string]string)
 		for _, t := range m.general {
-			if label := taskLabel(t); label != "" {
-				key := strings.ToLower(label)
+			if t.category != "" {
+				key := strings.ToLower(t.category)
 				counts[key]++
 				if t.done {
 					completed[key]++
 				}
 				if display[key] == "" {
-					display[key] = label
+					display[key] = t.category
 				}
 			}
 		}
 		for _, key := range sortedNames(counts) {
-			label := display[key]
-			rows = append(rows, navigationRow{kind: rowLabel, name: label, count: counts[key], completed: completed[key]})
+			rows = append(rows, navigationRow{kind: rowCategory, name: display[key], count: counts[key], completed: completed[key]})
 		}
 		taskStart := len(rows)
 		for _, t := range m.general {
-			if taskLabel(t) == "" {
+			if t.category == "" {
 				rows = append(rows, navigationRow{kind: rowTask, todo: t})
 			}
 		}
@@ -64,7 +63,7 @@ func (m *model) generalRows() []navigationRow {
 		return rows
 	}
 	for _, t := range m.general {
-		if taskHasLabel(t, m.generalLabel) {
+		if taskInCategory(t, m.generalCategory) {
 			rows = append(rows, navigationRow{kind: rowTask, todo: t})
 		}
 	}
@@ -120,7 +119,7 @@ func (m *model) selectNavigationTask(selected task) {
 	}
 	for i, row := range rows {
 		if row.kind == rowTask && row.todo.line == selected.line && row.todo.text == selected.text &&
-			row.todo.branch == selected.branch && strings.EqualFold(taskLabel(row.todo), taskLabel(selected)) {
+			row.todo.branch == selected.branch && strings.EqualFold(row.todo.category, selected.category) {
 			*cursor = i
 			return
 		}
@@ -150,15 +149,8 @@ func sortedTasksByPriority(tasks []task) []task {
 	return sorted
 }
 
-func taskHasLabel(t task, label string) bool {
-	return strings.EqualFold(taskLabel(t), label)
-}
-
-func taskLabel(t task) string {
-	if len(t.labels) == 0 {
-		return ""
-	}
-	return t.labels[0]
+func taskInCategory(t task, category string) bool {
+	return strings.EqualFold(t.category, category)
 }
 
 func (m *model) selectedNavigationRow() (navigationRow, bool) {
@@ -187,9 +179,9 @@ func (m *model) enterSelectedGroup() bool {
 		return false
 	}
 	switch row.kind {
-	case rowLabel:
+	case rowCategory:
 		m.generalRootCursor = m.generalCursor
-		m.generalLabel = row.name
+		m.generalCategory = row.name
 		m.generalCursor = 0
 	case rowBranch:
 		m.branchRootCursor = m.branchCursor
@@ -206,10 +198,10 @@ func (m *model) enterSelectedGroup() bool {
 func (m *model) leaveGroup() bool {
 	switch m.focus {
 	case generalPane:
-		if m.generalLabel == "" {
+		if m.generalCategory == "" {
 			return false
 		}
-		m.generalLabel = ""
+		m.generalCategory = ""
 		m.generalCursor = m.generalRootCursor
 	case branchPane:
 		if m.branchFilter == "" {

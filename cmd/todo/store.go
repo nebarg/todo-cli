@@ -21,9 +21,8 @@ type task struct {
 	done         bool
 	branch       string
 	priority     priority
-	labels       []string
-	headingLabel bool
-	headingLine  int
+	category     string
+	categoryLine int
 	meta         []string
 	details      string
 	bodyStart    int
@@ -41,23 +40,23 @@ func loadTasks(path string) ([]task, error) {
 	}
 	lines := strings.Split(string(data), "\n")
 	var tasks []task
-	branchSectionLevel, branch, label, labelLine := 0, "", "", -1
+	branchSectionLevel, branch, category, categoryLine := 0, "", "", -1
 	for i := 0; i < len(lines); i++ {
 		raw := lines[i]
 		if level, name, ok := parseHeading(raw); ok {
 			if strings.EqualFold(name, "Branches") && (level == 1 || (level == 2 && branchSectionLevel == 0)) {
-				branchSectionLevel, branch, label, labelLine = level, "", "", -1
+				branchSectionLevel, branch, category, categoryLine = level, "", "", -1
 				continue
 			}
 			if branchSectionLevel != 0 && level > branchSectionLevel {
 				if level == branchSectionLevel+1 {
 					branch = name
 				}
-				label, labelLine = "", -1
+				category, categoryLine = "", -1
 				continue
 			}
 			branchSectionLevel, branch = 0, ""
-			label, labelLine = headingCategoryName(name), i
+			category, categoryLine = headingCategoryName(name), i
 			continue
 		}
 		parts := taskLine.FindStringSubmatch(raw)
@@ -66,10 +65,7 @@ func loadTasks(path string) ([]task, error) {
 		}
 		t := task{
 			line: i, raw: raw, text: strings.TrimSuffix(parts[3], "\r"),
-			done: parts[2] == "x" || parts[2] == "X", branch: branch, headingLabel: label != "" && branch == "", headingLine: labelLine,
-		}
-		if label != "" && branch == "" {
-			t.labels = []string{label}
+			done: parts[2] == "x" || parts[2] == "X", branch: branch, category: category, categoryLine: categoryLine,
 		}
 		indent := taskIndent(raw)
 		j := i + 1
@@ -79,10 +75,6 @@ func loadTasks(path string) ([]task, error) {
 				if p, err := parsePriority(line[len(indent+"  - Priority:"):]); err == nil {
 					t.priority = p
 				}
-			} else if strings.HasPrefix(line, indent+"  - Labels: ") && label == "" && branch == "" {
-				t.labels = parseLabels(strings.TrimPrefix(line, indent+"  - Labels: "))
-			} else if strings.HasPrefix(line, indent+"  - Labels: ") {
-				// Read old metadata without overriding the heading's label.
 			} else {
 				break
 			}
@@ -121,29 +113,15 @@ func loadTasks(path string) ([]task, error) {
 	return tasks, nil
 }
 
-func parseLabels(s string) []string {
-	var labels []string
-	seen := make(map[string]bool)
-	for _, raw := range strings.Split(s, ",") {
-		label := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(raw), "#@"))
-		key := strings.ToLower(label)
-		if label != "" && !seen[key] {
-			labels = append(labels, label)
-			seen[key] = true
-		}
-	}
-	return labels
-}
-
 func taskIndent(raw string) string {
 	return raw[:len(raw)-len(strings.TrimLeft(raw, " \t"))]
 }
 
-func addTaskWithOptions(path, title string, p priority, labels []string, branch string) error {
-	return addTaskWithDetails(path, title, "", p, labels, branch)
+func addTaskWithOptions(path, title string, p priority, category, branch string) error {
+	return addTaskWithDetails(path, title, "", p, category, branch)
 }
 
-func addTaskWithDetails(path, title, details string, p priority, labels []string, branch string) error {
+func addTaskWithDetails(path, title, details string, p priority, category, branch string) error {
 	title = strings.TrimSpace(title)
 	branch = strings.TrimSpace(branch)
 	if title == "" || strings.ContainsAny(title, "\r\n") {
@@ -152,17 +130,13 @@ func addTaskWithDetails(path, title, details string, p priority, labels []string
 	if strings.ContainsAny(branch, "\r\n") {
 		return errors.New("branch name must be one line")
 	}
-	if len(labels) > 1 {
-		return errors.New("a task can have only one category")
-	}
-	label := ""
-	if len(labels) > 0 {
-		label = normalizeLabelInput(labels[0])
-		if err := validateLabel(label); err != nil {
+	if category != "" {
+		category = normalizeCategoryInput(category)
+		if err := validateCategory(category); err != nil {
 			return err
 		}
 	}
-	if branch != "" && label != "" {
+	if branch != "" && category != "" {
 		return errors.New("branch tasks cannot have a category")
 	}
 	data, err := os.ReadFile(path)
@@ -179,7 +153,7 @@ func addTaskWithDetails(path, title, details string, p priority, labels []string
 		block = append(block, "")
 		block = append(block, body...)
 	}
-	updated := insertTaskBlock(string(data), block, branch, label)
+	updated := insertTaskBlock(string(data), block, branch, category)
 	return replaceFile(path, []byte(updated), mode)
 }
 
@@ -264,14 +238,14 @@ func taskUnchanged(lines []string, selected task) bool {
 	return true
 }
 
-func validateLabel(label string) error {
-	if label == "" {
+func validateCategory(category string) error {
+	if category == "" {
 		return errors.New("category must be a single word without whitespace")
 	}
-	if strings.EqualFold(label, "Branches") {
-		return errors.New("Branches is reserved for the branch section")
+	if strings.EqualFold(category, "Branches") {
+		return errors.New(`"Branches" is reserved for the branch section`)
 	}
-	for _, r := range label {
+	for _, r := range category {
 		if unicode.IsSpace(r) {
 			return errors.New("category must be a single word without whitespace")
 		}
@@ -279,12 +253,11 @@ func validateLabel(label string) error {
 	return nil
 }
 
-func normalizeLabelInput(raw string) string {
-	label := raw
-	if len(label) > 1 && (strings.HasPrefix(label, "@") || strings.HasPrefix(label, "#")) {
-		label = label[1:]
+func normalizeCategoryInput(raw string) string {
+	if len(raw) > 1 && (strings.HasPrefix(raw, "@") || strings.HasPrefix(raw, "#")) {
+		return raw[1:]
 	}
-	return label
+	return raw
 }
 
 func headingCategoryName(name string) string {
@@ -302,14 +275,14 @@ func metadataLines(p priority) []string {
 	return lines
 }
 
-func insertTaskBlock(data string, block []string, branch, label string) string {
+func insertTaskBlock(data string, block []string, branch, category string) string {
 	p := priorityFromBlock(block)
 	if strings.TrimSpace(data) == "" {
 		if branch != "" {
 			return "# Branches\n\n## " + branch + "\n\n" + strings.Join(block, "\n") + "\n"
 		}
-		if label != "" {
-			return "# " + label + "\n\n" + strings.Join(block, "\n") + "\n"
+		if category != "" {
+			return "# " + category + "\n\n" + strings.Join(block, "\n") + "\n"
 		}
 		return strings.Join(block, "\n") + "\n"
 	}
@@ -331,7 +304,7 @@ func insertTaskBlock(data string, block []string, branch, label string) string {
 		}
 		return insertBlockSorted(lines, branchStart+1, branchEnd, block, p)
 	}
-	if label == "" {
+	if category == "" {
 		end := len(lines)
 		for i, line := range lines {
 			if _, _, ok := parseHeading(line); ok {
@@ -341,14 +314,14 @@ func insertTaskBlock(data string, block []string, branch, label string) string {
 		}
 		return insertBlockSorted(lines, 0, end, block, p)
 	}
-	if start, end := findCategorySection(lines, label); start >= 0 {
+	if start, end := findCategorySection(lines, category); start >= 0 {
 		return insertBlockSorted(lines, start+1, end, block, p)
 	}
 	idx := len(lines)
 	if branchesStart, _, _ := findBranchesSection(lines); branchesStart >= 0 {
 		idx = branchesStart
 	}
-	return insertBlockAt(lines, trimBlankEnd(lines, idx, 0), append([]string{"# " + label, ""}, block...))
+	return insertBlockAt(lines, trimBlankEnd(lines, idx, 0), append([]string{"# " + category, ""}, block...))
 }
 
 func parseHeading(line string) (int, string, bool) {
@@ -547,28 +520,23 @@ func setTaskPriority(path string, selected task, p priority) error {
 	})
 }
 
-func setTaskLabel(path string, selected task, label string) error {
+func setTaskCategory(path string, selected task, category string) error {
 	if selected.branch != "" {
 		return errors.New("branch tasks do not have categories")
 	}
-	blank := strings.TrimSpace(label) == ""
-	label = normalizeLabelInput(label)
+	blank := strings.TrimSpace(category) == ""
+	category = normalizeCategoryInput(category)
 	if !blank {
-		if err := validateLabel(label); err != nil {
+		if err := validateCategory(category); err != nil {
 			return err
 		}
 	}
-	if selected.headingLabel && strings.EqualFold(taskLabel(selected), label) {
+	if strings.EqualFold(selected.category, category) {
 		return nil
 	}
 	return rewriteTask(path, selected, func(lines []string) string {
-		indent := taskIndent(selected.raw)
 		block := []string{normalizedTaskLine(selected, selected.text, selected.done)}
-		for _, line := range selected.meta {
-			if !strings.HasPrefix(line, indent+"  - Labels: ") {
-				block = append(block, line)
-			}
-		}
+		block = append(block, selected.meta...)
 		body := append([]string(nil), selected.bodyRaw...)
 		for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
 			body = body[:len(body)-1]
@@ -576,18 +544,18 @@ func setTaskLabel(path string, selected task, label string) error {
 		block = append(block, body...)
 		remaining := append([]string{}, lines[:selected.line]...)
 		remaining = append(remaining, lines[selected.bodyEnd:]...)
-		remaining = removeEmptyLabelHeading(remaining, selected)
-		return insertTaskBlock(strings.Join(remaining, "\n"), block, selected.branch, label)
+		remaining = removeEmptyCategoryHeading(remaining, selected)
+		return insertTaskBlock(strings.Join(remaining, "\n"), block, selected.branch, category)
 	})
 }
 
-func removeEmptyLabelHeading(lines []string, selected task) []string {
-	if !selected.headingLabel || selected.headingLine < 0 || selected.headingLine >= len(lines) {
+func removeEmptyCategoryHeading(lines []string, selected task) []string {
+	if selected.category == "" || selected.categoryLine < 0 || selected.categoryLine >= len(lines) {
 		return lines
 	}
-	start := selected.headingLine
+	start := selected.categoryLine
 	_, name, ok := parseHeading(lines[start])
-	if !ok || !strings.EqualFold(headingCategoryName(name), taskLabel(selected)) {
+	if !ok || !strings.EqualFold(headingCategoryName(name), selected.category) {
 		return lines
 	}
 	end := start + 1
@@ -604,28 +572,30 @@ func removeEmptyLabelHeading(lines []string, selected task) []string {
 }
 
 func replaceFile(path string, data []byte, mode os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".todo-cli-*")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".todo-*")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
-	if err := tmp.Chmod(mode); err != nil {
-		tmp.Close()
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+	// After a successful rename the temp name is gone, so this only cleans up failures.
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	if err := writeSynced(tmp, data, mode); err != nil {
+		_ = tmp.Close() // The write error is the one worth reporting.
 		return err
 	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+func writeSynced(f *os.File, data []byte, mode os.FileMode) error {
+	if err := f.Chmod(mode); err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		return err
+	}
+	return f.Sync()
 }
 
 func taskLocation(t task) string {

@@ -19,18 +19,10 @@ func main() {
 	allFiles := flag.Bool("all-files", false, "include Markdown, hidden, and ignored text in scan")
 	flag.StringVar(priorityFlag, "p", "", "shorthand for -priority")
 	flag.StringVar(categoryFlag, "c", "", "shorthand for -category")
-	flag.StringVar(categoryFlag, "l", "", "")
-	flag.StringVar(categoryFlag, "label", "", "") // Accept older command lines.
-	flag.StringVar(categoryFlag, "labels", "", "")
 	flag.BoolVar(onBranch, "b", false, "shorthand for -branch")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags] [task text]\n\nFlags:\n", os.Args[0])
-		flag.VisitAll(func(option *flag.Flag) {
-			if option.Name == "l" || option.Name == "label" || option.Name == "labels" {
-				return
-			}
-			fmt.Fprintf(flag.CommandLine.Output(), "  -%s\t%s\n", option.Name, option.Usage)
-		})
+		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags] [@category] [task text]\n\nFlags:\n", os.Args[0])
+		flag.PrintDefaults()
 	}
 	flag.Parse()
 
@@ -75,9 +67,17 @@ func main() {
 		if args[0] == "add" {
 			args = args[1:]
 		}
+		var category string
+		category, args = splitCategoryArg(args)
 		if len(args) == 0 {
-			fmt.Fprintln(os.Stderr, "usage: todo [flags] task text")
+			fmt.Fprintln(os.Stderr, "usage: todo [flags] [@category] task text")
 			os.Exit(2)
+		}
+		if category != "" && *categoryFlag != "" {
+			fail(fmt.Errorf("use either @category or -category"))
+		}
+		if category == "" {
+			category = *categoryFlag
 		}
 		if *onBranch && *branchName != "" {
 			fail(fmt.Errorf("use either -branch or -branch-name"))
@@ -97,11 +97,7 @@ func main() {
 			fail(err)
 		}
 		title := strings.Join(args, " ")
-		var categories []string
-		if *categoryFlag != "" {
-			categories = []string{*categoryFlag}
-		}
-		if err := addTaskWithOptions(file, title, p, categories, branch); err != nil {
+		if err := addTaskWithOptions(file, title, p, category, branch); err != nil {
 			fail(err)
 		}
 		fmt.Printf("Added to %s: %s\n", file, title)
@@ -118,6 +114,15 @@ func main() {
 	if _, err := tea.NewProgram(m).Run(); err != nil {
 		fail(err)
 	}
+}
+
+// splitCategoryArg takes a leading @category argument off the task text. Only
+// the first argument counts, so an @ later in the text stays part of the title.
+func splitCategoryArg(args []string) (string, []string) {
+	if len(args) > 0 && len(args[0]) > 1 && strings.HasPrefix(args[0], "@") {
+		return args[0], args[1:]
+	}
+	return "", args
 }
 
 func fail(err error) {

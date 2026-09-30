@@ -1,0 +1,62 @@
+package main
+
+import (
+	"image/color"
+
+	"charm.land/lipgloss/v2"
+)
+
+// The palette is package-level so the render helpers can share it. It starts
+// dark and applyTheme swaps it once the terminal reports its background.
+var (
+	colorText         color.Color
+	colorStrong       color.Color
+	colorMuted        color.Color
+	colorBorder       color.Color
+	colorFocus        color.Color
+	colorSelection    color.Color
+	colorBar          color.Color
+	colorModal        color.Color
+	colorGreen        color.Color
+	colorPurple       color.Color
+	colorHigh         color.Color
+	colorMedium       color.Color
+	colorLow          color.Color
+	titleStyle        lipgloss.Style
+	taskTitleStyle    lipgloss.Style
+	mutedStyle        lipgloss.Style
+	selectedStyle     lipgloss.Style
+	selectedDoneStyle lipgloss.Style
+	statusBarStyle    lipgloss.Style
+)
+
+func init() {
+	applyTheme(true)
+}
+
+func applyTheme(dark bool) {
+	pick := lipgloss.LightDark(dark)
+	hex := func(light, dark string) color.Color {
+		return pick(lipgloss.Color(light), lipgloss.Color(dark))
+	}
+	colorText = hex("#1F2933", "#DCE4EF")
+	colorStrong = hex("#111827", "#FFFFFF")
+	colorMuted = hex("#5B6778", "#8190A5")
+	colorBorder = hex("#A0AEC0", "#526177")
+	colorFocus = hex("#B7791F", "#F4D35E")
+	colorSelection = hex("#C3DAFE", "#2457A6")
+	colorBar = hex("#E2E8F0", "#17253A")
+	colorModal = hex("#F7FAFC", "#111E2F")
+	colorGreen = hex("#2F855A", "#80C99B")
+	colorPurple = hex("#6B46C1", "#B7A4EB")
+	colorHigh = hex("#C53030", "#F07777")
+	colorMedium = hex("#C05621", "#F4A261")
+	colorLow = hex("#B7791F", "#F4D35E")
+
+	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(colorFocus)
+	taskTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(colorStrong)
+	mutedStyle = lipgloss.NewStyle().Foreground(colorMuted)
+	selectedStyle = lipgloss.NewStyle().Foreground(colorStrong).Background(colorSelection)
+	selectedDoneStyle = lipgloss.NewStyle().Foreground(hex("#4A5568", "#B6C2D3")).Background(colorSelection)
+	statusBarStyle = lipgloss.NewStyle().Foreground(colorHigh).Background(colorBar)
+}

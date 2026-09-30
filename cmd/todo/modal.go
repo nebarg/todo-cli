@@ -27,7 +27,7 @@ type taskModal struct {
 	selected     task
 	project      projectContext
 	addBranch    string
-	addLabel     string
+	addCategory  string
 	branches     []string
 	branchCursor int
 	branchFresh  bool
@@ -35,14 +35,13 @@ type taskModal struct {
 	scope        textinput.Model
 	details      textarea.Model
 	field        int // add: title, scope, details; edit: title, details
-	compact      bool
 	err          string
 }
 
 func (m *model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
 	modal := &taskModal{mode: mode, project: m.project}
 	if mode == modalAddGeneral && m.activePane() == generalPane {
-		modal.addLabel = m.generalLabel
+		modal.addCategory = m.generalCategory
 	}
 	if mode == modalAddBranch {
 		modal.branches, modal.addBranch = m.checkLocalBranches()
@@ -74,10 +73,11 @@ func (m *model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
 	modal.title.SetHeight(2)
 	modal.scope = textinput.New()
 	modal.scope.Prompt = ""
-	if mode == modalAddGeneral {
+	switch mode {
+	case modalAddGeneral:
 		modal.scope.Placeholder = "Optional category"
-		modal.scope.SetValue(modal.addLabel)
-	} else if mode == modalAddBranch {
+		modal.scope.SetValue(modal.addCategory)
+	case modalAddBranch:
 		modal.scope.Placeholder = "Search local branches"
 		modal.scope.SetValue(modal.addBranch)
 	}
@@ -117,19 +117,19 @@ func (m *model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		if mode == modalAddGeneral {
 			m.focus = generalPane
-			m.generalLabel = modal.addLabel
-			if modal.addLabel != "" {
+			m.generalCategory = modal.addCategory
+			if modal.addCategory != "" {
 				root := *m
-				root.generalLabel = ""
+				root.generalCategory = ""
 				for i, row := range root.generalRows() {
-					if row.kind == rowLabel && strings.EqualFold(row.name, modal.addLabel) {
+					if row.kind == rowCategory && strings.EqualFold(row.name, modal.addCategory) {
 						m.generalRootCursor = i
 						break
 					}
 				}
 			}
 			for i, row := range m.generalRows() {
-				if row.kind == rowTask && row.todo.branch == "" && row.todo.text == modal.taskTitle() && strings.EqualFold(taskLabel(row.todo), modal.addLabel) {
+				if row.kind == rowTask && row.todo.branch == "" && row.todo.text == modal.taskTitle() && strings.EqualFold(row.todo.category, modal.addCategory) {
 					m.generalCursor = i
 				}
 			}
@@ -200,14 +200,15 @@ func (m *model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	modal.err = ""
 	var cmd tea.Cmd
-	if modal.field == 0 {
+	switch {
+	case modal.field == 0:
 		modal.title, cmd = modal.title.Update(msg)
-	} else if modal.field == 1 && modal.mode != modalEdit {
+	case modal.field == 1 && modal.mode != modalEdit:
 		if modal.mode == modalAddGeneral {
 			if msg.Code == tea.KeySpace {
 				return m, nil
 			}
-			msg.Text = stripLabelSpaces(msg.Text)
+			msg.Text = stripCategorySpaces(msg.Text)
 		} else if modal.branchFresh && msg.Text != "" {
 			modal.scope.SetValue("")
 		}
@@ -216,7 +217,7 @@ func (m *model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			modal.branchFresh = false
 			modal.resetBranchCursor()
 		}
-	} else {
+	default:
 		modal.details, cmd = modal.details.Update(msg)
 	}
 	return m, cmd
@@ -226,11 +227,12 @@ func (m *model) updateTaskModalPaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 	modal := m.modal
 	modal.err = ""
 	var cmd tea.Cmd
-	if modal.field == 0 {
+	switch {
+	case modal.field == 0:
 		modal.title, cmd = modal.title.Update(msg)
-	} else if modal.field == 1 && modal.mode != modalEdit {
+	case modal.field == 1 && modal.mode != modalEdit:
 		if modal.mode == modalAddGeneral {
-			msg.Content = stripLabelSpaces(msg.Content)
+			msg.Content = stripCategorySpaces(msg.Content)
 		} else if modal.branchFresh {
 			modal.scope.SetValue("")
 		}
@@ -239,7 +241,7 @@ func (m *model) updateTaskModalPaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 			modal.branchFresh = false
 			modal.resetBranchCursor()
 		}
-	} else {
+	default:
 		modal.details, cmd = modal.details.Update(msg)
 	}
 	return m, cmd
@@ -273,13 +275,10 @@ func (f *taskModal) save(path string) error {
 	if f.mode == modalEdit {
 		return editTaskContent(path, f.selected, f.taskTitle(), f.details.Value())
 	}
-	var labels []string
-	branch := ""
+	category, branch := "", ""
 	if f.mode == modalAddGeneral {
-		f.addLabel = normalizeLabelInput(f.scope.Value())
-		if f.addLabel != "" {
-			labels = []string{f.addLabel}
-		}
+		f.addCategory = normalizeCategoryInput(f.scope.Value())
+		category = f.addCategory
 	} else {
 		f.addBranch = f.chosenBranch()
 		if f.addBranch == "" {
@@ -293,7 +292,7 @@ func (f *taskModal) save(path string) error {
 		}
 		branch = f.addBranch
 	}
-	return addTaskWithDetails(path, f.taskTitle(), f.details.Value(), priorityNone, labels, branch)
+	return addTaskWithDetails(path, f.taskTitle(), f.details.Value(), priorityNone, category, branch)
 }
 
 func (f *taskModal) taskTitle() string {
@@ -375,7 +374,7 @@ func (f *taskModal) branchSuggestions(width int) []string {
 				mark = "› "
 				style = lipgloss.NewStyle().Foreground(colorGreen)
 				if f.field == 1 {
-					style = style.Background(colorBlue)
+					style = style.Background(colorSelection)
 				}
 			}
 			lineWidth := width
@@ -410,9 +409,14 @@ func (f *taskModal) dimensions(width, height int) (int, int) {
 	return min(width-2, 76), modalHeight
 }
 
+// isCompact drops spacer lines so add forms still fit short terminals.
+func (f *taskModal) isCompact(height int) bool {
+	return f.mode != modalEdit && (height < 15 || f.mode == modalAddBranch && height < 18)
+}
+
 func (f *taskModal) resize(width, height int) {
 	modalWidth, modalHeight := f.dimensions(width, height)
-	f.compact = f.mode != modalEdit && (modalHeight < 15 || f.mode == modalAddBranch && modalHeight < 18)
+	compact := f.isCompact(modalHeight)
 	innerWidth := max(1, modalWidth-6)
 	f.title.SetWidth(innerWidth)
 	f.title.SetHeight(2)
@@ -420,16 +424,18 @@ func (f *taskModal) resize(width, height int) {
 		f.scope.SetWidth(max(1, innerWidth/2))
 	}
 	f.details.SetWidth(innerWidth)
-	detailsSpace := modalHeight - 11
-	if f.mode == modalAddBranch && !f.compact {
+	var detailsSpace int
+	switch {
+	case f.mode == modalEdit:
+		detailsSpace = modalHeight - 11
+	case !compact && f.mode == modalAddBranch:
 		detailsSpace = modalHeight - 15
-	} else if f.mode != modalEdit && !f.compact {
+	case !compact:
 		detailsSpace = modalHeight - 13
-	} else if f.mode != modalEdit {
+	case f.mode == modalAddBranch:
+		detailsSpace = modalHeight - 11
+	default:
 		detailsSpace = modalHeight - 10
-		if f.mode == modalAddBranch {
-			detailsSpace--
-		}
 	}
 	f.details.SetHeight(max(2, detailsSpace))
 }
@@ -437,9 +443,10 @@ func (f *taskModal) resize(width, height int) {
 func (f *taskModal) render(width, height int) string {
 	innerWidth := max(1, width-6)
 	heading := "Add general task"
-	if f.mode == modalAddBranch {
+	switch f.mode {
+	case modalAddBranch:
 		heading = "Add branch task"
-	} else if f.mode == modalEdit {
+	case modalEdit:
 		heading = "Edit task"
 	}
 	headingStyle := titleStyle
@@ -447,12 +454,12 @@ func (f *taskModal) render(width, height int) string {
 		heading = f.err
 		headingStyle = lipgloss.NewStyle().Bold(true).Foreground(colorHigh)
 	}
-	detailsLabel := mutedStyle.Render("Details")
+	detailsHeading := mutedStyle.Render("Details")
 	if f.field == f.detailsField() {
-		detailsLabel = titleStyle.Render("Details")
+		detailsHeading = titleStyle.Render("Details")
 	}
 	lines := []string{headingStyle.Render(ansi.Truncate(heading, innerWidth, "…"))}
-	compact := f.mode != modalEdit && (height < 15 || f.mode == modalAddBranch && height < 18)
+	compact := f.isCompact(height)
 	if f.mode == modalEdit {
 		lines = append(lines, f.editLocation(innerWidth))
 	}
@@ -482,8 +489,8 @@ func (f *taskModal) render(width, height int) string {
 	} else {
 		lines = append(lines, "")
 	}
-	lines = append(lines, detailsLabel, f.details.View())
-	if !compact && !(f.mode == modalEdit && height < 13) {
+	lines = append(lines, detailsHeading, f.details.View())
+	if !compact && (f.mode != modalEdit || height >= 13) {
 		lines = append(lines, "")
 	}
 	help := "↑/↓/tab navigate · ctrl+enter save · esc cancel"
@@ -496,61 +503,15 @@ func (f *taskModal) render(width, height int) string {
 	lines = append(lines, mutedStyle.Render(ansi.Truncate(help, innerWidth, "…")))
 	return lipgloss.NewStyle().Width(width).Height(height).Padding(0, 2).
 		Border(lipgloss.RoundedBorder()).BorderForeground(colorFocus).
-		Background(lipgloss.Color("#111E2F")).Render(strings.Join(lines, "\n"))
+		Background(colorModal).Render(strings.Join(lines, "\n"))
 }
 
 func (f *taskModal) editLocation(width int) string {
 	if f.selected.branch != "" {
 		return ansi.Truncate(mutedStyle.Render("Branch    ")+lipgloss.NewStyle().Foreground(colorGreen).Render(" "+f.selected.branch), width, "…")
 	}
-	if category := taskLabel(f.selected); category != "" {
+	if category := f.selected.category; category != "" {
 		return ansi.Truncate(mutedStyle.Render("Category  ")+lipgloss.NewStyle().Foreground(colorPurple).Render("@"+category), width, "…")
 	}
 	return mutedStyle.Render("General task")
-}
-
-func (f *taskModal) cursor(x, y int) *tea.Cursor {
-	var cursor *tea.Cursor
-	if f.field == 0 {
-		cursor = f.title.Cursor()
-		if cursor != nil {
-			cursor.X += x + 3
-			if f.mode != modalEdit && f.compact {
-				cursor.Y += y + 2
-			} else if f.mode == modalEdit {
-				cursor.Y += y + 4
-			} else {
-				cursor.Y += y + 3
-			}
-		}
-	} else if f.field == 1 && f.mode != modalEdit {
-		cursor = f.scope.Cursor()
-		if cursor != nil {
-			cursor.X += x + 3
-			if f.compact && f.mode == modalAddBranch {
-				cursor.Y += y + 5
-			} else if f.compact {
-				cursor.Y += y + 6
-			} else {
-				cursor.Y += y + 7
-			}
-		}
-	} else {
-		cursor = f.details.Cursor()
-		if cursor != nil {
-			cursor.X += x + 3
-			if f.compact && f.mode == modalAddBranch {
-				cursor.Y += y + 9
-			} else if f.compact {
-				cursor.Y += y + 8
-			} else if f.mode == modalEdit {
-				cursor.Y += y + 8
-			} else if f.mode == modalAddBranch {
-				cursor.Y += y + 12
-			} else {
-				cursor.Y += y + 10
-			}
-		}
-	}
-	return cursor
 }

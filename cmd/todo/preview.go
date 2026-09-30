@@ -16,11 +16,8 @@ func readSourceContext(path string, line int) ([]previewLine, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	start := line - 4
-	if start < 1 {
-		start = 1
-	}
+	defer func() { _ = f.Close() }() // Read-only, so a close error cannot lose data.
+	start := max(line-4, 1)
 	end := line + 4
 	var result []previewLine
 	scanner := bufio.NewScanner(f)

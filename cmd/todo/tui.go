@@ -70,7 +70,7 @@ type model struct {
 	detailScroll          int
 	generalCursor         int
 	generalRootCursor     int
-	generalLabel          string
+	generalCategory       string
 	branchCursor          int
 	branchRootCursor      int
 	branchFilter          string
@@ -106,7 +106,7 @@ func newModel(file string, project projectContext) (*model, error) {
 	return m, nil
 }
 
-func (m *model) Init() tea.Cmd { return m.scanCmd() }
+func (m *model) Init() tea.Cmd { return tea.Batch(m.scanCmd(), tea.RequestBackgroundColor) }
 
 func (m *model) scanDir() string {
 	if m.project.root != "" {
@@ -146,11 +146,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.modal != nil {
 			m.modal.resize(msg.Width, msg.Height)
 		}
-		inputWidth := msg.Width - 4
-		if inputWidth < 20 {
-			inputWidth = 20
-		}
+		inputWidth := max(msg.Width-4, 20)
 		m.input.SetWidth(inputWidth)
+	case tea.BackgroundColorMsg:
+		applyTheme(msg.IsDark())
 	case sourceScanMsg:
 		m.sourceLoading = false
 		m.sourceScanned = true
@@ -191,7 +190,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateTaskModalPaste(msg)
 		}
 		if m.categoryInput {
-			msg.Content = stripLabelSpaces(msg.Content)
+			msg.Content = stripCategorySpaces(msg.Content)
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
 			return m, cmd
@@ -327,10 +326,7 @@ func (m *model) moveCursor(delta int) bool {
 	case sourcePane:
 		cursor, length = &m.sourceCursor, len(m.source)
 	}
-	next := *cursor + delta
-	if next < 0 {
-		next = 0
-	}
+	next := max(*cursor+delta, 0)
 	if next >= length {
 		next = length - 1
 	}
@@ -382,7 +378,7 @@ func (m *model) startCategoryInput() (tea.Model, tea.Cmd) {
 	}
 	m.editTask = selected
 	m.input.Prompt = "Category: "
-	m.input.SetValue(taskLabel(selected))
+	m.input.SetValue(selected.category)
 	m.categoryInput = true
 	m.status = ""
 	return m, m.input.Focus()
@@ -398,8 +394,8 @@ func (m *model) updateCategoryInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		oldTask := m.editTask
-		newLabel := normalizeLabelInput(m.input.Value())
-		if err := setTaskLabel(m.file, m.editTask, m.input.Value()); err != nil {
+		newCategory := normalizeCategoryInput(m.input.Value())
+		if err := setTaskCategory(m.file, m.editTask, m.input.Value()); err != nil {
 			m.status = errorStatus(err)
 			return m, nil
 		}
@@ -407,7 +403,7 @@ func (m *model) updateCategoryInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.input.Blur()
 		m.input.SetValue("")
 		if !m.indexMode && m.activePane() == generalPane {
-			m.generalLabel = newLabel
+			m.generalCategory = newCategory
 			m.generalCursor = 0
 		}
 		if err := m.refresh(); err != nil {
@@ -417,18 +413,18 @@ func (m *model) updateCategoryInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.indexMode {
 			m.selectIndexTask(oldTask)
 		} else if m.activePane() == generalPane {
-			if newLabel != "" {
+			if newCategory != "" {
 				root := *m
-				root.generalLabel = ""
+				root.generalCategory = ""
 				for i, row := range root.generalRows() {
-					if row.kind == rowLabel && strings.EqualFold(row.name, newLabel) {
+					if row.kind == rowCategory && strings.EqualFold(row.name, newCategory) {
 						m.generalRootCursor = i
 						break
 					}
 				}
 			}
 			for i, row := range m.generalRows() {
-				if row.kind == rowTask && row.todo.text == oldTask.text && row.todo.branch == oldTask.branch && strings.EqualFold(taskLabel(row.todo), newLabel) {
+				if row.kind == rowTask && row.todo.text == oldTask.text && row.todo.branch == oldTask.branch && strings.EqualFold(row.todo.category, newCategory) {
 					m.generalCursor = i
 					break
 				}
@@ -440,13 +436,13 @@ func (m *model) updateCategoryInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.Code == tea.KeySpace {
 		return m, nil
 	}
-	msg.Text = stripLabelSpaces(msg.Text)
+	msg.Text = stripCategorySpaces(msg.Text)
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd
 }
 
-func stripLabelSpaces(value string) string {
+func stripCategorySpaces(value string) string {
 	return strings.Map(func(r rune) rune {
 		if unicode.IsSpace(r) {
 			return -1
@@ -590,16 +586,16 @@ func (m *model) readTasks(sortByPriority bool) error {
 		m.allTasks = preserveTaskOrder(previousTasks, tasks)
 	}
 	m.partitionTasks()
-	if m.generalLabel != "" {
+	if m.generalCategory != "" {
 		found := false
 		for _, t := range m.general {
-			if taskHasLabel(t, m.generalLabel) {
+			if taskInCategory(t, m.generalCategory) {
 				found = true
 				break
 			}
 		}
 		if !found {
-			m.generalLabel = ""
+			m.generalCategory = ""
 			m.generalCursor = m.generalRootCursor
 		}
 	}
@@ -631,9 +627,9 @@ func preserveTaskOrder(previous, loaded []task) []task {
 	if len(previous) == 0 || len(loaded) == 0 {
 		return loaded
 	}
-	type key struct{ text, branch, label string }
+	type key struct{ text, branch, category string }
 	identity := func(item task) key {
-		return key{item.text, item.branch, strings.ToLower(taskLabel(item))}
+		return key{item.text, item.branch, strings.ToLower(item.category)}
 	}
 	positions := make(map[key][]int, len(loaded))
 	for i, item := range loaded {
@@ -668,7 +664,7 @@ func preserveTaskOrder(previous, loaded []task) []task {
 		}
 		best, distance := -1, int(^uint(0)>>1)
 		for i, candidate := range loaded {
-			if used[i] || candidate.branch != old.branch || !strings.EqualFold(taskLabel(candidate), taskLabel(old)) {
+			if used[i] || candidate.branch != old.branch || !strings.EqualFold(candidate.category, old.category) {
 				continue
 			}
 			d := candidate.line - old.line
@@ -708,15 +704,15 @@ func (m *model) indexTasks() []task {
 				return c < 0
 			}
 			if a.branch == "" {
-				if c := compareIndexGroup(taskLabel(a), taskLabel(b)); c != 0 {
+				if c := compareIndexGroup(a.category, b.category); c != 0 {
 					return c < 0
 				}
 			}
 		case sortCategory:
-			if c := compareIndexGroup(taskLabel(a), taskLabel(b)); c != 0 {
+			if c := compareIndexGroup(a.category, b.category); c != 0 {
 				return c < 0
 			}
-			if taskLabel(a) == "" {
+			if a.category == "" {
 				if c := compareIndexGroup(a.branch, b.branch); c != 0 {
 					return c < 0
 				}

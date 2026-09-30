@@ -43,8 +43,8 @@ func (m *model) renderIndex(width, height int) string {
 	for i := start; i < end; i++ {
 		t := tasks[i]
 		scope := "-"
-		if taskLabel(t) != "" {
-			scope = "@" + taskLabel(t)
+		if t.category != "" {
+			scope = "@" + t.category
 		}
 		if t.branch != "" {
 			scope = " " + t.branch
@@ -58,7 +58,7 @@ func (m *model) renderIndex(width, height int) string {
 			title += ": " + details
 		}
 		selected := i == m.indexCursor
-		taskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
+		taskStyle := lipgloss.NewStyle().Foreground(colorStrong)
 		if t.priority != "" {
 			taskStyle = priorityStyle(t.priority)
 		}
@@ -68,16 +68,16 @@ func (m *model) renderIndex(width, height int) string {
 		scopeStyle := mutedStyle
 		if t.branch != "" {
 			scopeStyle = lipgloss.NewStyle().Foreground(colorGreen)
-		} else if taskLabel(t) != "" {
+		} else if t.category != "" {
 			scopeStyle = lipgloss.NewStyle().Foreground(colorPurple)
 		}
 		if selected {
-			taskStyle = taskStyle.Background(colorBlue)
-			scopeStyle = scopeStyle.Background(colorBlue)
+			taskStyle = taskStyle.Background(colorSelection)
+			scopeStyle = scopeStyle.Background(colorSelection)
 		}
 		gap := "  "
 		if selected {
-			gap = lipgloss.NewStyle().Background(colorBlue).Render(gap)
+			gap = lipgloss.NewStyle().Background(colorSelection).Render(gap)
 		}
 		row := taskStyle.Render(indexColumn(title, taskWidth)) + gap +
 			scopeStyle.Render(indexColumn(scope, scopeWidth))

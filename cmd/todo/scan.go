@@ -134,11 +134,12 @@ func hasTodoComment(line string) bool {
 	for i := 0; i < len(line); i++ {
 		char := line[i]
 		if quote != 0 {
-			if escaped {
+			switch {
+			case escaped:
 				escaped = false
-			} else if char == '\\' && quote != '`' {
+			case char == '\\' && quote != '`':
 				escaped = true
-			} else if char == quote {
+			case char == quote:
 				quote = 0
 			}
 			continue

@@ -10,25 +10,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-var (
-	colorText         = lipgloss.Color("#DCE4EF")
-	colorMuted        = lipgloss.Color("#8190A5")
-	colorBorder       = lipgloss.Color("#526177")
-	colorFocus        = lipgloss.Color("#F4D35E")
-	colorBlue         = lipgloss.Color("#2457A6")
-	colorGreen        = lipgloss.Color("#80C99B")
-	colorPurple       = lipgloss.Color("#B7A4EB")
-	colorHigh         = lipgloss.Color("#F07777")
-	colorMedium       = lipgloss.Color("#F4A261")
-	colorLow          = lipgloss.Color("#F4D35E")
-	titleStyle        = lipgloss.NewStyle().Bold(true).Foreground(colorFocus)
-	taskTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF"))
-	mutedStyle        = lipgloss.NewStyle().Foreground(colorMuted)
-	selectedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Background(colorBlue)
-	selectedDoneStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#B6C2D3")).Background(colorBlue)
-	statusBarStyle    = lipgloss.NewStyle().Foreground(colorHigh).Background(lipgloss.Color("#17253A"))
-)
-
 const missingBranchStatus = "⚠ Branch no longer exists · tasks cannot be edited"
 
 func (m *model) View() tea.View {
@@ -73,22 +54,9 @@ func (m *model) View() tea.View {
 			lipgloss.NewLayer(content),
 			lipgloss.NewLayer(m.modal.render(modalWidth, modalHeight)).X(x).Y(y).Z(1),
 		).Render()
-		v := tea.NewView(content)
-		v.AltScreen = true
-		v.Cursor = m.modal.cursor(x, y)
-		return v
 	}
 	v := tea.NewView(content)
 	v.AltScreen = true
-	if m.categoryInput {
-		v.Cursor = m.input.Cursor()
-		if v.Cursor != nil {
-			index := strings.LastIndex(content, m.input.View())
-			if index >= 0 {
-				v.Cursor.Y += strings.Count(content[:index], "\n")
-			}
-		}
-	}
 	return v
 }
 
@@ -96,17 +64,14 @@ func (m *model) renderHeader(width int) string {
 	line := "  To Do"
 	count := fmt.Sprintf("  %d/%d general · %d/%d branch · %d files",
 		completedCount(m.general), len(m.general), completedCount(m.branches), len(m.branches), len(m.source))
-	available := width - ansi.StringWidth(count)
-	if available < 1 {
-		available = 1
-	}
+	available := max(width-ansi.StringWidth(count), 1)
 	line = ansi.Truncate(line, available, "…")
 	spacer := strings.Repeat(" ", max(0, width-ansi.StringWidth(line)-ansi.StringWidth(count)))
-	return lipgloss.NewStyle().Width(width).Foreground(colorText).Background(lipgloss.Color("#17253A")).Render(line + spacer + count)
+	return lipgloss.NewStyle().Width(width).Foreground(colorText).Background(colorBar).Render(line + spacer + count)
 }
 
 func (m *model) renderTabs(width int) string {
-	barColor := lipgloss.Color("#17253A")
+	barColor := colorBar
 	inactiveStyle := lipgloss.NewStyle().Foreground(colorMuted).Background(barColor)
 	gapStyle := lipgloss.NewStyle().Background(barColor)
 	items := []struct {
@@ -119,11 +84,11 @@ func (m *model) renderTabs(width int) string {
 	}
 	var tabs strings.Builder
 	for _, item := range items {
-		label := " " + item.name + " "
+		tab := " " + item.name + " "
 		if m.activePane() == item.pane {
-			tabs.WriteString(selectedStyle.Render(label))
+			tabs.WriteString(selectedStyle.Render(tab))
 		} else {
-			tabs.WriteString(inactiveStyle.Render(label))
+			tabs.WriteString(inactiveStyle.Render(tab))
 		}
 		tabs.WriteString(gapStyle.Render(" "))
 	}
@@ -145,37 +110,7 @@ func (m *model) renderFooter(width int) string {
 		}
 		return mutedStyle.Render(ansi.Truncate(hints, width, "…"))
 	}
-	hints := "→ details · (d)one/space · (e)dit/enter · (p)riority · (c)ategory · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
-	if m.focus == detailPane {
-		hints = "←/esc back · (d)one/space · (e)dit/enter · (p)riority · (c)ategory · (q)uit"
-		if m.activePane() == sourcePane {
-			hints = "←/esc back · (e)dit/enter file · (q)uit"
-		} else if m.activePane() == branchPane {
-			hints = "←/esc back · (d)one/space · (e)dit/enter · (p)riority · (q)uit"
-		}
-	} else if m.focus == sourcePane {
-		hints = "→ details · (e)dit/enter file · (i)ndex · (r)eload · (q)uit"
-	} else if m.focus == branchPane {
-		hints = "→ open · (d)one/space · (e)dit/enter · (p)riority · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
-	}
-	if width < 80 {
-		switch m.focus {
-		case detailPane:
-			if m.activePane() == sourcePane {
-				hints = "←/esc back · (e)dit/enter file"
-			} else if m.activePane() == branchPane {
-				hints = "esc · (d)one/space · (e)dit/enter · (p)riority"
-			} else {
-				hints = "esc · (d)one/space · (e)dit/enter · p · (c)ategory"
-			}
-		case sourcePane:
-			hints = "→ details · (e)dit/enter file · (i)ndex"
-		case branchPane:
-			hints = "(a)dd · (d)one/space · (e)dit/enter · (p)riority"
-		default:
-			hints = "(d)one/space · (e)dit/enter · (p)riority · (c)ategory"
-		}
-	}
+	hints := m.footerHints(width < 80)
 	if m.status != "" {
 		available := max(0, width-ansi.StringWidth(hints)-3)
 		if available > 5 {
@@ -186,9 +121,43 @@ func (m *model) renderFooter(width int) string {
 	return mutedStyle.Render(ansi.Truncate(hints, width, "…"))
 }
 
+func (m *model) footerHints(narrow bool) string {
+	switch {
+	case m.focus == detailPane && m.activePane() == sourcePane:
+		if narrow {
+			return "←/esc back · (e)dit/enter file"
+		}
+		return "←/esc back · (e)dit/enter file · (q)uit"
+	case m.focus == detailPane && m.activePane() == branchPane:
+		if narrow {
+			return "esc · (d)one/space · (e)dit/enter · (p)riority"
+		}
+		return "←/esc back · (d)one/space · (e)dit/enter · (p)riority · (q)uit"
+	case m.focus == detailPane:
+		if narrow {
+			return "esc · (d)one/space · (e)dit/enter · p · (c)ategory"
+		}
+		return "←/esc back · (d)one/space · (e)dit/enter · (p)riority · (c)ategory · (q)uit"
+	case m.focus == sourcePane:
+		if narrow {
+			return "→ details · (e)dit/enter file · (i)ndex"
+		}
+		return "→ details · (e)dit/enter file · (i)ndex · (r)eload · (q)uit"
+	case m.focus == branchPane:
+		if narrow {
+			return "(a)dd · (d)one/space · (e)dit/enter · (p)riority"
+		}
+		return "→ open · (d)one/space · (e)dit/enter · (p)riority · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
+	case narrow:
+		return "(d)one/space · (e)dit/enter · (p)riority · (c)ategory"
+	default:
+		return "→ details · (d)one/space · (e)dit/enter · (p)riority · (c)ategory · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
+	}
+}
+
 func (m *model) generalTitle() string {
-	if m.generalLabel != "" {
-		return "General · @" + m.generalLabel
+	if m.generalCategory != "" {
+		return "General · @" + m.generalCategory
 	}
 	return "General"
 }
@@ -240,11 +209,12 @@ func (m *model) renderPanel(kind pane, width, height int, lines []string) string
 func (m *model) renderNavigationPane(title string, rows []navigationRow, cursor int, kind pane, width, height int) string {
 	innerWidth := max(1, width-4)
 	completed, count := 0, 0
-	if kind == generalPane && m.generalLabel == "" {
+	switch {
+	case kind == generalPane && m.generalCategory == "":
 		completed, count = completedCount(m.general), len(m.general)
-	} else if kind == branchPane && m.branchFilter == "" {
+	case kind == branchPane && m.branchFilter == "":
 		completed, count = completedCount(m.branches), len(m.branches)
-	} else {
+	default:
 		for _, row := range rows {
 			if row.kind == rowTask {
 				count++
@@ -278,7 +248,7 @@ func (m *model) renderNavigationPane(title string, rows []navigationRow, cursor 
 		}
 		row := ""
 		switch item.kind {
-		case rowLabel:
+		case rowCategory:
 			row = fmt.Sprintf("@%s  %d/%d ›", item.name, item.completed, item.count)
 		case rowBranch:
 			marker := "  "
@@ -288,13 +258,14 @@ func (m *model) renderNavigationPane(title string, rows []navigationRow, cursor 
 			row = fmt.Sprintf("%s%s  %d/%d ›", marker, item.name, item.completed, item.count)
 		}
 		row = ansi.Truncate(row, innerWidth, "…")
-		if selected {
+		switch {
+		case selected:
 			lines = append(lines, selectedStyle.Width(innerWidth).Render(row))
-		} else if item.kind == rowLabel {
+		case item.kind == rowCategory:
 			lines = append(lines, lipgloss.NewStyle().Foreground(colorPurple).Render(row))
-		} else if item.kind == rowBranch && item.name == m.project.branch {
+		case item.kind == rowBranch && item.name == m.project.branch:
 			lines = append(lines, lipgloss.NewStyle().Foreground(colorGreen).Render(row))
-		} else {
+		default:
 			lines = append(lines, row)
 		}
 	}
@@ -309,7 +280,7 @@ func renderMissingBranchRow(item navigationRow, width int, selected bool) string
 	name := ansi.Truncate(item.name, nameWidth, "…")
 	style := lipgloss.NewStyle().Foreground(colorHigh)
 	if selected {
-		style = style.Background(colorBlue)
+		style = style.Background(colorSelection)
 	}
 	line := style.Render(prefix+name+suffix) + style.Italic(true).Render(note)
 	if selected {
@@ -329,7 +300,7 @@ func renderTaskRow(t task, width int, selected bool) string {
 	}
 	titleWidth := max(0, width-ansi.StringWidth(mark)-ansi.StringWidth(suffix))
 	title := ansi.Truncate(cleanDisplay(t.text), titleWidth, "…")
-	taskStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
+	taskStyle := lipgloss.NewStyle().Foreground(colorStrong)
 	if t.priority != "" {
 		taskStyle = priorityStyle(t.priority)
 	}
@@ -339,7 +310,7 @@ func renderTaskRow(t task, width int, selected bool) string {
 	if !selected {
 		return mutedStyle.Render(mark) + taskStyle.Render(title) + mutedStyle.Render(suffix)
 	}
-	titleStyle := taskStyle.Background(colorBlue)
+	titleStyle := taskStyle.Background(colorSelection)
 	if t.done {
 		titleStyle = selectedDoneStyle
 	}
@@ -429,7 +400,7 @@ func (m *model) compactDetails() []string {
 }
 
 func groupName(row navigationRow) string {
-	if row.kind == rowLabel {
+	if row.kind == rowCategory {
 		return "@" + row.name
 	}
 	return row.name
@@ -456,20 +427,20 @@ func (m *model) taskDetails(width int) []string {
 	if t.priority != "" {
 		priority = priorityStyle(t.priority).Render(t.priority.title())
 	}
-	label := "None"
-	if len(t.labels) > 0 {
-		label = "@" + t.labels[0]
+	category := "None"
+	if t.category != "" {
+		category = "@" + t.category
 	}
 	result := []string{taskTitleStyle.Render(cleanDisplay(t.text)), ""}
 	if t.details == "" {
 		result = append(result, mutedStyle.Render("No details yet"))
 	} else {
-		for _, line := range strings.Split(t.details, "\n") {
+		for line := range strings.SplitSeq(t.details, "\n") {
 			result = append(result, cleanDisplay(line))
 		}
 	}
 	result = append(result, "", mutedStyle.Render("Status    "+status), mutedStyle.Render("Scope     "+taskLocation(t)),
-		mutedStyle.Render("Priority  ")+priority, mutedStyle.Render("Category  "+label))
+		mutedStyle.Render("Priority  ")+priority, mutedStyle.Render("Category  "+category))
 	return wrapLines(result, width)
 }
 
@@ -483,11 +454,12 @@ func (m *model) sourceDetails(width int) []string {
 	item := m.source[m.sourceCursor]
 	result := []string{"", mutedStyle.Render("FILE TODO"), item.path + ":" + fmt.Sprint(item.line),
 		"", cleanDisplay(item.text), "", mutedStyle.Render("CONTEXT")}
-	if m.previewPath != item.path || m.previewLine != item.line {
+	switch {
+	case m.previewPath != item.path || m.previewLine != item.line:
 		result = append(result, mutedStyle.Render("Loading preview…"))
-	} else if m.previewError != "" {
+	case m.previewError != "":
 		result = append(result, mutedStyle.Render(m.previewError))
-	} else {
+	default:
 		for _, line := range m.preview {
 			prefix := fmt.Sprintf("%4d │ ", line.number)
 			row := prefix + cleanDisplay(line.text)
@@ -530,9 +502,6 @@ func visibleRange(cursor, total, height int) (int, int) {
 	if cursor >= height {
 		start = cursor - height + 1
 	}
-	end := start + height
-	if end > total {
-		end = total
-	}
+	end := min(start+height, total)
 	return start, end
 }
