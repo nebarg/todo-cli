@@ -51,3 +51,35 @@ func TestDefaultFileUsesLowercaseName(t *testing.T) {
 		t.Fatalf("project file = %q", got)
 	}
 }
+
+func TestBranchExists(t *testing.T) {
+	dir := t.TempDir()
+	project := testGitProject(t, dir, "main", "feature/x")
+	unborn := t.TempDir()
+	if _, err := gitOutput(unborn, "init", "-q"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitOutput(unborn, "symbolic-ref", "HEAD", "refs/heads/fresh"); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct {
+		name             string
+		project          projectContext
+		branch           string
+		exists, verified bool
+	}{
+		{"existing branch", project, "feature/x", true, true},
+		{"current branch", project, "main", true, true},
+		{"missing branch", project, "feature/gone", false, true},
+		{"empty name", project, "", false, true},
+		{"unborn current branch", projectContext{root: unborn}, "fresh", true, true},
+		{"outside Git", projectContext{branch: "main"}, "main", true, false},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			exists, verified := item.project.branchExists(item.branch)
+			if exists != item.exists || verified != item.verified {
+				t.Fatalf("branchExists(%q) = %v, %v; want %v, %v", item.branch, exists, verified, item.exists, item.verified)
+			}
+		})
+	}
+}

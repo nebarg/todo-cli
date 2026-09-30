@@ -570,6 +570,17 @@ func (m *model) checkLocalBranches() (branches []string, current string) {
 	return branches, current
 }
 
+// recheckBranch updates one branch's cached state, so a branch deleted since
+// the last refresh is caught before its tasks are shown.
+func (m *model) recheckBranch(name string) {
+	if !m.branchesVerified {
+		return
+	}
+	if exists, verified := m.project.branchExists(name); verified {
+		m.localBranchNames[name] = exists
+	}
+}
+
 func (m *model) refresh() error {
 	return m.readTasks(false)
 }

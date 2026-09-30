@@ -189,6 +189,7 @@ func (m *model) enterSelectedGroup() bool {
 		m.branchRootCursor = m.branchCursor
 		m.branchFilter = row.name
 		m.branchCursor = 0
+		m.recheckBranch(row.name)
 	default:
 		return false
 	}

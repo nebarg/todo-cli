@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -66,8 +67,29 @@ func (project projectContext) localBranchState() (branches []string, current str
 }
 
 func (project projectContext) hasLocalBranch(name string) bool {
-	branches, _, _ := project.localBranchState()
-	return slices.Contains(branches, name)
+	exists, _ := project.branchExists(name)
+	return exists
+}
+
+// branchExists checks one branch with a single git call, which is cheaper than
+// localBranchState. verified is false when Git could not answer.
+func (project projectContext) branchExists(name string) (exists, verified bool) {
+	if name == "" {
+		return false, true
+	}
+	if project.root == "" {
+		return name == project.branch, false
+	}
+	_, err := gitOutput(project.root, "show-ref", "--verify", "--quiet", "refs/heads/"+name)
+	if err == nil {
+		return true, true
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		return false, false
+	}
+	// An unborn current branch has no ref yet, but is still the active branch.
+	return project.currentBranch() == name, true
 }
 
 const gitTimeout = 5 * time.Second

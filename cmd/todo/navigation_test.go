@@ -281,3 +281,45 @@ func assertNoEditHints(t *testing.T, m *model) {
 		}
 	}
 }
+
+func TestEnteringBranchRechecksIt(t *testing.T) {
+	dir := t.TempDir()
+	project := testGitProject(t, dir, "main", "feature/x")
+	path := filepath.Join(dir, "todo.md")
+	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/x\n\n- [ ] Branch task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.focus = branchPane
+	if _, err := gitOutput(dir, "branch", "-D", "feature/x"); err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(*model)
+	if m.panelStatus() != missingBranchStatus {
+		t.Fatal("entering a branch deleted after startup did not show it as missing")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	m = updated.(*model)
+	if m.status != missingBranchStatus {
+		t.Fatalf("d was not blocked: status %q", m.status)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m = updated.(*model)
+	if _, err := gitOutput(dir, "branch", "feature/x"); err != nil {
+		t.Fatal(err)
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(*model)
+	if m.panelStatus() != "" {
+		t.Fatal("restored branch still shown as missing")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	m = updated.(*model)
+	if selected, ok := m.selectedTask(); !ok || !selected.Done {
+		t.Fatalf("d did not complete the task on a restored branch: status %q", m.status)
+	}
+}
