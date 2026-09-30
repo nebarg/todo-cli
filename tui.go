@@ -460,6 +460,9 @@ func (m *model) toggleSelected() {
 		}
 		return
 	}
+	if m.blockMissingBranch(selected) {
+		return
+	}
 	if err := toggleTask(m.file, selected); err != nil {
 		m.status = err.Error()
 		return
@@ -474,10 +477,21 @@ func (m *model) toggleSelected() {
 	m.status = ""
 }
 
+func (m *model) blockMissingBranch(t task) bool {
+	if !m.branchMissing(t.branch) {
+		return false
+	}
+	m.status = missingBranchStatus
+	return true
+}
+
 func (m *model) cyclePriority() {
 	selected, ok := m.selectedTask()
 	if !ok {
 		m.status = "Select a Markdown task to set priority"
+		return
+	}
+	if m.blockMissingBranch(selected) {
 		return
 	}
 	next := map[string]string{"": "high", "high": "medium", "medium": "low", "low": ""}[selected.priority]

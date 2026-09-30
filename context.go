@@ -43,9 +43,9 @@ func (project projectContext) localBranches() []string {
 func (project projectContext) localBranchesChecked() ([]string, bool) {
 	if project.root == "" {
 		if project.branch == "" {
-			return nil, true
+			return nil, false
 		}
-		return []string{project.branch}, true
+		return []string{project.branch}, false
 	}
 	output, err := gitOutput(project.root, "for-each-ref", "--format=%(refname:short)", "refs/heads")
 	if err != nil {

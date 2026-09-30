@@ -51,6 +51,9 @@ func (m model) startTaskModal(mode string) (tea.Model, tea.Cmd) {
 			m.status = "Select a Markdown task to edit"
 			return m, nil
 		}
+		if m.blockMissingBranch(selected) {
+			return m, nil
+		}
 		modal.selected = selected
 	}
 	modal.title = textarea.New()

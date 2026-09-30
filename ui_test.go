@@ -261,6 +261,66 @@ func TestBranchListMarksMissingGitBranches(t *testing.T) {
 	}
 }
 
+func TestMissingBranchTasksAreReadOnly(t *testing.T) {
+	dir := t.TempDir()
+	project := testGitProject(t, dir, "main", "feature/gone")
+	path := filepath.Join(dir, "todo.md")
+	content := "# Branches\n\n## feature/gone\n\n- [ ] Keep this task\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitOutput(dir, "branch", "-D", "feature/gone"); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.focus = branchPane
+	if view := ansi.Strip(m.View().Content); strings.Contains(view, "Branch no longer exists") {
+		t.Fatalf("status bar shown before opening the branch: %s", view)
+	}
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(model)
+	lines := strings.Split(ansi.Strip(m.View().Content), "\n")
+	if len(lines) != m.height || !strings.Contains(lines[len(lines)-3], "⚠ Branch no longer exists · tasks cannot be edited") {
+		t.Fatalf("status bar missing from bottom of panel: %q", lines)
+	}
+	for _, key := range []tea.KeyPressMsg{{Code: 'd', Text: "d"}, {Code: 'p', Text: "p"}, {Code: 'e', Text: "e"}, {Code: tea.KeyEnter}} {
+		updated, _ = m.Update(key)
+		m = updated.(model)
+		if m.modal != nil || m.status != missingBranchStatus {
+			t.Fatalf("%q was not blocked: modal=%v status=%q", key.String(), m.modal != nil, m.status)
+		}
+	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	m = updated.(model)
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "Branch no longer exists") {
+		t.Fatalf("status bar missing from task details: %s", view)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != content {
+		t.Fatalf("task on missing branch was modified:\n%s", data)
+	}
+}
+
+func TestBranchesOutsideGitAreNotMarkedMissing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/x\n\n- [ ] Branch task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows := m.branchRows(); len(rows) != 1 || rows[0].missingGitBranch {
+		t.Fatalf("branch without a Git repository was marked missing: %+v", rows)
+	}
+}
+
 func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
 	content := "- [ ] Unlabeled\n\n# auth\n\n- [ ] Login task\n\n# tests\n\n- [ ] Another test\n\n# Branches\n\n## feature/login\n\n- [ ] Branch login\n\n## fix/api\n\n- [ ] Branch API\n"

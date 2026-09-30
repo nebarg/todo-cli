@@ -92,9 +92,13 @@ func (m model) branchRows() []navigationRow {
 		}
 	}
 	for _, name := range sortedNames(counts) {
-		rows = append(rows, navigationRow{kind: rowBranch, name: name, count: counts[name], completed: completed[name], missingGitBranch: m.branchesVerified && !m.localBranchNames[name]})
+		rows = append(rows, navigationRow{kind: rowBranch, name: name, count: counts[name], completed: completed[name], missingGitBranch: m.branchMissing(name)})
 	}
 	return rows
+}
+
+func (m model) branchMissing(name string) bool {
+	return name != "" && m.branchesVerified && !m.localBranchNames[name]
 }
 
 func openTasksFirst(rows []navigationRow) {

@@ -26,7 +26,10 @@ var (
 	mutedStyle        = lipgloss.NewStyle().Foreground(colorMuted)
 	selectedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Background(colorBlue)
 	selectedDoneStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#B6C2D3")).Background(colorBlue)
+	statusBarStyle    = lipgloss.NewStyle().Foreground(colorHigh).Background(lipgloss.Color("#17253A"))
 )
+
+const missingBranchStatus = "⚠ Branch no longer exists · tasks cannot be edited"
 
 func (m model) View() tea.View {
 	width, height := m.width, m.height
@@ -206,6 +209,34 @@ func (m model) panelStyle(focused bool, width, height int) lipgloss.Style {
 		Border(lipgloss.RoundedBorder()).BorderForeground(border)
 }
 
+func (m model) panelStatus() string {
+	if m.activePane() == branchPane && m.branchMissing(m.branchFilter) {
+		return missingBranchStatus
+	}
+	return ""
+}
+
+func (m model) panelContentHeight(height int) int {
+	lines := height - 2
+	if m.panelStatus() != "" {
+		lines--
+	}
+	return max(1, lines)
+}
+
+func (m model) renderPanel(kind pane, width, height int, lines []string) string {
+	if status := m.panelStatus(); status != "" {
+		contentHeight := m.panelContentHeight(height)
+		lines = lines[:min(len(lines), contentHeight)]
+		for len(lines) < contentHeight {
+			lines = append(lines, "")
+		}
+		innerWidth := max(1, width-4)
+		lines = append(lines, statusBarStyle.Width(innerWidth).Render(ansi.Truncate(status, innerWidth, "…")))
+	}
+	return m.panelStyle(m.focus == kind, width, height).Render(strings.Join(lines, "\n"))
+}
+
 func (m model) renderNavigationPane(title string, rows []navigationRow, cursor int, kind pane, width, height int) string {
 	innerWidth := max(1, width-4)
 	completed, count := 0, 0
@@ -225,7 +256,7 @@ func (m model) renderNavigationPane(title string, rows []navigationRow, cursor i
 	}
 	heading := fmt.Sprintf("%s  %d/%d", title, completed, count)
 	lines := []string{titleStyle.Render(ansi.Truncate(heading, innerWidth, "…")), ""}
-	visible := max(1, height-4)
+	visible := max(1, m.panelContentHeight(height)-2)
 	start, end := visibleRange(cursor, len(rows), visible)
 	if len(rows) == 0 {
 		empty := "No tasks"
@@ -267,7 +298,7 @@ func (m model) renderNavigationPane(title string, rows []navigationRow, cursor i
 			lines = append(lines, row)
 		}
 	}
-	return m.panelStyle(m.focus == kind, width, height).Render(strings.Join(lines, "\n"))
+	return m.renderPanel(kind, width, height, lines)
 }
 
 func renderMissingBranchRow(item navigationRow, width int, selected bool) string {
@@ -360,7 +391,7 @@ func (m model) renderDetailPane(width, height int) string {
 	} else {
 		lines = append(lines, m.taskDetails(innerWidth)...)
 	}
-	maxLines := max(1, height-2)
+	maxLines := m.panelContentHeight(height)
 	start := min(m.detailScroll, max(0, len(lines)-maxLines))
 	lines = lines[start:min(len(lines), start+maxLines)]
 	for len(lines) < maxLines {
@@ -369,7 +400,7 @@ func (m model) renderDetailPane(width, height int) string {
 	for i, line := range lines {
 		lines[i] = ansi.Truncate(line, innerWidth, "…")
 	}
-	return m.panelStyle(m.focus == detailPane, width, height).Render(strings.Join(lines, "\n"))
+	return m.renderPanel(detailPane, width, height, lines)
 }
 
 func (m model) compactDetails() []string {
