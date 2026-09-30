@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/store"
 )
 
@@ -282,5 +283,30 @@ func TestChangedTaskErrorLeavesUIHintsToCaller(t *testing.T) {
 	}
 	if got := errorStatus(fmt.Errorf("save: %w", store.ErrTaskChanged)); !strings.Contains(got, "press r to reload") {
 		t.Fatalf("TUI status lost the reload hint: %q", got)
+	}
+}
+
+func TestOnlyCOpensCategoryInput(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("- [ ] Task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, index := range []bool{false, true} {
+		m, err := newModel(path, projectContext{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.indexMode = index
+		updated, _ := m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+		if updated.(*model).categoryInput {
+			t.Fatalf("l opened the category input (index=%v)", index)
+		}
+		updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+		if !updated.(*model).categoryInput {
+			t.Fatalf("c did not open the category input (index=%v)", index)
+		}
+	}
+	if help := ansi.Strip(renderHelp()); strings.Contains(help, "c l") {
+		t.Fatalf("help still lists l: %s", help)
 	}
 }

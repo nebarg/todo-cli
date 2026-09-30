@@ -26,7 +26,7 @@ var (
 		{"d space", "toggle done"},
 		{"e enter", "edit"},
 		{"p", "cycle priority"},
-		{"c l", "set category"},
+		{"c", "set category"},
 		{"a", "add task"},
 		{"b", "add branch task"},
 		{"s", "sort all tasks"},

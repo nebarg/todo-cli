@@ -287,7 +287,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.startTaskModal(modalAddGeneral)
 		case "b":
 			return m.startTaskModal(modalAddBranch)
-		case "c", "l":
+		case "c":
 			return m.startCategoryInput()
 		case "e":
 			if m.activePane() == sourcePane {
@@ -809,7 +809,7 @@ func (m *model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "p":
 		m.cyclePriority()
-	case "c", "l":
+	case "c":
 		return m.startCategoryInput()
 	case "b":
 		return m.startTaskModal(modalAddBranch)
