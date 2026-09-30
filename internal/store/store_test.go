@@ -181,7 +181,7 @@ func TestSingleCategoryHeadingsAndMoves(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(data)
-	for _, want := range []string{"# auth", "# Branches", "## feature/login", "  - Priority: High", "  Keep this detail."} {
+	for _, want := range []string{"# auth", "# Branches", "## feature/login", "- [ ] Auth task !high\n", "  Keep this detail."} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("missing %q: %s", want, s)
 		}
@@ -226,7 +226,7 @@ func TestSingleCategoryHeadingsAndMoves(t *testing.T) {
 
 func TestLabelsMetadataIsNotACategory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	if err := os.WriteFile(path, []byte("- [ ] Old task\n  - Priority: High\n  - Labels: auth\n"), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("- [ ] Old task !high\n  - Labels: auth\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	tasks, err := Load(path)
@@ -237,7 +237,7 @@ func TestLabelsMetadataIsNotACategory(t *testing.T) {
 
 func TestTaskDetailsAreParsedAndPreserved(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	original := "## General\n\n- [ ] Fix login redirect\n  - Priority: High\n\n  When a session expires, return to the previous page.\n\n  - [ ] Add a regression test\n\n- [ ] Another task\n\n## Branches\n\n### feature/login\n\n- [ ] Branch task\n\n  Branch-specific context.\n"
+	original := "## General\n\n- [ ] Fix login redirect !high\n\n  When a session expires, return to the previous page.\n\n  - [ ] Add a regression test\n\n- [ ] Another task\n\n## Branches\n\n### feature/login\n\n- [ ] Branch task\n\n  Branch-specific context.\n"
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -259,8 +259,8 @@ func TestTaskDetailsAreParsedAndPreserved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(updated), "  - Priority: Low\n\n  When a session expires, return to the previous page.\n\n  - [ ] Add a regression test") {
-		t.Fatalf("details changed while editing metadata: %s", updated)
+	if !strings.Contains(string(updated), "- [ ] Fix login redirect !low\n\n  When a session expires, return to the previous page.\n\n  - [ ] Add a regression test") {
+		t.Fatalf("details changed while editing priority: %s", updated)
 	}
 	tasks, err = Load(path)
 	if err != nil || len(tasks) != 3 {
@@ -289,7 +289,7 @@ func TestTaskDetailsAreParsedAndPreserved(t *testing.T) {
 
 func TestEditTaskContentPreservesMetadataAndOtherTasks(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	original := "## General\n\n- [ ] First task\n  - Priority: High\n\n  Old details.\n\n- [ ] Second task\n"
+	original := "## General\n\n- [ ] First task !high\n\n  Old details.\n\n- [ ] Second task\n"
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestEditTaskContentPreservesMetadataAndOtherTasks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"- [ ] Renamed task\n  - Priority: High", "  New context.\n\n  - [ ] Nested step", "- [ ] Second task"} {
+	for _, want := range []string{"- [ ] Renamed task !high", "  New context.\n\n  - [ ] Nested step", "- [ ] Second task"} {
 		if !strings.Contains(string(updated), want) {
 			t.Fatalf("missing %q after edit: %s", want, updated)
 		}
@@ -358,7 +358,7 @@ func TestGeneralInsertedBeforeExistingBranches(t *testing.T) {
 
 func TestExternalMarkdownIsReadWithoutChangingIt(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	original := "- bare generic\n\n# Work\n\n- [ ] malformed priority\n  - Priority: urgent\n\n  Keep this note.\n\n# Branches\n\n## feature/login\n\n- [ ] direct branch task\n"
+	original := "- bare generic\n\n# Work\n\n- [ ] malformed priority !urgent\n\n  Keep this note.\n\n# Branches\n\n## feature/login\n\n- [ ] direct branch task\n"
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +366,7 @@ func TestExternalMarkdownIsReadWithoutChangingIt(t *testing.T) {
 	if err != nil || len(tasks) != 3 {
 		t.Fatalf("tasks = %+v, error = %v", tasks, err)
 	}
-	if tasks[0].Text != "bare generic" || tasks[0].Done || tasks[0].Category != "" || tasks[1].Priority != "" || tasks[1].Category != "Work" || tasks[1].Details != "Keep this note." || tasks[2].Branch != "feature/login" {
+	if tasks[0].Text != "bare generic" || tasks[0].Done || tasks[0].Category != "" || tasks[1].Text != "malformed priority !urgent" || tasks[1].Priority != "" || tasks[1].Category != "Work" || tasks[1].Details != "Keep this note." || tasks[2].Branch != "feature/login" {
 		t.Fatalf("misread external file: %+v", tasks)
 	}
 	if got, _ := os.ReadFile(path); string(got) != original {
@@ -375,7 +375,7 @@ func TestExternalMarkdownIsReadWithoutChangingIt(t *testing.T) {
 	if err := Edit(path, tasks[0], "renamed generic", "", tasks[0].Category, tasks[0].Branch); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := os.ReadFile(path); !strings.HasPrefix(string(got), "- [ ] renamed generic\n") || !strings.Contains(string(got), "  - Priority: urgent") {
+	if got, _ := os.ReadFile(path); !strings.HasPrefix(string(got), "- [ ] renamed generic\n") || !strings.Contains(string(got), "- [ ] malformed priority !urgent\n") {
 		t.Fatalf("edit failed to normalize bare item or changed unrelated content: %q", got)
 	}
 }
@@ -489,7 +489,7 @@ func TestChangedTaskIsNotOverwritten(t *testing.T) {
 
 func TestEditMovesTaskBetweenSections(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	original := "- [ ] Stay\n\n# auth\n\n- [ ] Move me\n  - Priority: High\n\n  Old details.\n\n# Branches\n\n## feature/a\n\n- [ ] Branch move\n\n## feature/b\n\n- [ ] Other branch\n"
+	original := "- [ ] Stay\n\n# auth\n\n- [ ] Move me !high\n\n  Old details.\n\n# Branches\n\n## feature/a\n\n- [ ] Branch move\n\n## feature/b\n\n- [ ] Other branch\n"
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -539,5 +539,75 @@ func TestEditMovesTaskBetweenSections(t *testing.T) {
 	}
 	if err := Edit(path, find("Stay"), "Stay", "", "docs", "feature/b"); err == nil {
 		t.Fatal("a task was allowed both a category and a branch")
+	}
+}
+
+func TestPriorityIsATrailingToken(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := Add(path, "Typed priority !high", "", PriorityNone, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(path, "Flag priority", "", PriorityLow, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(path, "Both agree !low", "", PriorityLow, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(path, "Conflict !high", "", PriorityLow, "", ""); err == nil {
+		t.Fatal("conflicting priorities were accepted")
+	}
+	want := "- [ ] Typed priority !high\n\n- [ ] Flag priority !low\n\n- [ ] Both agree !low\n"
+	if got := readFile(t, path); got != want {
+		t.Fatalf("file = %q, want %q", got, want)
+	}
+	find := func(text string) Task {
+		t.Helper()
+		tasks, err := Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, task := range tasks {
+			if task.Text == text {
+				return task
+			}
+		}
+		t.Fatalf("task %q not found", text)
+		return Task{}
+	}
+	if err := Edit(path, find("Typed priority"), "Typed priority !medium", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if task := find("Typed priority"); task.Priority != PriorityMedium {
+		t.Fatalf("typing !medium in an edit = %+v", task)
+	}
+	if err := SetPriority(path, find("Flag priority"), PriorityNone); err != nil {
+		t.Fatal(err)
+	}
+	if err := Toggle(path, find("Both agree")); err != nil {
+		t.Fatal(err)
+	}
+	want = "- [ ] Typed priority !medium\n\n- [ ] Flag priority\n\n- [x] Both agree !low\n"
+	if got := readFile(t, path); got != want {
+		t.Fatalf("file = %q, want %q", got, want)
+	}
+}
+
+func TestPriorityTokenKeepsWindowsLineEndings(t *testing.T) {
+	path, tasks := writeAndLoad(t, "- [ ] Task !high\r\n- [ ] Other\r\n")
+	if tasks[0].Text != "Task" || tasks[0].Priority != PriorityHigh {
+		t.Fatalf("task = %+v", tasks[0])
+	}
+	if err := SetPriority(path, tasks[0], PriorityLow); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, path); got != "- [ ] Task !low\r\n- [ ] Other\r\n" {
+		t.Fatalf("file = %q", got)
+	}
+}
+
+func TestOldPriorityLinesAreDetails(t *testing.T) {
+	_, tasks := writeAndLoad(t, "- [ ] Old style\n  - Priority: High\n")
+	if tasks[0].Priority != PriorityNone || tasks[0].Details != "- Priority: High" {
+		t.Fatalf("old priority line = %+v", tasks[0])
 	}
 }

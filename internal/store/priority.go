@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"strings"
+	"unicode"
 )
 
 // Priority orders tasks; PriorityNone sorts after the others.
@@ -54,7 +55,31 @@ func (p Priority) Next() Priority {
 	}
 }
 
-// Title is the capitalised name written to Markdown, or blank for none.
+// SplitPriority separates a trailing !high, !medium or !low from a task
+// title. Any other trailing !word, or a title that is only a priority, stays
+// part of the title.
+func SplitPriority(text string) (string, Priority) {
+	trimmed := strings.TrimRightFunc(text, unicode.IsSpace)
+	cut := strings.LastIndexFunc(trimmed, unicode.IsSpace)
+	if cut < 0 || !strings.HasPrefix(trimmed[cut+1:], "!") {
+		return text, PriorityNone
+	}
+	p, err := ParsePriority(trimmed[cut+2:])
+	title := strings.TrimRightFunc(trimmed[:cut], unicode.IsSpace)
+	if err != nil || p == PriorityNone || title == "" {
+		return text, PriorityNone
+	}
+	return title, p
+}
+
+func priorityToken(p Priority) string {
+	if p == PriorityNone {
+		return ""
+	}
+	return " !" + string(p)
+}
+
+// Title is the capitalised name shown for a priority, or blank for none.
 func (p Priority) Title() string {
 	if p == PriorityNone {
 		return ""

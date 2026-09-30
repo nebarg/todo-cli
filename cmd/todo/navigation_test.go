@@ -230,7 +230,7 @@ func TestArrowOpensDetailsAndEscapeReturnsToList(t *testing.T) {
 
 func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	content := "- [x] General done\n  - Priority: High\n\n- [ ] General open\n  - Priority: Low\n\n# auth\n\n- [x] Auth done\n  - Priority: High\n\n- [ ] Auth open\n  - Priority: Low\n\n# Branches\n\n## feature/x\n\n- [x] Branch done\n  - Priority: High\n\n- [ ] Branch open first\n  - Priority: Low\n\n- [ ] Branch open second\n  - Priority: Low\n"
+	content := "- [x] General done !high\n\n- [ ] General open !low\n\n# auth\n\n- [x] Auth done !high\n\n- [ ] Auth open !low\n\n# Branches\n\n## feature/x\n\n- [x] Branch done !high\n\n- [ ] Branch open first !low\n\n- [ ] Branch open second !low\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}

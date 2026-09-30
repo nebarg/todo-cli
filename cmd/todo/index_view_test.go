@@ -17,7 +17,7 @@ import (
 
 func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	content := "- [ ] Plain task\n\n# zeta\n\n- [ ] Medium task\n  - Priority: Medium\n\n  More context\n  on another line.\n\n# Branches\n\n## feature/z\n\n- [ ] Low task\n  - Priority: Low\n\n## feature/a\n\n- [x] High task\n  - Priority: High\n"
+	content := "- [ ] Plain task\n\n# zeta\n\n- [ ] Medium task !medium\n\n  More context\n  on another line.\n\n# Branches\n\n## feature/z\n\n- [ ] Low task !low\n\n## feature/a\n\n- [x] High task !high\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestIndexEditShowsTaskLocation(t *testing.T) {
 
 func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	if err := os.WriteFile(path, []byte("## General\n\n- [ ] First\n  - Priority: High\n\n- [ ] Second\n  - Priority: Low\n"), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("## General\n\n- [ ] First !high\n\n- [ ] Second !low\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	m, err := newModel(path, projectContext{})

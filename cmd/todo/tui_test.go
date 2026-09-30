@@ -134,7 +134,7 @@ func TestEditorCommandUsesLineNumber(t *testing.T) {
 
 func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	content := "- [ ] Urgent\n  - Priority: High\n\n- [ ] Routine\n  - Priority: Medium\n\n- Bare\n\n- [ ] Another unprioritized\n\n# Docs\n\n- [ ] Document it\n\n# Tests\n\n- [ ] Test it\n"
+	content := "- [ ] Urgent !high\n\n- [ ] Routine !medium\n\n- Bare\n\n- [ ] Another unprioritized\n\n# Docs\n\n- [ ] Document it\n\n# Tests\n\n- [ ] Test it\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 
 func TestPriorityChangeKeepsMovedBranchTaskSelected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	content := "# Branches\n\n## main\n\n- [ ] Existing high\n  - Priority: High\n\n- [ ] Moved task\n"
+	content := "# Branches\n\n## main\n\n- [ ] Existing high !high\n\n- [ ] Moved task\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestPriorityChangeKeepsMovedBranchTaskSelected(t *testing.T) {
 
 func TestPriorityChangeKeepsCategoryTaskWithDetailsSelected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	content := "# Tests\n\n- [ ] High task\n  - Priority: High\n\n- [x] Detailed task\n  - Priority: Low\n\n  This task has details.\n"
+	content := "# Tests\n\n- [ ] High task !high\n\n- [x] Detailed task !low\n\n  This task has details.\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestPriorityChangeKeepsCategoryTaskWithDetailsSelected(t *testing.T) {
 
 func TestPrioritySortHappensOnLoadAndReload(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	content := "- [ ] No priority\n\n- [ ] High priority\n  - Priority: High\n\n- [ ] Medium priority\n  - Priority: Medium\n"
+	content := "- [ ] No priority\n\n- [ ] High priority !high\n\n- [ ] Medium priority !medium\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}

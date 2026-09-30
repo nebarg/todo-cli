@@ -31,7 +31,6 @@ type Task struct {
 
 	raw          string
 	categoryLine int
-	meta         []string
 	bodyStart    int
 	bodyEnd      int
 	bodyRaw      []string
@@ -72,23 +71,12 @@ func Load(path string) ([]Task, error) {
 			continue
 		}
 		t := Task{
-			Line: i, raw: raw, Text: strings.TrimSuffix(parts[3], "\r"),
-			Done: parts[2] == "x" || parts[2] == "X", Branch: branch, Category: category, categoryLine: categoryLine,
+			Line: i, raw: raw, Done: parts[2] == "x" || parts[2] == "X",
+			Branch: branch, Category: category, categoryLine: categoryLine,
 		}
+		t.Text, t.Priority = SplitPriority(strings.TrimSuffix(parts[3], "\r"))
 		indent := taskIndent(raw)
 		j := i + 1
-		for j < len(lines) {
-			line := strings.TrimSuffix(lines[j], "\r")
-			if strings.HasPrefix(strings.ToLower(line), strings.ToLower(indent+"  - Priority:")) {
-				if p, err := ParsePriority(line[len(indent+"  - Priority:"):]); err == nil {
-					t.Priority = p
-				}
-			} else {
-				break
-			}
-			t.meta = append(t.meta, lines[j])
-			j++
-		}
 		t.bodyStart = j
 		start := j
 		for ; j < len(lines); j++ {
@@ -126,11 +114,18 @@ func taskIndent(raw string) string {
 }
 
 // Add writes a new open task, filed under branch or category (not both), and
-// creates the file or section if needed.
+// creates the file or section if needed. A trailing !priority in title is used
+// when p is PriorityNone.
 func Add(path, title, details string, p Priority, category, branch string) error {
-	title = strings.TrimSpace(title)
+	title, titlePriority := SplitPriority(strings.TrimSpace(title))
 	if title == "" || strings.ContainsAny(title, "\r\n") {
 		return errors.New("enter a single-line task")
+	}
+	if titlePriority != PriorityNone && p != PriorityNone && titlePriority != p {
+		return errors.New("give the priority once, as a flag or a trailing !priority")
+	}
+	if p == PriorityNone {
+		p = titlePriority
 	}
 	category, branch, err := validScope(category, branch)
 	if err != nil {
@@ -144,8 +139,7 @@ func Add(path, title, details string, p Priority, category, branch string) error
 	if info, err := os.Stat(path); err == nil {
 		mode = info.Mode().Perm()
 	}
-	block := []string{"- [ ] " + title}
-	block = append(block, metadataLines(p)...)
+	block := []string{"- [ ] " + title + priorityToken(p)}
 	if body := formattedDetails(details); len(body) > 0 {
 		block = append(block, "")
 		block = append(block, body...)
@@ -174,13 +168,16 @@ func formattedDetails(details string) []string {
 	return result
 }
 
-// Edit replaces the title and details of selected, keeping its metadata, and
-// files it under category or branch (not both). A task that keeps its section
-// is edited in place.
+// Edit replaces the title and details of selected, keeping its priority
+// unless title ends with a new !priority, and files it under category or
+// branch (not both). A task that keeps its section is edited in place.
 func Edit(path string, selected Task, title, details, category, branch string) error {
-	title = strings.TrimSpace(title)
+	title, p := SplitPriority(strings.TrimSpace(title))
 	if title == "" || strings.ContainsAny(title, "\r\n") {
 		return errors.New("enter a single-line task title")
+	}
+	if p != PriorityNone {
+		selected.Priority = p
 	}
 	category, branch, err := validScope(category, branch)
 	if err != nil {
@@ -217,8 +214,7 @@ func validScope(category, branch string) (string, string, error) {
 // taskBlock is selected's lines with a new title and details, keeping the
 // original details text when it has not changed.
 func taskBlock(selected Task, title, details string) []string {
-	block := []string{normalizedTaskLine(selected, title, selected.Done)}
-	block = append(block, selected.meta...)
+	block := []string{normalizedTaskLine(selected, title, selected.Done, selected.Priority)}
 	if strings.Join(formattedDetails(details), "\n") == strings.Join(formattedDetails(selected.Details), "\n") {
 		body := append([]string(nil), selected.bodyRaw...)
 		for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
@@ -247,8 +243,7 @@ func movedTaskLines(lines []string, selected Task, block []string, category, bra
 
 func editedTaskLines(lines []string, selected Task, title, details string) []string {
 	updated := append([]string{}, lines[:selected.Line]...)
-	updated = append(updated, normalizedTaskLine(selected, title, selected.Done))
-	updated = append(updated, selected.meta...)
+	updated = append(updated, normalizedTaskLine(selected, title, selected.Done, selected.Priority))
 	if strings.Join(formattedDetails(details), "\n") == strings.Join(formattedDetails(selected.Details), "\n") {
 		updated = append(updated, selected.bodyRaw...)
 	} else if body := formattedDetails(details); len(body) > 0 {
@@ -282,11 +277,6 @@ func rewriteTask(path string, selected Task, change func(lines []string) string)
 func taskUnchanged(lines []string, selected Task) bool {
 	if selected.Line < 0 || selected.Line >= len(lines) || lines[selected.Line] != selected.raw || selected.bodyEnd > len(lines) || !taskLine.MatchString(selected.raw) {
 		return false
-	}
-	for i, raw := range selected.meta {
-		if selected.Line+1+i >= len(lines) || lines[selected.Line+1+i] != raw {
-			return false
-		}
 	}
 	for i, raw := range selected.bodyRaw {
 		if selected.bodyStart+i >= len(lines) || lines[selected.bodyStart+i] != raw {
@@ -324,14 +314,6 @@ func headingCategoryName(name string) string {
 		return strings.TrimPrefix(name, "@")
 	}
 	return name
-}
-
-func metadataLines(p Priority) []string {
-	var lines []string
-	if p != PriorityNone {
-		lines = append(lines, "  - Priority: "+p.Title())
-	}
-	return lines
 }
 
 func insertTaskBlock(data string, block []string, branch, category string) string {
@@ -466,16 +448,8 @@ func findCategorySection(lines []string, category string) (int, int) {
 }
 
 func priorityFromBlock(block []string) Priority {
-	for _, line := range block[1:] {
-		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(strings.ToLower(trimmed), "- priority:") {
-			break
-		}
-		if p, err := ParsePriority(trimmed[len("- priority:"):]); err == nil {
-			return p
-		}
-	}
-	return PriorityNone
+	_, p := SplitPriority(taskLine.FindStringSubmatch(block[0])[3])
+	return p
 }
 
 func insertBlockSorted(lines []string, start, end int, block []string, p Priority) string {
@@ -485,15 +459,7 @@ func insertBlockSorted(lines []string, start, end int, block []string, p Priorit
 		if parts == nil || strings.TrimSpace(parts[3]) == "" || strings.HasPrefix(lines[i], " ") || strings.HasPrefix(lines[i], "\t") {
 			continue
 		}
-		oldPriority := PriorityNone
-		for j := i + 1; j < end; j++ {
-			trimmed := strings.TrimSpace(lines[j])
-			if !strings.HasPrefix(strings.ToLower(trimmed), "- priority:") {
-				break
-			}
-			oldPriority, _ = ParsePriority(trimmed[len("- priority:"):])
-		}
-		if oldPriority.Rank() > p.Rank() {
+		if _, oldPriority := SplitPriority(strings.TrimSuffix(parts[3], "\r")); oldPriority.Rank() > p.Rank() {
 			idx = i
 			break
 		}
@@ -541,7 +507,7 @@ func insertLines(lines []string, index int, addition []string) []string {
 	return result
 }
 
-func normalizedTaskLine(selected Task, title string, done bool) string {
+func normalizedTaskLine(selected Task, title string, done bool, p Priority) string {
 	indent := taskIndent(selected.raw)
 	mark := " "
 	if done {
@@ -551,33 +517,22 @@ func normalizedTaskLine(selected Task, title string, done bool) string {
 	if strings.HasSuffix(selected.raw, "\r") {
 		ending = "\r"
 	}
-	return indent + "- [" + mark + "] " + title + ending
+	return indent + "- [" + mark + "] " + title + priorityToken(p) + ending
 }
 
 // Toggle flips selected between open and done.
 func Toggle(path string, selected Task) error {
 	return rewriteTask(path, selected, func(lines []string) string {
-		lines[selected.Line] = normalizedTaskLine(selected, selected.Text, !selected.Done)
+		lines[selected.Line] = normalizedTaskLine(selected, selected.Text, !selected.Done, selected.Priority)
 		return strings.Join(lines, "\n")
 	})
 }
 
-// SetPriority rewrites the priority line of selected.
+// SetPriority rewrites the !priority at the end of selected's task line.
 func SetPriority(path string, selected Task, p Priority) error {
 	return rewriteTask(path, selected, func(lines []string) string {
-		updated := append([]string{}, lines[:selected.Line]...)
-		updated = append(updated, normalizedTaskLine(selected, selected.Text, selected.Done))
-		indent := taskIndent(selected.raw)
-		for _, line := range metadataLines(p) {
-			updated = append(updated, indent+line)
-		}
-		for _, line := range selected.meta {
-			if !strings.HasPrefix(strings.ToLower(line), strings.ToLower(indent+"  - Priority:")) {
-				updated = append(updated, line)
-			}
-		}
-		updated = append(updated, lines[selected.Line+1+len(selected.meta):]...)
-		return strings.Join(updated, "\n")
+		lines[selected.Line] = normalizedTaskLine(selected, selected.Text, selected.Done, p)
+		return strings.Join(lines, "\n")
 	})
 }
 

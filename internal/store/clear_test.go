@@ -47,7 +47,7 @@ func TestRemoveDoneDropsTasksAndEmptyHeadings(t *testing.T) {
 	}{
 		{
 			name:    "general tasks with details",
-			content: "- [x] Done\n  - Priority: High\n\n  Some details.\n\n- [ ] Open\n\n- [X] Also done\n",
+			content: "- [x] Done !high\n\n  Some details.\n\n- [ ] Open\n\n- [X] Also done\n",
 			want:    "- [ ] Open\n",
 		},
 		{
@@ -127,7 +127,7 @@ func TestRemoveDoneOnlyTouchesGivenTasks(t *testing.T) {
 }
 
 func TestRemoveDeletesAWholeBranchWithOpenTasks(t *testing.T) {
-	path, tasks := writeAndLoad(t, "- [ ] Keep\n\n# Branches\n\n## gone\n\n- [ ] Open\n  - Priority: High\n\n  Details.\n\n- [x] Done\n\n## kept\n\n- [ ] Stays\n")
+	path, tasks := writeAndLoad(t, "- [ ] Keep\n\n# Branches\n\n## gone\n\n- [ ] Open !high\n\n  Details.\n\n- [x] Done\n\n## kept\n\n- [ ] Stays\n")
 	var gone []Task
 	for _, task := range tasks {
 		if task.Branch == "gone" {
