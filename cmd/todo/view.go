@@ -31,7 +31,7 @@ var (
 
 const missingBranchStatus = "⚠ Branch no longer exists · tasks cannot be edited"
 
-func (m model) View() tea.View {
+func (m *model) View() tea.View {
 	width, height := m.width, m.height
 	if width < 1 {
 		width = 100
@@ -92,7 +92,7 @@ func (m model) View() tea.View {
 	return v
 }
 
-func (m model) renderHeader(width int) string {
+func (m *model) renderHeader(width int) string {
 	line := "  To Do"
 	count := fmt.Sprintf("  %d/%d general · %d/%d branch · %d files",
 		completedCount(m.general), len(m.general), completedCount(m.branches), len(m.branches), len(m.source))
@@ -105,7 +105,7 @@ func (m model) renderHeader(width int) string {
 	return lipgloss.NewStyle().Width(width).Foreground(colorText).Background(lipgloss.Color("#17253A")).Render(line + spacer + count)
 }
 
-func (m model) renderTabs(width int) string {
+func (m *model) renderTabs(width int) string {
 	barColor := lipgloss.Color("#17253A")
 	inactiveStyle := lipgloss.NewStyle().Foreground(colorMuted).Background(barColor)
 	gapStyle := lipgloss.NewStyle().Background(barColor)
@@ -131,7 +131,7 @@ func (m model) renderTabs(width int) string {
 	return line + gapStyle.Render(strings.Repeat(" ", max(0, width-ansi.StringWidth(line))))
 }
 
-func (m model) renderFooter(width int) string {
+func (m *model) renderFooter(width int) string {
 	if m.categoryInput {
 		return ansi.Truncate(m.input.View()+"  enter save · esc cancel", width, "…")
 	}
@@ -186,21 +186,21 @@ func (m model) renderFooter(width int) string {
 	return mutedStyle.Render(ansi.Truncate(hints, width, "…"))
 }
 
-func (m model) generalTitle() string {
+func (m *model) generalTitle() string {
 	if m.generalLabel != "" {
 		return "General · @" + m.generalLabel
 	}
 	return "General"
 }
 
-func (m model) branchTitle() string {
+func (m *model) branchTitle() string {
 	if m.branchFilter != "" {
 		return "Git Branches · " + m.branchFilter
 	}
 	return "Git Branches"
 }
 
-func (m model) panelStyle(focused bool, width, height int) lipgloss.Style {
+func (m *model) panelStyle(focused bool, width, height int) lipgloss.Style {
 	border := colorBorder
 	if focused {
 		border = colorFocus
@@ -209,14 +209,14 @@ func (m model) panelStyle(focused bool, width, height int) lipgloss.Style {
 		Border(lipgloss.RoundedBorder()).BorderForeground(border)
 }
 
-func (m model) panelStatus() string {
+func (m *model) panelStatus() string {
 	if m.activePane() == branchPane && m.branchMissing(m.branchFilter) {
 		return missingBranchStatus
 	}
 	return ""
 }
 
-func (m model) panelContentHeight(height int) int {
+func (m *model) panelContentHeight(height int) int {
 	lines := height - 2
 	if m.panelStatus() != "" {
 		lines--
@@ -224,7 +224,7 @@ func (m model) panelContentHeight(height int) int {
 	return max(1, lines)
 }
 
-func (m model) renderPanel(kind pane, width, height int, lines []string) string {
+func (m *model) renderPanel(kind pane, width, height int, lines []string) string {
 	if status := m.panelStatus(); status != "" {
 		contentHeight := m.panelContentHeight(height)
 		lines = lines[:min(len(lines), contentHeight)]
@@ -237,7 +237,7 @@ func (m model) renderPanel(kind pane, width, height int, lines []string) string 
 	return m.panelStyle(m.focus == kind, width, height).Render(strings.Join(lines, "\n"))
 }
 
-func (m model) renderNavigationPane(title string, rows []navigationRow, cursor int, kind pane, width, height int) string {
+func (m *model) renderNavigationPane(title string, rows []navigationRow, cursor int, kind pane, width, height int) string {
 	innerWidth := max(1, width-4)
 	completed, count := 0, 0
 	if kind == generalPane && m.generalLabel == "" {
@@ -347,7 +347,7 @@ func renderTaskRow(t task, width int, selected bool) string {
 	return selectedStyle.Render(mark) + titleStyle.Render(title) + selectedStyle.Render(suffix+padding)
 }
 
-func (m model) renderSourcePane(width, height int) string {
+func (m *model) renderSourcePane(width, height int) string {
 	innerWidth := max(1, width-4)
 	heading := fmt.Sprintf("File TODOs  %d", len(m.source))
 	if m.sourceLoading {
@@ -379,7 +379,7 @@ func (m model) renderSourcePane(width, height int) string {
 	return m.panelStyle(m.focus == sourcePane, width, height).Render(strings.Join(lines, "\n"))
 }
 
-func (m model) renderDetailPane(width, height int) string {
+func (m *model) renderDetailPane(width, height int) string {
 	innerWidth := max(1, width-4)
 	lines := []string{titleStyle.Render("Details"), ""}
 	if height < 8 {
@@ -403,7 +403,7 @@ func (m model) renderDetailPane(width, height int) string {
 	return m.renderPanel(detailPane, width, height, lines)
 }
 
-func (m model) compactDetails() []string {
+func (m *model) compactDetails() []string {
 	if m.activePane() == sourcePane {
 		if m.sourceCursor >= len(m.source) {
 			return []string{"No file selected"}
@@ -435,7 +435,7 @@ func groupName(row navigationRow) string {
 	return row.name
 }
 
-func (m model) groupDetails(row navigationRow, width int) []string {
+func (m *model) groupDetails(row navigationRow, width int) []string {
 	scope := "general tasks"
 	if row.kind == rowBranch {
 		scope = "branch tasks"
@@ -443,7 +443,7 @@ func (m model) groupDetails(row navigationRow, width int) []string {
 	return wrapLines([]string{taskTitleStyle.Render(groupName(row)), "", fmt.Sprintf("%d/%d %s", row.completed, row.count, scope), "", mutedStyle.Render("enter or → to open")}, width)
 }
 
-func (m model) taskDetails(width int) []string {
+func (m *model) taskDetails(width int) []string {
 	t, ok := m.selectedTask()
 	if !ok {
 		return []string{"", mutedStyle.Render("Select a Markdown task.")}
@@ -473,7 +473,7 @@ func (m model) taskDetails(width int) []string {
 	return wrapLines(result, width)
 }
 
-func (m model) sourceDetails(width int) []string {
+func (m *model) sourceDetails(width int) []string {
 	if m.sourceCursor >= len(m.source) {
 		if m.sourceError != "" {
 			return wrapLines([]string{"", "Scan failed", m.sourceError, "", "Press r to try again"}, width)

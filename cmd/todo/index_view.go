@@ -26,7 +26,7 @@ func indexColumn(value string, width int) string {
 	return value + strings.Repeat(" ", max(0, width-ansi.StringWidth(value)))
 }
 
-func (m model) renderIndex(width, height int) string {
+func (m *model) renderIndex(width, height int) string {
 	innerWidth := max(1, width-4)
 	tasks := m.indexTasks()
 	scopeWidth := min(24, max(17, innerWidth/3))

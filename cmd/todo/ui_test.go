@@ -90,7 +90,7 @@ func TestDashboardFitsTerminal(t *testing.T) {
 }
 
 func TestInactiveTabsShareTheBarBackground(t *testing.T) {
-	m := model{focus: sourcePane}
+	m := &model{focus: sourcePane}
 	tabs := m.renderTabs(80)
 	inactive := lipgloss.NewStyle().Foreground(colorMuted).Background(lipgloss.Color("#17253A"))
 	for _, label := range []string{" 1 General ", " 2 Branches "} {
@@ -104,7 +104,7 @@ func TestInactiveTabsShareTheBarBackground(t *testing.T) {
 }
 
 func TestScanErrorVisibleInDetails(t *testing.T) {
-	m := model{focus: sourcePane, sourceError: "permission denied"}
+	m := &model{focus: sourcePane, sourceError: "permission denied"}
 	got := strings.Join(m.sourceDetails(60), "\n")
 	if !strings.Contains(got, "permission denied") {
 		t.Fatalf("scan error missing from detail pane: %s", got)
@@ -115,7 +115,7 @@ func TestTaskDetailsShownOnDetailPage(t *testing.T) {
 	if taskTitleStyle.GetForeground() != lipgloss.Color("#FFFFFF") {
 		t.Fatal("task title is not styled with the white text color")
 	}
-	m := model{general: []task{{text: "Fix login redirect", details: "When a session expires, return to the previous page.\n\n- Add a regression test"}}}
+	m := &model{general: []task{{text: "Fix login redirect", details: "When a session expires, return to the previous page.\n\n- Add a regression test"}}}
 	got := strings.Join(m.taskDetails(60), "\n")
 	for _, want := range []string{"Fix login redirect", "When a session expires", "- Add a regression test", "Status", "Category"} {
 		if !strings.Contains(got, want) {
@@ -281,20 +281,20 @@ func TestMissingBranchTasksAreReadOnly(t *testing.T) {
 		t.Fatalf("status bar shown before opening the branch: %s", view)
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(model)
+	m = updated.(*model)
 	lines := strings.Split(ansi.Strip(m.View().Content), "\n")
 	if len(lines) != m.height || !strings.Contains(lines[len(lines)-3], "⚠ Branch no longer exists · tasks cannot be edited") {
 		t.Fatalf("status bar missing from bottom of panel: %q", lines)
 	}
 	for _, key := range []tea.KeyPressMsg{{Code: 'd', Text: "d"}, {Code: 'p', Text: "p"}, {Code: 'e', Text: "e"}, {Code: tea.KeyEnter}} {
 		updated, _ = m.Update(key)
-		m = updated.(model)
+		m = updated.(*model)
 		if m.modal != nil || m.status != missingBranchStatus {
 			t.Fatalf("%q was not blocked: modal=%v status=%q", key.String(), m.modal != nil, m.status)
 		}
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	m = updated.(model)
+	m = updated.(*model)
 	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "Branch no longer exists") {
 		t.Fatalf("status bar missing from task details: %s", view)
 	}
@@ -343,7 +343,7 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 		t.Fatal("label row selected a task")
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.generalLabel != "auth" || m.generalTitle() != "General · @auth" || len(m.generalRows()) != 1 || m.generalRows()[0].todo.text != "Login task" {
 		t.Fatalf("label did not filter general tasks: %+v", m.generalRows())
 	}
@@ -351,33 +351,33 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 		t.Fatalf("label contents were indented: %s", opened)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.focus != detailPane {
 		t.Fatal("right arrow on a filtered task did not focus details")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.focus != generalPane || m.generalLabel != "auth" {
 		t.Fatal("left arrow from details skipped the filtered task list")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.generalLabel != "" || m.generalCursor != 0 {
 		t.Fatal("left arrow did not return to General labels")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: '2', Text: "2"})
-	m = updated.(model)
+	m = updated.(*model)
 	branches := m.branchRows()
 	if len(branches) != 2 || branches[m.branchCursor].name != "fix/api" {
 		t.Fatalf("current branch was not preselected: cursor %d rows %+v", m.branchCursor, branches)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.branchFilter != "fix/api" || len(m.branchRows()) != 1 || m.branchRows()[0].todo.text != "Branch API" {
 		t.Fatalf("branch did not open: %+v", m.branchRows())
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.branchFilter != "" || m.branchCursor != 1 {
 		t.Fatal("left arrow did not return to selected branch")
 	}
@@ -388,7 +388,7 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 		t.Fatalf("branch tasks were not shown directly: %s", branchList)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.branchFilter != "" || m.branchCursor != 1 {
 		t.Fatal("left arrow did not return to branches")
 	}
@@ -405,7 +405,7 @@ func TestChangingCategoryKeepsTaskSelected(t *testing.T) {
 	}
 	m.enterSelectedGroup()
 	opened, _ := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
-	m = opened.(model)
+	m = opened.(*model)
 	if !m.categoryInput {
 		t.Fatal("c did not open category editing")
 	}
@@ -414,7 +414,7 @@ func TestChangingCategoryKeepsTaskSelected(t *testing.T) {
 	}
 	m.input.SetValue("backend")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(model)
+	m = updated.(*model)
 	selected, ok := m.selectedTask()
 	if m.categoryInput || !ok || selected.text != "Fix login" || taskLabel(selected) != "backend" {
 		t.Fatalf("relabel lost selection: %+v", m.generalRows())
@@ -431,20 +431,20 @@ func TestLabelInputBlocksSpaces(t *testing.T) {
 		t.Fatal(err)
 	}
 	opened, _ := m.startCategoryInput()
-	m = opened.(model)
+	m = opened.(*model)
 	m.input.SetValue("a")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
-	m = updated.(model)
+	m = updated.(*model)
 	if got := m.input.Value(); got != "a" {
 		t.Fatalf("space key changed label input to %q", got)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: " category"})
-	m = updated.(model)
+	m = updated.(*model)
 	if got := m.input.Value(); got != "acategory" {
 		t.Fatalf("multi-character input kept a space: %q", got)
 	}
 	updated, _ = m.Update(tea.PasteMsg{Content: " more words"})
-	m = updated.(model)
+	m = updated.(*model)
 	if got := m.input.Value(); got != "acategorymorewords" {
 		t.Fatalf("pasted input kept spaces: %q", got)
 	}
@@ -464,42 +464,42 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	}
 	m.enterSelectedGroup()
 	opened, _ := m.startTaskModal(modalAddGeneral)
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal.addLabel != "auth" {
 		t.Fatal("add form did not inherit selected label")
 	}
 	m.modal.title.SetValue("New auth task")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	if len(m.generalRows()) != 2 || !taskHasLabel(m.generalRows()[1].todo, "auth") || m.generalRows()[1].todo.text != "New auth task" || m.generalCursor != 1 {
 		t.Fatalf("new task was not added to label: %+v", m.generalRows())
 	}
 	m.focus = branchPane
 	m.enterSelectedGroup()
 	opened, _ = m.startTaskModal(modalAddBranch)
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal.addBranch != "feature/login" {
 		t.Fatalf("add form chose %q instead of selected branch", m.modal.addBranch)
 	}
 	m.modal.title.SetValue("New branch task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.branchFilter != "feature/login" || len(m.branchRows()) != 2 || m.branchRows()[1].todo.text != "New branch task" {
 		t.Fatalf("new task was not added to branch: %+v", m.branchRows())
 	}
 	opened, _ = m.startTaskModal(modalAddBranch)
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal.addLabel != "" {
 		t.Fatal("branch add form unexpectedly inherited a category")
 	}
 	m.modal.title.SetValue("Another branch task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	if len(m.branchRows()) != 3 || m.branchRows()[m.branchCursor].todo.text != "Another branch task" {
 		t.Fatalf("new task was not added inside branch: %+v", m.branchRows())
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.branchFilter != "" || m.branchRows()[m.branchCursor].name != "feature/login" {
 		t.Fatal("v did not return to the branch list")
 	}
@@ -518,13 +518,13 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 		t.Fatalf("expected only the category row, got %+v", rows)
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.addLabel != "" {
 		t.Fatalf("root add inherited selected category: %+v", m.modal)
 	}
 	m.modal.title.SetValue("General task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.generalLabel != "" {
 		t.Fatalf("root add opened category %q", m.generalLabel)
 	}
@@ -537,13 +537,13 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 		t.Fatal("could not open the test category")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.addLabel != "test" {
 		t.Fatalf("category add did not inherit opened category: %+v", m.modal)
 	}
 	m.modal.title.SetValue("Another test task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	selected, ok = m.selectedTask()
 	if m.generalLabel != "test" || !ok || selected.text != "Another test task" || taskLabel(selected) != "test" {
 		t.Fatalf("new category task was not selected or labeled: %+v", m.generalRows())
@@ -565,13 +565,13 @@ func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 	m.focus = branchPane
 	m.branchCursor = 0 // feature/a is selected; main is the current Git branch.
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.mode != modalAddBranch || m.modal.addBranch != "main" {
 		t.Fatalf("a did not target the current branch from the branch list: %+v", m.modal)
 	}
 	m.modal.title.SetValue("First main task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.branchFilter != "main" {
 		t.Fatalf("add did not open current branch: %q", m.branchFilter)
 	}
@@ -579,20 +579,20 @@ func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 	m.branchCursor = 0
 	m.enterSelectedGroup()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.addBranch != "feature/a" {
 		t.Fatalf("a did not target the opened branch: %+v", m.modal)
 	}
 	m.modal.title.SetValue("Second feature task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	selected, ok := m.selectedTask()
 	if !ok || selected.text != "Second feature task" || selected.branch != "feature/a" {
 		t.Fatalf("new task was not selected in feature/a: %+v", m.branchRows())
 	}
 	m.focus = generalPane
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.mode != modalAddBranch || m.modal.addBranch != "main" {
 		t.Fatalf("b no longer explicitly targets the current Git branch: %+v", m.modal)
 	}
@@ -614,23 +614,23 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 		t.Fatal(err)
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.addBranch != "feature/new" || m.modal.scope.Value() != "feature/new" {
 		t.Fatalf("branch list used a cached or selected branch: %+v", m.modal)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	m = updated.(model)
+	m = updated.(*model)
 	m.branchFilter = "feature/old"
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.addBranch != "feature/old" {
 		t.Fatalf("opened branch did not override current Git branch: %+v", m.modal)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	m = updated.(model)
+	m = updated.(*model)
 	m.indexMode = true
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.addBranch != "feature/new" {
 		t.Fatalf("All Tasks inherited a hidden branch filter: %+v", m.modal)
 	}
@@ -643,9 +643,9 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	m = updated.(model)
+	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal.field != 1 {
 		t.Fatal("tab did not focus label field")
 	}
@@ -655,21 +655,21 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	}
 	m.modal.title.SetValue("New labeled task")
 	updated, _ = m.Update(tea.PasteMsg{Content: "@new label"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal.scope.Value() != "@newlabel" {
 		t.Fatalf("pasted label kept spaces: %q", m.modal.scope.Value())
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	selected, ok := m.selectedTask()
 	if m.modal != nil || !ok || taskLabel(selected) != "newlabel" || m.generalLabel != "newlabel" {
 		t.Fatalf("new category was not created and opened: %+v", m.generalRows())
 	}
 	m.project = testGitProject(t, filepath.Dir(path), "feature/new", "feature/index")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: '2', Text: "2"})
-	m = updated.(model)
+	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.mode != modalAddBranch || m.modal.scope.Value() != "feature/new" {
 		t.Fatalf("branch form did not prefill the current Git branch: %+v", m.modal)
 	}
@@ -681,13 +681,13 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	m.modal.scope.SetValue("not-a-branch")
 	m.modal.resetBranchCursor()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.err != "choose an existing local Git branch" {
 		t.Fatalf("unknown branch was accepted: %+v", m.modal)
 	}
 	m.modal.scope.SetValue("feature/new")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	selected, ok = m.selectedTask()
 	if m.modal != nil || !ok || selected.branch != "feature/new" || m.branchFilter != "feature/new" {
 		t.Fatalf("new Markdown branch was not created and opened: %+v", m.branchRows())
@@ -701,14 +701,14 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	}
 	m.indexMode = true
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.mode != modalAddBranch || m.modal.scope.Value() != "feature/new" {
 		t.Fatal("All Tasks did not use the current Git branch")
 	}
 	m.modal.title.SetValue("Task from All tasks")
 	m.modal.scope.SetValue("feature/index")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.indexMode || m.branchFilter != "feature/index" {
 		t.Fatalf("branch add from All tasks did not open the new section: %q", m.branchFilter)
 	}
@@ -721,11 +721,11 @@ func TestAddFormAcceptsSymbolCategory(t *testing.T) {
 		t.Fatal(err)
 	}
 	opened, _ := m.startTaskModal(modalAddGeneral)
-	m = opened.(model)
+	m = opened.(*model)
 	m.modal.title.SetValue("Version task")
 	m.modal.scope.SetValue("+v1")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	selected, ok := m.selectedTask()
 	if m.modal != nil || !ok || taskLabel(selected) != "+v1" || m.generalLabel != "+v1" {
 		t.Fatalf("symbol category did not save from the form: %+v", m.generalRows())
@@ -740,15 +740,15 @@ func TestBranchPickerSearchAndSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	opened, _ := m.startTaskModal(modalAddBranch)
-	m = opened.(model)
+	m = opened.(*model)
 	m.modal.title.SetValue("Check auth")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal.field != 1 || m.modal.scope.Value() != "main" {
 		t.Fatalf("branch search was not focused with the current branch: %+v", m.modal)
 	}
 	updated, _ = m.Update(tea.PasteMsg{Content: "AUTH"})
-	m = updated.(model)
+	m = updated.(*model)
 	if got := m.modal.scope.Value(); got != "AUTH" {
 		t.Fatalf("search did not replace the prefilled branch: %q", got)
 	}
@@ -756,33 +756,33 @@ func TestBranchPickerSearchAndSelection(t *testing.T) {
 		t.Fatalf("unexpected case-insensitive matches: %v", got)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal.branchCursor != 1 {
 		t.Fatalf("down did not select the second branch: %d", m.modal.branchCursor)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal.branchCursor != 0 || m.modal.scope.Value() != "AUTH" || m.modal.field != 1 {
 		t.Fatalf("down at the end did not wrap without selecting: %+v", m.modal)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal.branchCursor != 1 || m.modal.field != 1 {
 		t.Fatalf("up at the start did not wrap: %+v", m.modal)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal.field != 2 || m.modal.scope.Value() != "fix/auth" {
 		t.Fatalf("enter did not accept the selected branch: %+v", m.modal)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	selected, ok := m.selectedTask()
 	if m.modal != nil || !ok || selected.branch != "fix/auth" {
 		t.Fatalf("task was not saved under the selected branch: %+v", selected)
 	}
 	opened, _ = m.startTaskModal(modalAddBranch)
-	m = opened.(model)
+	m = opened.(*model)
 	m.modal.scope.SetValue("main")
 	m.modal.resetBranchCursor()
 	if got := m.modal.matchingBranches(); len(got) != 2 || got[0] != "main" || got[1] != "main2" {
@@ -805,7 +805,7 @@ func TestBranchCreatedAfterStartupIsNotMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	opened, _ := m.startTaskModal(modalAddBranch)
-	m = opened.(model)
+	m = opened.(*model)
 	m.modal.title.SetValue("Late branch task")
 	m.modal.scope.SetValue("new")
 	m.modal.resetBranchCursor()
@@ -813,7 +813,7 @@ func TestBranchCreatedAfterStartupIsNotMissing(t *testing.T) {
 		t.Fatalf("branch search used a stale branch list: %v", got)
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal != nil {
 		t.Fatalf("save failed: %s", m.modal.err)
 	}
@@ -840,7 +840,7 @@ func TestEditModalRefreshesBranchState(t *testing.T) {
 		t.Fatal(err)
 	}
 	opened, _ := m.startTaskModal(modalEdit)
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal != nil || m.status != missingBranchStatus {
 		t.Fatalf("edit opened for a branch deleted after startup: status %q", m.status)
 	}
@@ -848,7 +848,7 @@ func TestEditModalRefreshesBranchState(t *testing.T) {
 		t.Fatal(err)
 	}
 	opened, _ = m.startTaskModal(modalEdit)
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal == nil || m.branchMissing("feature/x") {
 		t.Fatalf("edit stayed blocked after the branch was restored: status %q", m.status)
 	}
@@ -863,14 +863,14 @@ func TestBranchPickerRejectsDeletedBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	opened, _ := m.startTaskModal(modalAddBranch)
-	m = opened.(model)
+	m = opened.(*model)
 	m.modal.title.SetValue("Do not save")
 	m.modal.scope.SetValue("feature/old")
 	if _, err := gitOutput(dir, "branch", "-D", "feature/old"); err != nil {
 		t.Fatal(err)
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.err != "branch \"feature/old\" no longer exists locally" {
 		t.Fatalf("deleted branch was accepted: %+v", m.modal)
 	}
@@ -887,7 +887,7 @@ func TestBranchPickerFitsCompactAndRegularModals(t *testing.T) {
 		t.Fatal(err)
 	}
 	opened, _ := m.startTaskModal(modalAddBranch)
-	m = opened.(model)
+	m = opened.(*model)
 	m.modal.scope.SetValue("")
 	m.modal.branchCursor = 0
 	suggestions := m.modal.branchSuggestions(24)
@@ -928,7 +928,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	opened, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal == nil || m.modal.field != 0 {
 		t.Fatal("add did not open the title field")
 	}
@@ -960,18 +960,18 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 		}
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal == nil || m.modal.err == "" {
 		t.Fatal("empty title should keep the form open with an error")
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: 'F', Text: "F"})
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal.title.Value() != "F" {
 		t.Fatalf("title field ignored typing: %q", m.modal.title.Value())
 	}
 	m.modal.title.SetValue("First task")
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal.field != 1 {
 		t.Fatal("down arrow did not focus label")
 	}
@@ -982,17 +982,17 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 		t.Fatal("focused category label is not highlighted")
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal.field != 0 {
 		t.Fatal("up arrow on the first details line did not focus title")
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal.field != 1 {
 		t.Fatal("down arrow did not return to label")
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal.field != 2 {
 		t.Fatal("down arrow did not focus details")
 	}
@@ -1000,7 +1000,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 		t.Fatalf("details help changed by focus: %s", help)
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: 'X', Text: "X"})
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal.details.Value() != "X" {
 		t.Fatalf("details field ignored typing: %q", m.modal.details.Value())
 	}
@@ -1009,31 +1009,31 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 		t.Fatalf("details cursor should start on the final line, got %d", m.modal.details.Line())
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal.field != 2 || m.modal.details.Line() != 0 {
 		t.Fatal("up arrow should move within multiline details before returning to title")
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal.field != 1 {
 		t.Fatal("up arrow on first details line did not focus label")
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	m = opened.(model)
+	m = opened.(*model)
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal != nil || len(m.general) != 1 || m.general[0].details != "Added in modal.\n- [ ] Nested step" {
 		t.Fatalf("task was not saved: %+v", m.general)
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
-	m = opened.(model)
+	m = opened.(*model)
 	if m.modal == nil || m.modal.title.Value() != "First task" {
 		t.Fatal("edit did not reopen the task in the modal")
 	}
 	m.modal.title.SetValue("Renamed task")
 	m.modal.details.SetValue("Revised details.")
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = opened.(model)
+	m = opened.(*model)
 	if len(m.general) != 1 || m.general[0].text != "Renamed task" || m.general[0].details != "Revised details." {
 		t.Fatalf("edit was not saved: %+v", m.general)
 	}
@@ -1047,13 +1047,13 @@ func TestTwoLineTaskInputStaysOneMarkdownTask(t *testing.T) {
 	}
 	m.width, m.height = 100, 30
 	opened, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	m = opened.(model)
+	m = opened.(*model)
 	if got := lipgloss.Height(m.modal.title.View()); got != 2 {
 		t.Fatalf("task input is %d lines, want 2", got)
 	}
 	m.modal.title.SetValue("Fix login\nredirect")
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	m = opened.(model)
+	m = opened.(*model)
 	selected, ok := m.selectedTask()
 	if !ok || selected.text != "Fix login redirect" {
 		t.Fatalf("two-line Task was not saved as one title: %+v", m.generalRows())
@@ -1068,29 +1068,29 @@ func TestTwoLineTaskInputStaysOneMarkdownTask(t *testing.T) {
 }
 
 func TestArrowOpensDetailsAndEscapeReturnsToList(t *testing.T) {
-	m := model{general: []task{{text: "First task"}}, width: 100, height: 30}
+	m := &model{general: []task{{text: "First task"}}, width: 100, height: 30}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.focus != detailPane || m.detailFrom != generalPane {
 		t.Fatalf("right arrow page = %v from %v", m.focus, m.detailFrom)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.focus != generalPane {
 		t.Fatal("Escape did not return to task list")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.focus != sourcePane {
 		t.Fatal("3 did not switch to file TODOs")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.focus != sourcePane {
 		t.Fatal("right arrow opened details without a selected file TODO")
 	}
 	updated, _ = m.Update(sourceScanMsg{matches: nil})
-	m = updated.(model)
+	m = updated.(*model)
 	footer := ansi.Strip(m.renderFooter(100))
 	if !strings.Contains(footer, "(e)dit/enter file") || strings.Contains(footer, "Found 0") {
 		t.Fatalf("scan changed the file TODO footer: %q", footer)
@@ -1112,42 +1112,42 @@ func TestEnterEditsAndDoneOrSpaceTogglesTasks(t *testing.T) {
 		t.Fatal(err)
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.title.Value() != "First task" || m.general[0].done {
 		t.Fatal("Enter did not open the selected task for editing")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	m = updated.(model)
+	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
-	m = updated.(model)
+	m = updated.(*model)
 	if !m.general[0].done {
 		t.Fatal("d did not complete the task")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.general[0].done {
 		t.Fatal("Space did not reopen the task")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	m = updated.(model)
+	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.focus != detailPane {
 		t.Fatal("Enter from details did not open the edit form")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	m = updated.(model)
+	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
-	m = updated.(model)
+	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || !m.indexMode {
 		t.Fatal("Enter from All tasks did not open the edit form")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	m = updated.(model)
+	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
-	m = updated.(model)
+	m = updated.(*model)
 	if selected, ok := m.selectedTask(); !ok || !selected.done {
 		t.Fatal("d did not complete the selected task in All tasks")
 	}
@@ -1177,7 +1177,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 		t.Fatal(err)
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
-	m = updated.(model)
+	m = updated.(*model)
 	if !m.indexMode || m.indexSort != "priority" {
 		t.Fatalf("index opened with sort %q", m.indexSort)
 	}
@@ -1213,12 +1213,12 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 		t.Error("medium priority did not color the task")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'B', Text: "B"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.indexSort != "priority" {
 		t.Fatal("old branch sort shortcut still changed the sort")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
-	m = updated.(model)
+	m = updated.(*model)
 	if got := indexTitles(m.indexTasks()); m.indexSort != "branch" || got != "High task,Low task,Medium task,Plain task" {
 		t.Fatalf("branch order = %q", got)
 	}
@@ -1226,7 +1226,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 		t.Fatal("sort lost selected task")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.indexSort != "category" || !strings.Contains(ansi.Strip(m.renderIndex(120, 20)), "CATEGORY / BRANCH") {
 		t.Fatal("category sort or column heading is missing")
 	}
@@ -1234,12 +1234,12 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 		t.Fatalf("category order = %q", got)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.indexSort != "priority" || indexTitles(m.indexTasks()) != "Medium task,Low task,Plain task,High task" {
 		t.Fatal("sort did not cycle back to priority")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.indexMode {
 		t.Fatal("Escape did not return to dashboard")
 	}
@@ -1288,7 +1288,7 @@ func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 }
 
 func TestFooterOmitsObviousMovementHints(t *testing.T) {
-	m := model{}
+	m := &model{}
 	for _, pane := range []pane{generalPane, branchPane, sourcePane, detailPane} {
 		m.focus = pane
 		if footer := ansi.Strip(m.renderFooter(120)); strings.Contains(footer, "↑/↓") || strings.Contains(footer, "move") || strings.Contains(footer, "scroll") {
@@ -1332,7 +1332,7 @@ func TestIndexEditShowsTaskLocation(t *testing.T) {
 			}
 		}
 		updated, _ := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
-		m = updated.(model)
+		m = updated.(*model)
 		if m.modal == nil {
 			t.Fatalf("edit did not open for %s", item.task)
 		}
@@ -1344,7 +1344,7 @@ func TestIndexEditShowsTaskLocation(t *testing.T) {
 			}
 		}
 		updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-		m = updated.(model)
+		m = updated.(*model)
 	}
 }
 
@@ -1360,24 +1360,24 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	m.indexMode = true
 	m.indexSort = "priority"
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
-	m = updated.(model)
+	m = updated.(*model)
 	if selected, ok := m.selectedTask(); !ok || selected.text != "First" || !selected.done {
 		t.Fatal("Space did not complete the selected indexed task")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
-	m = updated.(model)
+	m = updated.(*model)
 	if m.modal == nil || m.modal.title.Value() != "First" {
 		t.Fatal("Edit did not open the indexed task")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	m = updated.(model)
+	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
-	m = updated.(model)
+	m = updated.(*model)
 	if selected, ok := m.selectedTask(); !ok || selected.text != "First" || selected.priority != "medium" || m.indexSort != "priority" {
 		t.Fatal("p should change the selected task's priority without changing sort")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
-	m = updated.(model)
+	m = updated.(*model)
 	if !m.categoryInput || m.indexSort != "priority" {
 		t.Fatal("c should edit the selected task's category without changing sort")
 	}
@@ -1404,7 +1404,7 @@ func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 		t.Fatalf("setup selected %+v", selected)
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
-	m = updated.(model)
+	m = updated.(*model)
 	selected, ok = m.selectedTask()
 	if !ok || selected.text != "Bare" || selected.priority != "high" {
 		t.Fatalf("first p selected %+v", selected)
@@ -1413,14 +1413,14 @@ func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 		t.Fatalf("priority edit moved the highlighted task: cursor %d, rows %+v", m.generalCursor, rows)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
-	m = updated.(model)
+	m = updated.(*model)
 	selected, ok = m.selectedTask()
 	if !ok || selected.text != "Bare" || selected.priority != "medium" {
 		t.Fatalf("second p selected %+v", selected)
 	}
 	for _, want := range []priority{priorityLow, priorityNone, priorityHigh} {
 		updated, _ = m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
-		m = updated.(model)
+		m = updated.(*model)
 		selected, ok = m.selectedTask()
 		if !ok || selected.text != "Bare" || selected.priority != want {
 			t.Fatalf("cycling to %q selected %+v", want, selected)
@@ -1430,26 +1430,26 @@ func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 		}
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
-	m = updated.(model)
+	m = updated.(*model)
 	if got := indexTitles(m.indexTasks()); !strings.HasPrefix(got, "Urgent,Routine,Bare,Another unprioritized") {
 		t.Fatalf("opening the full list unexpectedly resorted tasks: %q", got)
 	}
 	for range 3 {
 		updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
-		m = updated.(model)
+		m = updated.(*model)
 	}
 	if got := indexTitles(m.indexTasks()); !strings.HasPrefix(got, "Urgent,Bare,Routine") {
 		t.Fatalf("cycling the full-list sort back to priority failed: %q", got)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
-	m = updated.(model)
+	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
-	m = updated.(model)
+	m = updated.(*model)
 	if rows := m.generalRows(); rows[3].todo.text != "Routine" || rows[4].todo.text != "Another unprioritized" || rows[5].todo.text != "Bare" || m.generalCursor != 5 {
 		t.Fatalf("completed task did not move after open tasks while staying selected: %+v", rows)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
-	m = updated.(model)
+	m = updated.(*model)
 	if rows := m.generalRows(); rows[3].todo.text != "Routine" || rows[4].todo.text != "Another unprioritized" || rows[5].todo.text != "Bare" {
 		t.Fatalf("reload did not leave completed tasks last: %+v", rows)
 	}
@@ -1478,7 +1478,7 @@ func TestPriorityChangeKeepsMovedBranchTaskSelected(t *testing.T) {
 	m.enterSelectedGroup()
 	m.branchCursor = 1
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
-	m = updated.(model)
+	m = updated.(*model)
 	selected, ok := m.selectedTask()
 	if !ok || selected.text != "Moved task" || selected.priority != "high" {
 		t.Fatalf("branch selection moved to %+v", selected)
@@ -1499,7 +1499,7 @@ func TestPriorityChangeKeepsCategoryTaskWithDetailsSelected(t *testing.T) {
 	m.generalCursor = 1
 	for _, want := range []priority{priorityNone, priorityHigh, priorityMedium, priorityLow} {
 		updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
-		m = updated.(model)
+		m = updated.(*model)
 		selected, ok := m.selectedTask()
 		if !ok || selected.text != "Detailed task" || selected.priority != want || selected.details != "This task has details." {
 			t.Fatalf("cycling to %q selected %+v", want, selected)
@@ -1522,12 +1522,12 @@ func TestPrioritySortHappensOnLoadAndReload(t *testing.T) {
 	}
 	m.generalCursor = 2
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
-	m = updated.(model)
+	m = updated.(*model)
 	if rows := m.generalRows(); rows[2].todo.text != "No priority" || m.generalCursor != 2 {
 		t.Fatalf("priority edit resorted rows: %+v", rows)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
-	m = updated.(model)
+	m = updated.(*model)
 	if rows := m.generalRows(); rows[0].todo.text != "No priority" || rows[1].todo.text != "High priority" || rows[2].todo.text != "Medium priority" {
 		t.Fatalf("reload order = %+v", rows)
 	}

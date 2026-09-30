@@ -93,22 +93,22 @@ type model struct {
 	height                int
 }
 
-func newModel(file string, project projectContext) (model, error) {
+func newModel(file string, project projectContext) (*model, error) {
 	input := textinput.New()
 	input.Prompt = "New task: "
 	input.Placeholder = "What needs doing?"
 	input.SetWidth(72)
-	m := model{file: file, project: project, input: input, width: 100, height: 30, sourceLoading: true, indexSort: sortPriority}
+	m := &model{file: file, project: project, input: input, width: 100, height: 30, sourceLoading: true, indexSort: sortPriority}
 	if err := m.reload(); err != nil {
-		return model{}, err
+		return nil, err
 	}
 	m.preselectCurrentBranch()
 	return m, nil
 }
 
-func (m model) Init() tea.Cmd { return m.scanCmd() }
+func (m *model) Init() tea.Cmd { return m.scanCmd() }
 
-func (m model) scanDir() string {
+func (m *model) scanDir() string {
 	if m.project.root != "" {
 		return m.project.root
 	}
@@ -119,7 +119,7 @@ func (m model) scanDir() string {
 	return dir
 }
 
-func (m model) scanCmd() tea.Cmd {
+func (m *model) scanCmd() tea.Cmd {
 	dir := m.scanDir()
 	return func() tea.Msg {
 		matches, err := scanSource(dir, 1000, false)
@@ -127,7 +127,7 @@ func (m model) scanCmd() tea.Cmd {
 	}
 }
 
-func (m model) previewCmd() tea.Cmd {
+func (m *model) previewCmd() tea.Cmd {
 	if m.sourceCursor >= len(m.source) {
 		return nil
 	}
@@ -139,7 +139,7 @@ func (m model) previewCmd() tea.Cmd {
 	}
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -318,7 +318,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) moveCursor(delta int) bool {
 	if m.indexMode {
-		return moveIndexCursor(m, delta)
+		return m.moveIndexCursor(delta)
 	}
 	cursor, length := &m.generalCursor, len(m.generalRows())
 	switch m.focus {
@@ -348,7 +348,7 @@ func (m *model) moveCursor(delta int) bool {
 	return true
 }
 
-func (m model) selectedTask() (task, bool) {
+func (m *model) selectedTask() (task, bool) {
 	if m.indexMode {
 		tasks := m.indexTasks()
 		if m.indexCursor >= 0 && m.indexCursor < len(tasks) {
@@ -363,14 +363,14 @@ func (m model) selectedTask() (task, bool) {
 	return task{}, false
 }
 
-func (m model) activePane() pane {
+func (m *model) activePane() pane {
 	if m.focus == detailPane {
 		return m.detailFrom
 	}
 	return m.focus
 }
 
-func (m model) startCategoryInput() (tea.Model, tea.Cmd) {
+func (m *model) startCategoryInput() (tea.Model, tea.Cmd) {
 	selected, ok := m.selectedTask()
 	if !ok {
 		m.status = "Select a Markdown task to edit its category"
@@ -388,7 +388,7 @@ func (m model) startCategoryInput() (tea.Model, tea.Cmd) {
 	return m, m.input.Focus()
 }
 
-func (m model) updateCategoryInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m *model) updateCategoryInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.categoryInput = false
@@ -418,7 +418,7 @@ func (m model) updateCategoryInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.selectIndexTask(oldTask)
 		} else if m.activePane() == generalPane {
 			if newLabel != "" {
-				root := m
+				root := *m
 				root.generalLabel = ""
 				for i, row := range root.generalRows() {
 					if row.kind == rowLabel && strings.EqualFold(row.name, newLabel) {
@@ -517,7 +517,7 @@ func (m *model) cyclePriority() {
 	m.status = ""
 }
 
-func (m model) openSource() tea.Cmd {
+func (m *model) openSource() tea.Cmd {
 	if m.sourceCursor >= len(m.source) {
 		return nil
 	}
@@ -698,7 +698,7 @@ func preserveTaskOrder(previous, loaded []task) []task {
 	return ordered
 }
 
-func (m model) indexTasks() []task {
+func (m *model) indexTasks() []task {
 	tasks := append([]task(nil), m.allTasks...)
 	sort.SliceStable(tasks, func(i, j int) bool {
 		a, b := tasks[i], tasks[j]
@@ -762,7 +762,7 @@ func (m *model) selectIndexTask(selected task) {
 	}
 }
 
-func moveIndexCursor(m *model, delta int) bool {
+func (m *model) moveIndexCursor(delta int) bool {
 	next := max(0, min(m.indexCursor+delta, len(m.allTasks)-1))
 	if next == m.indexCursor {
 		return false
@@ -771,7 +771,7 @@ func moveIndexCursor(m *model, delta int) bool {
 	return true
 }
 
-func (m model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m *model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "i", "esc", "left":
 		m.indexMode = false

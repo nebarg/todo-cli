@@ -32,7 +32,7 @@ func completedCount(tasks []task) int {
 	return count
 }
 
-func (m model) generalRows() []navigationRow {
+func (m *model) generalRows() []navigationRow {
 	var rows []navigationRow
 	if m.generalLabel == "" {
 		counts := make(map[string]int)
@@ -72,7 +72,7 @@ func (m model) generalRows() []navigationRow {
 	return rows
 }
 
-func (m model) branchRows() []navigationRow {
+func (m *model) branchRows() []navigationRow {
 	var rows []navigationRow
 	if m.branchFilter != "" {
 		for _, t := range m.branches {
@@ -97,7 +97,7 @@ func (m model) branchRows() []navigationRow {
 	return rows
 }
 
-func (m model) branchMissing(name string) bool {
+func (m *model) branchMissing(name string) bool {
 	return name != "" && m.branchesVerified && !m.localBranchNames[name]
 }
 
@@ -161,7 +161,7 @@ func taskLabel(t task) string {
 	return t.labels[0]
 }
 
-func (m model) selectedNavigationRow() (navigationRow, bool) {
+func (m *model) selectedNavigationRow() (navigationRow, bool) {
 	var rows []navigationRow
 	var cursor int
 	switch m.activePane() {

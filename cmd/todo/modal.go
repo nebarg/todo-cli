@@ -39,7 +39,7 @@ type taskModal struct {
 	err          string
 }
 
-func (m model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
+func (m *model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
 	modal := &taskModal{mode: mode, project: m.project}
 	if mode == modalAddGeneral && m.activePane() == generalPane {
 		modal.addLabel = m.generalLabel
@@ -95,7 +95,7 @@ func (m model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
 	return m, modal.title.Focus()
 }
 
-func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m *model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	modal := m.modal
 	switch msg.String() {
 	case "esc":
@@ -119,7 +119,7 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.focus = generalPane
 			m.generalLabel = modal.addLabel
 			if modal.addLabel != "" {
-				root := m
+				root := *m
 				root.generalLabel = ""
 				for i, row := range root.generalRows() {
 					if row.kind == rowLabel && strings.EqualFold(row.name, modal.addLabel) {
@@ -136,7 +136,7 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else if mode == modalAddBranch {
 			m.indexMode = false
 			m.focus = branchPane
-			branchRoot := m
+			branchRoot := *m
 			branchRoot.branchFilter = ""
 			for i, row := range branchRoot.branchRows() {
 				if row.name == modal.addBranch {
@@ -222,7 +222,7 @@ func (m model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m model) updateTaskModalPaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
+func (m *model) updateTaskModalPaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 	modal := m.modal
 	modal.err = ""
 	var cmd tea.Cmd
