@@ -40,7 +40,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 				t.Errorf("index size at %dx%d = %dx%d", size[0], size[1], lipgloss.Width(view), lipgloss.Height(view))
 			}
 			plain := ansi.Strip(view)
-			for _, want := range []string{"All tasks  1/4", "TASK: DETAILS", "CATEGORY / BRANCH", "@zeta", " feature/a", "High task", "More context on another line."} {
+			for _, want := range []string{"All tasks  1/4", "TASK: DETAILS", "CATEGORY / BRANCH", "@zeta", branchIcon + " feature/a", "High task", "More context on another line."} {
 				if !strings.Contains(plain, want) && size[0] == 120 {
 					t.Errorf("index missing %q: %s", want, plain)
 				}
@@ -117,7 +117,7 @@ func TestIndexEditShowsTaskLocation(t *testing.T) {
 	for _, item := range []struct{ task, location string }{
 		{"Plain task", "General task"},
 		{"Category task", "Category  @auth"},
-		{"Branch task", "Branch     feature/ui"},
+		{"Branch task", "Branch    " + branchIcon + " feature/ui"},
 	} {
 		t.Run(item.task, func(t *testing.T) {
 			for i, task := range m.indexTasks() {

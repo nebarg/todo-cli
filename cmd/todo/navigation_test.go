@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -37,12 +39,12 @@ func TestBranchListMarksMissingGitBranches(t *testing.T) {
 	if len(rows) != 2 || !rows[0].missingGitBranch || rows[1].missingGitBranch || rows[0].count != 1 {
 		t.Fatalf("deleted branch was not identified while keeping its tasks: %+v", rows)
 	}
-	view := ansi.Strip(m.renderNavigationPane(m.branchTitle(), rows, 0, branchPane, 60, 20))
-	if !strings.Contains(view, "⚠ feature/gone  0/1 › missing") || strings.Contains(view, "⚠ feature/live") || !strings.Contains(view, "feature/live  0/1 ›") {
+	view := ansi.Strip(m.renderNavigationPane(rows, 0, branchPane, 60, 20))
+	if !regexp.MustCompile(`⚠ feature/gone  missing +0/1`).MatchString(view) || strings.Contains(view, "⚠ feature/live") || !regexp.MustCompile(`▸ feature/live +0/1`).MatchString(view) {
 		t.Fatalf("branch list warning is unclear: %s", view)
 	}
 	long := navigationRow{kind: rowBranch, name: "feature/a-very-long-branch-name-that-needs-truncating", count: 4, completed: 1, missingGitBranch: true}
-	if got := ansi.Strip(renderMissingBranchRow(long, 28, true)); !strings.HasPrefix(got, "⚠ feature/") || !strings.Contains(got, "1/4 › missing") || ansi.StringWidth(got) != 28 {
+	if got := ansi.Strip(renderGroupRow(long, 28, true, false)); !strings.HasPrefix(got, "⚠ feature/") || !strings.HasSuffix(got, "…  missing  1/4") || ansi.StringWidth(got) != 28 {
 		t.Fatalf("long branch hid its missing marker: %q", got)
 	}
 	if _, err := gitOutput(dir, "branch", "feature/gone"); err != nil {
@@ -132,8 +134,8 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 	if len(general) != 3 || general[0].kind != rowCategory || general[0].name != "auth" || general[0].count != 1 || general[1].kind != rowCategory || general[1].name != "tests" || general[2].todo.Text != "Uncategorised" {
 		t.Fatalf("general rows = %+v", general)
 	}
-	list := ansi.Strip(m.renderNavigationPane(m.generalTitle(), general, 0, generalPane, 50, 18))
-	if strings.Contains(list, "[ ]") || !strings.Contains(list, "@auth") || strings.Contains(list, "Login task") || strings.Contains(list, "Branch login") {
+	list := ansi.Strip(m.renderNavigationPane(general, 0, generalPane, 50, 18))
+	if strings.Contains(list, "[ ]") || !strings.Contains(list, "▸ auth") || strings.Contains(list, "Login task") || strings.Contains(list, "Branch login") {
 		t.Fatalf("root General list showed categorised or branch tasks: %s", list)
 	}
 	if _, ok := m.selectedTask(); ok {
@@ -141,10 +143,10 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
-	if m.generalCategory != "auth" || m.generalTitle() != "General · @auth" || len(m.generalRows()) != 1 || m.generalRows()[0].todo.Text != "Login task" {
+	if m.generalCategory != "auth" || !slices.Equal(m.breadcrumb(generalPane), []string{"General", "@auth"}) || len(m.generalRows()) != 1 || m.generalRows()[0].todo.Text != "Login task" {
 		t.Fatalf("category did not filter general tasks: %+v", m.generalRows())
 	}
-	if opened := ansi.Strip(m.renderNavigationPane(m.generalTitle(), m.generalRows(), 0, generalPane, 50, 12)); strings.Contains(opened, "  Login task") || !strings.Contains(opened, "Login task") {
+	if opened := ansi.Strip(m.renderNavigationPane(m.generalRows(), 0, generalPane, 50, 12)); strings.Contains(opened, "  Login task") || !strings.Contains(opened, "Login task") {
 		t.Fatalf("category contents were indented: %s", opened)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
@@ -180,7 +182,7 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 	}
 	m.branchFilter = "feature/login"
 	m.branchCursor = 0
-	branchList := ansi.Strip(m.renderNavigationPane(m.branchTitle(), m.branchRows(), 0, branchPane, 50, 12))
+	branchList := ansi.Strip(m.renderNavigationPane(m.branchRows(), 0, branchPane, 50, 12))
 	if strings.Contains(branchList, "[ ]") || strings.Contains(branchList, "@auth") || !strings.Contains(branchList, "Branch login") {
 		t.Fatalf("branch tasks were not shown directly: %s", branchList)
 	}
@@ -216,7 +218,7 @@ func TestArrowOpensDetailsAndEscapeReturnsToList(t *testing.T) {
 	updated, _ = m.Update(sourceScanMsg{matches: nil})
 	m = updated.(*model)
 	footer := ansi.Strip(m.renderFooter(100))
-	if !strings.Contains(footer, "(e)dit/enter file") || strings.Contains(footer, "Found 0") {
+	if !strings.Contains(footer, "e open file") || strings.Contains(footer, "Found 0") {
 		t.Fatalf("scan changed the file TODO footer: %q", footer)
 	}
 	m.status = "No current Git branch"
@@ -272,12 +274,9 @@ func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 
 func assertNoEditHints(t *testing.T, m *model) {
 	t.Helper()
-	for _, narrow := range []bool{false, true} {
-		hints := m.footerHints(narrow)
-		for _, blocked := range []string{"(d)one", "(e)dit", "(p)riority"} {
-			if strings.Contains(hints, blocked) {
-				t.Fatalf("read-only branch footer offers %s (narrow=%v): %q", blocked, narrow, hints)
-			}
+	for _, hint := range m.footerHints() {
+		if slices.Contains([]string{"d", "e", "p"}, hint.key) {
+			t.Fatalf("read-only branch footer offers %q: %v", hint.key, m.footerHints())
 		}
 	}
 }

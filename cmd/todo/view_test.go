@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/scan"
@@ -50,11 +52,15 @@ func TestDashboardFitsTerminal(t *testing.T) {
 				}
 				plain := ansi.Strip(view.Content)
 				lines := strings.Split(plain, "\n")
-				if len(lines) < 5 || lines[2] == "" {
-					t.Errorf("%s has an unexpected gap below tabs at %dx%d", page.name, size[0], size[1])
+				if len(lines) < 4 || !strings.HasPrefix(lines[0], " 1 General") || (size[0] >= 80 && !strings.HasSuffix(lines[0], gitIcon+" feature/login  ")) || !strings.HasPrefix(lines[1], "╭") {
+					t.Errorf("%s header is not one bar of tabs and branch at %dx%d: %q", page.name, size[0], size[1], lines[:2])
 				}
-				if len(lines) < 6 || strings.Trim(lines[4], " │") != "" {
-					t.Errorf("%s has no gap below its heading at %dx%d", page.name, size[0], size[1])
+				if page.focus == detailPane {
+					if len(lines) < 5 || strings.Trim(lines[3], " │") != "" {
+						t.Errorf("%s has no gap below its heading at %dx%d", page.name, size[0], size[1])
+					}
+				} else if len(lines) < 3 || strings.Trim(lines[2], " │") == "" {
+					t.Errorf("%s wastes a line above its list at %dx%d", page.name, size[0], size[1])
 				}
 				if !strings.Contains(plain, page.want) || strings.Contains(plain, page.hide) {
 					t.Errorf("%s content at %dx%d: %s", page.name, size[0], size[1], plain)
@@ -69,12 +75,15 @@ func TestDashboardFitsTerminal(t *testing.T) {
 
 func TestInactiveTabsShareTheBarBackground(t *testing.T) {
 	m := &model{focus: sourcePane}
-	tabs := m.renderTabs(80)
+	tabs := m.renderHeader(80)
 	inactive := lipgloss.NewStyle().Foreground(colorMuted).Background(colorBar)
-	for _, tab := range []string{" 1 General ", " 2 Branches "} {
+	for _, tab := range []string{" General ", " Branches "} {
 		if !strings.Contains(tabs, inactive.Render(tab)) {
 			t.Errorf("inactive tab %q has the wrong background: %q", tab, tabs)
 		}
+	}
+	if !strings.Contains(tabs, keyStyle.Background(colorBar).Render("1")) || !strings.Contains(tabs, keyStyle.Background(colorSelection).Render("3")) {
+		t.Errorf("tab numbers are not styled as keys: %q", tabs)
 	}
 	if ansi.StringWidth(tabs) != 80 {
 		t.Errorf("tab bar width = %d, want 80", ansi.StringWidth(tabs))
@@ -125,26 +134,33 @@ func TestTaskDetailsShownOnDetailPage(t *testing.T) {
 		})
 	}
 	m.focus, m.detailFrom = detailPane, generalPane
-	if footer := ansi.Strip(m.renderFooter(120)); !strings.Contains(footer, "esc back") || !strings.Contains(footer, "(d)one/space · (e)dit/enter") || !strings.Contains(footer, "(p)riority") || !strings.Contains(footer, "(c)ategory") {
-		t.Error("detail footer does not show navigation and edit shortcuts")
+	if footer := ansi.Strip(m.renderFooter(120)); !strings.Contains(footer, "← back") || !strings.Contains(footer, "d done  e edit  p priority  c category") {
+		t.Errorf("detail footer does not show navigation and edit shortcuts: %q", footer)
 	}
-	if footer := ansi.Strip(m.renderFooter(56)); !strings.Contains(footer, "(d)one/space · (e)dit/enter") || !strings.Contains(footer, "· p ·") || !strings.Contains(footer, "(c)ategory") {
+	if footer := ansi.Strip(m.renderFooter(56)); !strings.Contains(footer, "d done  e edit  p priority  c category") || !strings.HasSuffix(footer, "? help  q quit") {
 		t.Errorf("narrow detail footer lost task shortcuts: %q", footer)
 	}
 }
 
-func TestTaskRowsKeepTitlesAlignedAndShowDetails(t *testing.T) {
+func TestTaskRowsColourPriorityOnTheBullet(t *testing.T) {
 	for p, foreground := range map[store.Priority]string{
 		"high": "240;119;119", "medium": "244;162;97", "low": "244;211;94",
 	} {
 		t.Run(string(p), func(t *testing.T) {
-			selected := renderTaskRow(store.Task{Text: "Highlighted title", Priority: p, Details: "Extra context"}, 30, true)
-			unselected := renderTaskRow(store.Task{Text: "Highlighted title", Priority: p, Details: "Extra context"}, 30, false)
-			if ansi.StringWidth(selected) != 30 || !strings.Contains(ansi.Strip(selected), "○ Highlighted title  ⋯") || !strings.Contains(selected, "38;2;"+foreground+";48;2;36;87;166mHighlighted title") {
-				t.Fatalf("%s selected task is not fully highlighted and coloured: %q", p, selected)
+			task := store.Task{Text: "Highlighted title", Priority: p, Details: "Extra context"}
+			selected := renderTaskRow(task, 30, true)
+			if ansi.StringWidth(selected) != 30 || !strings.HasPrefix(ansi.Strip(selected), "○ Highlighted title") || !strings.HasSuffix(ansi.Strip(selected), "⋯") {
+				t.Fatalf("%s selected task is not full width with a right-aligned details marker: %q", p, ansi.Strip(selected))
 			}
-			if ansi.Strip(unselected) != "○ Highlighted title  ⋯" || !strings.Contains(unselected, "38;2;"+foreground+"mHighlighted title") {
-				t.Fatalf("%s unselected task is not coloured: %q", p, unselected)
+			if !strings.Contains(selected, "38;2;"+foreground+";48;2;36;87;166m○") || strings.Contains(selected, foreground+";48;2;36;87;166mHighlighted") {
+				t.Fatalf("%s selected task should colour only its bullet: %q", p, selected)
+			}
+			unselected := renderTaskRow(task, 30, false)
+			if ansi.StringWidth(unselected) != 30 || !strings.HasSuffix(ansi.Strip(unselected), "⋯") {
+				t.Fatalf("%s details marker is not right-aligned: %q", p, ansi.Strip(unselected))
+			}
+			if !strings.Contains(unselected, "38;2;"+foreground+"m○") || strings.Contains(unselected, foreground+"mHighlighted") {
+				t.Fatalf("%s unselected task should colour only its bullet: %q", p, unselected)
 			}
 			done := renderTaskRow(store.Task{Text: "Highlighted title", Priority: p, Done: true}, 30, false)
 			if ansi.Strip(done) != "✓ Highlighted title" || strings.Contains(done, "38;2;"+foreground) {
@@ -158,7 +174,7 @@ func TestTaskRowsKeepTitlesAlignedAndShowDetails(t *testing.T) {
 		t.Fatalf("completion changed title alignment or added details marker: %q / %q", open, done)
 	}
 	truncated := ansi.Strip(renderTaskRow(store.Task{Text: strings.Repeat("x", 50), Details: "More"}, 24, false))
-	if ansi.StringWidth(truncated) != 24 || !strings.HasSuffix(truncated, "  ⋯") {
+	if ansi.StringWidth(truncated) != 24 || !strings.HasSuffix(truncated, "…  ⋯") {
 		t.Fatalf("long task lost its details marker: %q", truncated)
 	}
 }
@@ -173,28 +189,125 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header := ansi.Strip(m.renderHeader(100)); !strings.HasPrefix(header, "  To Do") || !strings.Contains(header, "2/4 general · 1/2 branch") || strings.Contains(header, "main") || strings.Contains(header, "No Git repository") {
-		t.Fatalf("header counts = %q", header)
+	m.sourceLoading = false
+	if header := ansi.Strip(m.renderHeader(100)); !strings.HasSuffix(header, " "+gitIcon+" main  ") || strings.Contains(header, "To Do") || strings.Contains(header, ".") {
+		t.Fatalf("header without a repository root = %q", header)
 	}
-	general := ansi.Strip(m.renderNavigationPane(m.generalTitle(), m.generalRows(), 0, generalPane, 60, 20))
-	if !strings.Contains(general, "General  2/4") || !strings.Contains(general, "@Docs  1/2 ›") {
-		t.Fatalf("general counts = %s", general)
+	m.project.branch = ""
+	if header := ansi.Strip(m.renderHeader(100)); ansi.StringWidth(header) != 100 || !strings.HasSuffix(strings.TrimRight(header, " "), "3 Files 0") || strings.Contains(header, gitIcon) {
+		t.Fatalf("header outside Git = %q", header)
 	}
-	branches := ansi.Strip(m.renderNavigationPane(m.branchTitle(), m.branchRows(), 0, branchPane, 60, 20))
-	if !strings.Contains(branches, "Git Branches  1/2") || !strings.Contains(branches, "main  1/2 ›") {
-		t.Fatalf("branch counts = %s", branches)
+	m.project.branch = "main"
+	if tabs := ansi.Strip(m.renderHeader(100)); !strings.Contains(tabs, " 1 General 2/4 ") || !strings.Contains(tabs, " 2 Branches 1/2 ") || !strings.Contains(tabs, " 3 Files 0 ") {
+		t.Fatalf("tab counts = %q", tabs)
+	}
+	general := ansi.Strip(m.renderNavigationPane(m.generalRows(), 0, generalPane, 60, 20))
+	if strings.Contains(general, "General") || !regexp.MustCompile(`▸ Docs +1/2 │`).MatchString(general) {
+		t.Fatalf("general list = %s", general)
+	}
+	branches := ansi.Strip(m.renderNavigationPane(m.branchRows(), 0, branchPane, 60, 20))
+	if strings.Contains(branches, "Branches") || !regexp.MustCompile(`▸ main  current +1/2 │`).MatchString(branches) {
+		t.Fatalf("branch list = %s", branches)
 	}
 	m.generalCategory = "Docs"
-	if view := ansi.Strip(m.renderNavigationPane(m.generalTitle(), m.generalRows(), 0, generalPane, 60, 20)); !strings.Contains(view, "General · @Docs  1/2") {
-		t.Fatalf("category count = %s", view)
+	if view := ansi.Strip(m.renderNavigationPane(m.generalRows(), 0, generalPane, 60, 20)); !strings.Contains(view, "General › @Docs  1/2") {
+		t.Fatalf("category breadcrumb = %s", view)
 	}
 	m.branchFilter = "main"
-	if branch := ansi.Strip(m.renderNavigationPane(m.branchTitle(), m.branchRows(), 0, branchPane, 60, 20)); !strings.Contains(branch, "Git Branches · main  1/2") {
-		t.Fatalf("selected branch count = %s", branch)
+	if branch := ansi.Strip(m.renderNavigationPane(m.branchRows(), 0, branchPane, 60, 20)); !strings.Contains(branch, "Branches › "+branchIcon+" main  1/2") {
+		t.Fatalf("branch breadcrumb = %s", branch)
+	}
+	m.focus, m.detailFrom = detailPane, branchPane
+	if detail := ansi.Strip(m.renderDetailPane(60, 20)); !strings.Contains(detail, "Branches › "+branchIcon+" main › Details") {
+		t.Fatalf("detail breadcrumb = %s", detail)
 	}
 	m.indexMode = true
-	if index := ansi.Strip(m.renderIndex(100, 20)); !strings.Contains(index, "All tasks  3/6") {
-		t.Fatalf("all tasks count = %s", index)
+	if index := ansi.Strip(m.renderIndex(100, 20)); !regexp.MustCompile(`All tasks  3/6 +sorted by`).MatchString(index) {
+		t.Fatalf("all tasks heading = %s", index)
+	}
+}
+
+func TestHeaderShowsRepositoryAndBranch(t *testing.T) {
+	m := &model{project: projectContext{root: "/src/todo-cli", branch: "feature/login"}}
+	header := m.renderHeader(80)
+	if plain := ansi.Strip(header); ansi.StringWidth(header) != 80 || !strings.HasPrefix(plain, " 1 General") || !strings.HasSuffix(plain, "todo-cli  "+gitIcon+" feature/login  ") {
+		t.Fatalf("header = %q", plain)
+	}
+	if !strings.Contains(header, lipgloss.NewStyle().Foreground(colorGit).Background(colorBar).Render(gitIcon+" ")) {
+		t.Fatalf("git icon is not coloured: %q", header)
+	}
+	m.project.branch = strings.Repeat("b", 100)
+	header = m.renderHeader(60)
+	if plain := ansi.Strip(header); ansi.StringWidth(header) != 60 || !strings.Contains(plain, "3 Files") || strings.Contains(plain, "todo-cli") || !strings.HasSuffix(plain, "…  ") {
+		t.Fatalf("long branch should drop the repo and shorten before the tabs: %q", plain)
+	}
+	m.indexMode = true
+	if plain := ansi.Strip(m.renderHeader(60)); strings.Contains(plain, "General") || !strings.Contains(plain, "todo-cli") {
+		t.Fatalf("All tasks header = %q", plain)
+	}
+}
+
+func TestLooseTasksAreSeparatedFromCategories(t *testing.T) {
+	m := &model{general: []store.Task{{Text: "Loose"}, {Text: "Filed", Category: "Docs"}}}
+	rows := m.generalRows()
+	if got := firstTaskAfterGroups(rows); got != 1 {
+		t.Fatalf("divider row = %d", got)
+	}
+	lines := strings.Split(ansi.Strip(m.renderNavigationPane(rows, 0, generalPane, 40, 10)), "\n")
+	if !strings.Contains(lines[1], "▸ Docs") || strings.Trim(lines[2], " │") != "" || !strings.Contains(lines[3], "○ Loose") {
+		t.Fatalf("loose tasks are not separated from categories: %q", lines)
+	}
+	if got := firstTaskAfterGroups(m.branchRows()); got != -1 {
+		t.Fatalf("unmixed list has a divider at %d", got)
+	}
+}
+
+func TestFooterFitsHintsAndPinsHelp(t *testing.T) {
+	m := &model{general: []store.Task{{Text: "Loose"}}}
+	for _, width := range []int{56, 80, 160} {
+		footer := m.renderFooter(width)
+		plain := ansi.Strip(footer)
+		if ansi.StringWidth(footer) != width || !strings.HasSuffix(plain, "? help  q quit") || !strings.HasPrefix(plain, "d done  e edit") {
+			t.Errorf("footer at %d = %q", width, plain)
+		}
+		if strings.Contains(plain, "…") || strings.Contains(plain, "·") {
+			t.Errorf("footer at %d truncated a hint or used a separator: %q", width, plain)
+		}
+	}
+	if wide := ansi.Strip(m.renderFooter(160)); !strings.Contains(wide, "r reload") {
+		t.Errorf("wide footer dropped hints: %q", wide)
+	}
+	if narrow := ansi.Strip(m.renderFooter(56)); strings.Contains(narrow, "r reload") {
+		t.Errorf("narrow footer kept low-priority hints: %q", narrow)
+	}
+	m.status = "Saved"
+	if footer := ansi.Strip(m.renderFooter(80)); !strings.HasPrefix(footer, "Saved   d done") || !strings.HasSuffix(footer, "q quit") {
+		t.Errorf("status footer = %q", footer)
+	}
+	m.general = []store.Task{{Text: "Filed", Category: "Docs"}}
+	m.status = ""
+	if footer := ansi.Strip(m.renderFooter(120)); !strings.HasPrefix(footer, "→ open") || strings.Contains(footer, "d done") {
+		t.Errorf("category row footer offers task actions: %q", footer)
+	}
+}
+
+func TestHelpOverlayOpensAndCloses(t *testing.T) {
+	m := &model{width: 56, height: 16}
+	updated, _ := m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
+	m = updated.(*model)
+	view := m.View().Content
+	if !m.helpOpen || !strings.Contains(ansi.Strip(view), "toggle done") || lipgloss.Width(view) != 56 || lipgloss.Height(view) != 16 {
+		t.Fatalf("help overlay did not open within the terminal: %s", ansi.Strip(view))
+	}
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	m = updated.(*model)
+	if m.helpOpen || cmd != nil {
+		t.Fatal("a key press while help is open should only close it")
+	}
+	m.indexMode = true
+	updated, _ = m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
+	if !updated.(*model).helpOpen {
+		t.Fatal("help did not open from All tasks")
 	}
 }
 

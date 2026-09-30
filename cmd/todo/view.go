@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"unicode"
 
@@ -34,92 +35,193 @@ func (m *model) View() tea.View {
 	if m.indexMode {
 		body = m.renderIndex(width, bodyHeight)
 	} else {
-		bodyHeight--
 		switch m.focus {
 		case branchPane:
-			body = m.renderNavigationPane(m.branchTitle(), m.branchRows(), m.branchCursor, branchPane, width, bodyHeight)
+			body = m.renderNavigationPane(m.branchRows(), m.branchCursor, branchPane, width, bodyHeight)
 		case sourcePane:
 			body = m.renderSourcePane(width, bodyHeight)
 		case detailPane:
 			body = m.renderDetailPane(width, bodyHeight)
 		default:
-			body = m.renderNavigationPane(m.generalTitle(), m.generalRows(), m.generalCursor, generalPane, width, bodyHeight)
+			body = m.renderNavigationPane(m.generalRows(), m.generalCursor, generalPane, width, bodyHeight)
 		}
-		header += "\n" + m.renderTabs(width)
 	}
 	content := header + "\n" + body + "\n" + footer
 	if m.modal != nil {
 		modalWidth, modalHeight := m.modal.dimensions(width, height)
-		x, y := (width-modalWidth)/2, (height-modalHeight)/2
-		content = lipgloss.NewCompositor(
-			lipgloss.NewLayer(content),
-			lipgloss.NewLayer(m.modal.render(modalWidth, modalHeight)).X(x).Y(y).Z(1),
-		).Render()
+		content = overlay(content, m.modal.render(modalWidth, modalHeight), width, height)
+	}
+	if m.helpOpen {
+		content = overlay(content, renderHelp(), width, height)
 	}
 	v := tea.NewView(content)
 	v.AltScreen = true
 	return v
 }
 
-func (m *model) renderHeader(width int) string {
-	line := "  To Do"
-	count := fmt.Sprintf("  %d/%d general · %d/%d branch · %d files",
-		completedCount(m.general), len(m.general), completedCount(m.branches), len(m.branches), len(m.source))
-	available := max(width-ansi.StringWidth(count), 1)
-	line = ansi.Truncate(line, available, "…")
-	spacer := strings.Repeat(" ", max(0, width-ansi.StringWidth(line)-ansi.StringWidth(count)))
-	return lipgloss.NewStyle().Width(width).Foreground(colorText).Background(colorBar).Render(line + spacer + count)
+func overlay(content, dialog string, width, height int) string {
+	x, y := (width-lipgloss.Width(dialog))/2, (height-lipgloss.Height(dialog))/2
+	return lipgloss.NewCompositor(
+		lipgloss.NewLayer(content),
+		lipgloss.NewLayer(dialog).X(x).Y(y).Z(1),
+	).Render()
 }
 
-func (m *model) renderTabs(width int) string {
-	barColor := colorBar
-	inactiveStyle := lipgloss.NewStyle().Foreground(colorMuted).Background(barColor)
-	gapStyle := lipgloss.NewStyle().Background(barColor)
+// renderHeader puts the tabs on the left and the Git context on the right,
+// giving the tabs priority when the terminal is narrow.
+func (m *model) renderHeader(width int) string {
+	tabs := ""
+	if !m.indexMode {
+		tabs = m.renderTabs()
+	}
+	project := m.renderProject(width - ansi.StringWidth(tabs) - 1)
+	tabs = ansi.Truncate(tabs, width-ansi.StringWidth(project), "…")
+	gap := strings.Repeat(" ", max(0, width-ansi.StringWidth(tabs)-ansi.StringWidth(project)))
+	return tabs + lipgloss.NewStyle().Background(colorBar).Render(gap) + project
+}
+
+// renderProject shows the repository and branch in at most width cells,
+// dropping the repository name before shortening the branch below minBranch.
+func (m *model) renderProject(width int) string {
+	const minBranch = 8
+	if m.project.branch == "" {
+		return ""
+	}
+	bar := lipgloss.NewStyle().Background(colorBar)
+	icon := gitIcon + " "
+	repo := ""
+	if m.project.root != "" {
+		repo = filepath.Base(m.project.root) + "  "
+	}
+	fixed := ansi.StringWidth(icon) + 2
+	if width-fixed-ansi.StringWidth(repo) < min(minBranch, ansi.StringWidth(m.project.branch)) {
+		repo = ""
+	}
+	branchWidth := width - fixed - ansi.StringWidth(repo)
+	if branchWidth < min(minBranch, ansi.StringWidth(m.project.branch)) {
+		return ""
+	}
+	return bar.Foreground(colorText).Render(repo) + bar.Foreground(colorGit).Render(icon) +
+		bar.Foreground(colorGreen).Render(ansi.Truncate(m.project.branch, branchWidth, "…")+"  ")
+}
+
+func (m *model) renderTabs() string {
+	nameStyle := lipgloss.NewStyle().Foreground(colorMuted).Background(colorBar)
+	barKeyStyle := keyStyle.Background(colorBar)
+	gapStyle := lipgloss.NewStyle().Background(colorBar)
 	items := []struct {
-		name string
-		pane pane
+		key   string
+		name  string
+		count string
+		pane  pane
 	}{
-		{"1 General", generalPane},
-		{"2 Branches", branchPane},
-		{"3 Files", sourcePane},
+		{"1", "General", fmt.Sprintf("%d/%d", completedCount(m.general), len(m.general)), generalPane},
+		{"2", "Branches", fmt.Sprintf("%d/%d", completedCount(m.branches), len(m.branches)), branchPane},
+		{"3", "Files", m.sourceCount(), sourcePane},
 	}
 	var tabs strings.Builder
-	for _, item := range items {
-		tab := " " + item.name + " "
-		if m.activePane() == item.pane {
-			tabs.WriteString(selectedStyle.Render(tab))
-		} else {
-			tabs.WriteString(inactiveStyle.Render(tab))
+	for i, item := range items {
+		if i > 0 {
+			tabs.WriteString(gapStyle.Render(" "))
 		}
-		tabs.WriteString(gapStyle.Render(" "))
+		if m.activePane() == item.pane {
+			tabs.WriteString(selectedStyle.Render(" ") + keyStyle.Background(colorSelection).Render(item.key) +
+				selectedStyle.Render(" "+item.name+" ") + selectedDoneStyle.Render(item.count+" "))
+		} else {
+			tabs.WriteString(nameStyle.Render(" ") + barKeyStyle.Render(item.key) +
+				nameStyle.Render(" "+item.name+" ") + nameStyle.Render(item.count+" "))
+		}
 	}
-	line := ansi.Truncate(tabs.String(), width, "…")
-	return line + gapStyle.Render(strings.Repeat(" ", max(0, width-ansi.StringWidth(line))))
+	return tabs.String()
 }
+
+func (m *model) sourceCount() string {
+	if m.sourceLoading {
+		return "↻"
+	}
+	return fmt.Sprint(len(m.source))
+}
+
+type keyHint struct{ key, label string }
+
+var pinnedHints = []keyHint{{"?", "help"}, {"q", "quit"}}
 
 func (m *model) renderFooter(width int) string {
 	if m.categoryInput {
-		return ansi.Truncate(m.input.View()+"  enter save · esc cancel", width, "…")
+		input := m.input.View()
+		return input + "  " + fitHints([]keyHint{{"enter", "save"}, {"esc", "cancel"}}, width-ansi.StringWidth(input)-2)
 	}
-	if m.indexMode {
-		hints := "i/esc back · (d)one/space · (e)dit/enter · (s)ort · (p)riority · (c)ategory · (b)ranch add · (r)eload · (q)uit"
-		if width < 80 {
-			hints = "s sort · p priority · c category · e edit · d done"
-		}
-		if m.status != "" {
-			return mutedStyle.Render(ansi.Truncate(m.status, width, "…"))
-		}
-		return mutedStyle.Render(ansi.Truncate(hints, width, "…"))
-	}
-	hints := m.footerHints(width < 80)
+	pinned := renderHints(pinnedHints)
+	available := max(0, width-ansi.StringWidth(pinned)-3)
+	left := ""
 	if m.status != "" {
-		available := max(0, width-ansi.StringWidth(hints)-3)
-		if available > 5 {
-			return mutedStyle.Render(ansi.Truncate(m.status, available, "…") + " · " + hints)
+		left = statusStyle.Render(ansi.Truncate(m.status, max(1, available), "…"))
+		if hints := fitHints(m.footerHints(), available-ansi.StringWidth(left)-3); hints != "" {
+			left += "   " + hints
 		}
-		return mutedStyle.Render(ansi.Truncate(m.status, width, "…"))
+	} else {
+		left = fitHints(m.footerHints(), available)
 	}
-	return mutedStyle.Render(ansi.Truncate(hints, width, "…"))
+	return left + strings.Repeat(" ", max(0, width-ansi.StringWidth(left)-ansi.StringWidth(pinned))) + pinned
+}
+
+// fitHints keeps the leading hints that fit, so each list is ordered by importance.
+func fitHints(hints []keyHint, width int) string {
+	for n := len(hints); n > 0; n-- {
+		if line := renderHints(hints[:n]); ansi.StringWidth(line) <= width {
+			return line
+		}
+	}
+	return ""
+}
+
+func renderHints(hints []keyHint) string {
+	parts := make([]string, len(hints))
+	for i, hint := range hints {
+		parts[i] = keyStyle.Render(hint.key) + " " + mutedStyle.Render(hint.label)
+	}
+	return strings.Join(parts, "  ")
+}
+
+func (m *model) footerHints() []keyHint {
+	back := keyHint{"←", "back"}
+	reload := keyHint{"r", "reload"}
+	index := keyHint{"i", "all tasks"}
+	switch {
+	case m.indexMode:
+		return []keyHint{{"d", "done"}, {"e", "edit"}, {"p", "priority"}, {"s", "sort"}, {"c", "category"}, {"b", "branch task"}, back, reload}
+	case m.focus == detailPane && m.viewingMissingBranch():
+		return []keyHint{back}
+	case m.viewingMissingBranch():
+		return []keyHint{back, {"a", "add"}, {"→", "details"}, index, reload}
+	case m.focus == detailPane && m.activePane() == sourcePane:
+		return []keyHint{back, {"e", "open file"}}
+	case m.focus == detailPane && m.activePane() == branchPane:
+		return []keyHint{{"d", "done"}, {"e", "edit"}, {"p", "priority"}, back}
+	case m.focus == detailPane:
+		return []keyHint{{"d", "done"}, {"e", "edit"}, {"p", "priority"}, {"c", "category"}, back}
+	case m.focus == sourcePane:
+		return []keyHint{{"e", "open file"}, {"→", "details"}, index, reload}
+	}
+	if row, ok := m.selectedNavigationRow(); ok && row.kind != rowTask {
+		hints := []keyHint{{"→", "open"}, {"a", "add"}}
+		if m.focus == generalPane {
+			hints = append(hints, keyHint{"b", "branch task"})
+		}
+		return append(hints, index, reload)
+	}
+	hints := []keyHint{{"d", "done"}, {"e", "edit"}, {"p", "priority"}}
+	if m.focus == generalPane {
+		hints = append(hints, keyHint{"c", "category"})
+	}
+	hints = append(hints, keyHint{"a", "add"})
+	if m.focus == generalPane {
+		hints = append(hints, keyHint{"b", "branch task"})
+	}
+	if len(m.breadcrumb(m.focus)) > 1 {
+		hints = append(hints, back)
+	}
+	return append(hints, keyHint{"→", "details"}, index, reload)
 }
 
 // viewingMissingBranch is true inside a branch whose Git branch is gone, where
@@ -128,71 +230,41 @@ func (m *model) viewingMissingBranch() bool {
 	return m.activePane() == branchPane && m.branchMissing(m.branchFilter)
 }
 
-func (m *model) footerHints(narrow bool) string {
-	switch {
-	case m.focus == detailPane && m.viewingMissingBranch():
-		if narrow {
-			return "←/esc back"
+// breadcrumb names where a pane is; a single entry means its top level.
+func (m *model) breadcrumb(kind pane) []string {
+	switch kind {
+	case branchPane:
+		if m.branchFilter != "" {
+			return []string{"Branches", branchIcon + " " + m.branchFilter}
 		}
-		return "←/esc back · (q)uit"
-	case m.viewingMissingBranch():
-		if narrow {
-			return "(a)dd · (b)ranch add"
-		}
-		return "→ details · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
-	case m.focus == detailPane && m.activePane() == sourcePane:
-		if narrow {
-			return "←/esc back · (e)dit/enter file"
-		}
-		return "←/esc back · (e)dit/enter file · (q)uit"
-	case m.focus == detailPane && m.activePane() == branchPane:
-		if narrow {
-			return "esc · (d)one/space · (e)dit/enter · (p)riority"
-		}
-		return "←/esc back · (d)one/space · (e)dit/enter · (p)riority · (q)uit"
-	case m.focus == detailPane:
-		if narrow {
-			return "esc · (d)one/space · (e)dit/enter · p · (c)ategory"
-		}
-		return "←/esc back · (d)one/space · (e)dit/enter · (p)riority · (c)ategory · (q)uit"
-	case m.focus == sourcePane:
-		if narrow {
-			return "→ details · (e)dit/enter file · (i)ndex"
-		}
-		return "→ details · (e)dit/enter file · (i)ndex · (r)eload · (q)uit"
-	case m.focus == branchPane:
-		if narrow {
-			return "(a)dd · (d)one/space · (e)dit/enter · (p)riority"
-		}
-		return "→ open · (d)one/space · (e)dit/enter · (p)riority · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
-	case narrow:
-		return "(d)one/space · (e)dit/enter · (p)riority · (c)ategory"
-	default:
-		return "→ details · (d)one/space · (e)dit/enter · (p)riority · (c)ategory · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
+		return []string{"Branches"}
+	case sourcePane:
+		return []string{"Files"}
+	case detailPane:
+		return append(m.breadcrumb(m.detailFrom), "Details")
 	}
-}
-
-func (m *model) generalTitle() string {
 	if m.generalCategory != "" {
-		return "General · @" + m.generalCategory
+		return []string{"General", "@" + m.generalCategory}
 	}
-	return "General"
+	return []string{"General"}
 }
 
-func (m *model) branchTitle() string {
-	if m.branchFilter != "" {
-		return "Git Branches · " + m.branchFilter
+func renderBreadcrumb(parts []string, suffix string, width int) string {
+	last := len(parts) - 1
+	line := ""
+	for _, part := range parts[:last] {
+		line += mutedStyle.Render(part + " › ")
 	}
-	return "Git Branches"
+	line += titleStyle.Render(parts[last])
+	if suffix != "" {
+		line += mutedStyle.Render("  " + suffix)
+	}
+	return ansi.Truncate(line, width, "…")
 }
 
-func (m *model) panelStyle(focused bool, width, height int) lipgloss.Style {
-	border := colorBorder
-	if focused {
-		border = colorFocus
-	}
+func (m *model) panelStyle(width, height int) lipgloss.Style {
 	return lipgloss.NewStyle().Width(width).Height(height).Padding(0, 1).
-		Border(lipgloss.RoundedBorder()).BorderForeground(border)
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorBorder)
 }
 
 func (m *model) panelStatus() string {
@@ -210,7 +282,7 @@ func (m *model) panelContentHeight(height int) int {
 	return max(1, lines)
 }
 
-func (m *model) renderPanel(kind pane, width, height int, lines []string) string {
+func (m *model) renderPanel(width, height int, lines []string) string {
 	if status := m.panelStatus(); status != "" {
 		contentHeight := m.panelContentHeight(height)
 		lines = lines[:min(len(lines), contentHeight)]
@@ -220,18 +292,14 @@ func (m *model) renderPanel(kind pane, width, height int, lines []string) string
 		innerWidth := max(1, width-4)
 		lines = append(lines, statusBarStyle.Width(innerWidth).Render(ansi.Truncate(status, innerWidth, "…")))
 	}
-	return m.panelStyle(m.focus == kind, width, height).Render(strings.Join(lines, "\n"))
+	return m.panelStyle(width, height).Render(strings.Join(lines, "\n"))
 }
 
-func (m *model) renderNavigationPane(title string, rows []navigationRow, cursor int, kind pane, width, height int) string {
+func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane, width, height int) string {
 	innerWidth := max(1, width-4)
-	completed, count := 0, 0
-	switch {
-	case kind == generalPane && m.generalCategory == "":
-		completed, count = completedCount(m.general), len(m.general)
-	case kind == branchPane && m.branchFilter == "":
-		completed, count = completedCount(m.branches), len(m.branches)
-	default:
+	var lines []string
+	if crumbs := m.breadcrumb(kind); len(crumbs) > 1 {
+		completed, count := 0, 0
 		for _, row := range rows {
 			if row.kind == rowTask {
 				count++
@@ -240,10 +308,13 @@ func (m *model) renderNavigationPane(title string, rows []navigationRow, cursor 
 				}
 			}
 		}
+		lines = append(lines, renderBreadcrumb(crumbs, fmt.Sprintf("%d/%d", completed, count), innerWidth), "")
 	}
-	heading := fmt.Sprintf("%s  %d/%d", title, completed, count)
-	lines := []string{titleStyle.Render(ansi.Truncate(heading, innerWidth, "…")), ""}
-	visible := max(1, m.panelContentHeight(height)-2)
+	visible := max(1, m.panelContentHeight(height)-len(lines))
+	divider := firstTaskAfterGroups(rows)
+	if divider > 0 {
+		visible = max(1, visible-1)
+	}
 	start, end := visibleRange(cursor, len(rows), visible)
 	if len(rows) == 0 {
 		empty := "No tasks"
@@ -255,98 +326,101 @@ func (m *model) renderNavigationPane(title string, rows []navigationRow, cursor 
 	for i := start; i < end; i++ {
 		item := rows[i]
 		selected := i == cursor && (m.focus == kind || (m.focus == detailPane && m.detailFrom == kind))
+		if i == divider && i > start {
+			lines = append(lines, "")
+		}
 		if item.kind == rowTask {
 			lines = append(lines, renderTaskRow(item.todo, innerWidth, selected))
-			continue
-		}
-		if item.kind == rowBranch && item.missingGitBranch {
-			lines = append(lines, renderMissingBranchRow(item, innerWidth, selected))
-			continue
-		}
-		row := ""
-		switch item.kind {
-		case rowCategory:
-			row = fmt.Sprintf("@%s  %d/%d ›", item.name, item.completed, item.count)
-		case rowBranch:
-			marker := "  "
-			if item.name == m.project.branch {
-				marker = "* "
-			}
-			row = fmt.Sprintf("%s%s  %d/%d ›", marker, item.name, item.completed, item.count)
-		}
-		row = ansi.Truncate(row, innerWidth, "…")
-		switch {
-		case selected:
-			style := selectedStyle
-			if item.kind == rowBranch && item.name == m.project.branch {
-				style = style.Foreground(colorGreen)
-			}
-			lines = append(lines, style.Width(innerWidth).Render(row))
-		case item.kind == rowCategory:
-			lines = append(lines, lipgloss.NewStyle().Foreground(colorPurple).Render(row))
-		case item.kind == rowBranch && item.name == m.project.branch:
-			lines = append(lines, lipgloss.NewStyle().Foreground(colorGreen).Render(row))
-		default:
-			lines = append(lines, row)
+		} else {
+			lines = append(lines, renderGroupRow(item, innerWidth, selected, item.kind == rowBranch && item.name == m.project.branch))
 		}
 	}
-	return m.renderPanel(kind, width, height, lines)
+	return m.renderPanel(width, height, lines)
 }
 
-func renderMissingBranchRow(item navigationRow, width int, selected bool) string {
-	prefix := "⚠ "
-	suffix := fmt.Sprintf("  %d/%d › ", item.completed, item.count)
-	note := "missing"
-	nameWidth := max(0, width-ansi.StringWidth(prefix+suffix+note))
-	name := ansi.Truncate(item.name, nameWidth, "…")
-	style := lipgloss.NewStyle().Foreground(colorHigh)
-	if selected {
-		style = style.Background(colorSelection)
+// firstTaskAfterGroups is the row where loose tasks follow categories or
+// branches, or -1 when the list is not mixed.
+func firstTaskAfterGroups(rows []navigationRow) int {
+	for i := 1; i < len(rows); i++ {
+		if rows[i].kind == rowTask && rows[i-1].kind != rowTask {
+			return i
+		}
 	}
-	line := style.Render(prefix+name+suffix) + style.Italic(true).Render(note)
-	if selected {
-		line += selectedStyle.Render(strings.Repeat(" ", max(0, width-ansi.StringWidth(line))))
+	return -1
+}
+
+func renderGroupRow(item navigationRow, width int, selected, current bool) string {
+	marker, note := "▸ ", ""
+	nameStyle := lipgloss.NewStyle()
+	noteStyle := mutedStyle.Italic(true)
+	switch {
+	case item.missingGitBranch:
+		marker, note = "⚠ ", "missing"
+		nameStyle = nameStyle.Foreground(colorHigh)
+		noteStyle = nameStyle.Italic(true)
+	case current:
+		note = "current"
+		nameStyle = nameStyle.Foreground(colorGreen)
+	case item.kind == rowCategory:
+		nameStyle = nameStyle.Foreground(colorPurple)
 	}
-	return line
+	countStyle, fillStyle := mutedStyle, lipgloss.NewStyle()
+	if selected {
+		if item.kind == rowCategory || (item.kind == rowBranch && !current && !item.missingGitBranch) {
+			nameStyle = nameStyle.Foreground(colorStrong)
+		}
+		nameStyle = nameStyle.Background(colorSelection)
+		noteStyle = noteStyle.Background(colorSelection)
+		countStyle, fillStyle = selectedDoneStyle, selectedStyle
+	}
+	if note != "" {
+		note = "  " + note
+	}
+	count := fmt.Sprintf("%d/%d", item.completed, item.count)
+	fixed := ansi.StringWidth(marker) + ansi.StringWidth(note) + ansi.StringWidth(count) + 2
+	name := ansi.Truncate(item.name, max(0, width-fixed), "…")
+	gap := max(2, width-fixed+2-ansi.StringWidth(name))
+	return nameStyle.Render(marker+name) + noteStyle.Render(note) + fillStyle.Render(strings.Repeat(" ", gap)) + countStyle.Render(count)
 }
 
 func renderTaskRow(t store.Task, width int, selected bool) string {
-	mark := "○ "
+	mark, markStyle := "○ ", mutedStyle
+	if t.Priority != "" {
+		markStyle = priorityStyle(t.Priority)
+	}
+	titleStyle := lipgloss.NewStyle().Foreground(colorStrong)
 	if t.Done {
-		mark = "✓ "
+		mark, markStyle, titleStyle = "✓ ", mutedStyle, mutedStyle
 	}
 	suffix := ""
 	if strings.TrimSpace(t.Details) != "" {
-		suffix = "  ⋯"
+		suffix = "⋯"
 	}
-	titleWidth := max(0, width-ansi.StringWidth(mark)-ansi.StringWidth(suffix))
-	title := ansi.Truncate(cleanDisplay(t.Text), titleWidth, "…")
-	taskStyle := lipgloss.NewStyle().Foreground(colorStrong)
-	if t.Priority != "" {
-		taskStyle = priorityStyle(t.Priority)
+	reserved := ansi.StringWidth(mark)
+	if suffix != "" {
+		reserved += ansi.StringWidth(suffix) + 2
 	}
-	if t.Done {
-		taskStyle = mutedStyle
+	title := ansi.Truncate(cleanDisplay(t.Text), max(0, width-reserved), "…")
+	suffixStyle, fillStyle := mutedStyle, lipgloss.NewStyle()
+	if selected {
+		markStyle = markStyle.Background(colorSelection)
+		titleStyle = titleStyle.Background(colorSelection)
+		if t.Done {
+			titleStyle = selectedDoneStyle
+		}
+		suffixStyle, fillStyle = selectedDoneStyle, selectedStyle
 	}
-	if !selected {
-		return mutedStyle.Render(mark) + taskStyle.Render(title) + mutedStyle.Render(suffix)
+	fill := ""
+	if selected || suffix != "" {
+		fill = strings.Repeat(" ", max(0, width-ansi.StringWidth(mark)-ansi.StringWidth(title)-ansi.StringWidth(suffix)))
 	}
-	titleStyle := taskStyle.Background(colorSelection)
-	if t.Done {
-		titleStyle = selectedDoneStyle
-	}
-	padding := strings.Repeat(" ", max(0, width-ansi.StringWidth(mark)-ansi.StringWidth(title)-ansi.StringWidth(suffix)))
-	return selectedStyle.Render(mark) + titleStyle.Render(title) + selectedStyle.Render(suffix+padding)
+	return markStyle.Render(mark) + titleStyle.Render(title) + fillStyle.Render(fill) + suffixStyle.Render(suffix)
 }
 
 func (m *model) renderSourcePane(width, height int) string {
 	innerWidth := max(1, width-4)
-	heading := fmt.Sprintf("File TODOs  %d", len(m.source))
-	if m.sourceLoading {
-		heading += "  ↻"
-	}
-	lines := []string{titleStyle.Render(ansi.Truncate(heading, innerWidth, "…")), ""}
-	visible := max(1, height-4)
+	var lines []string
+	visible := max(1, height-2)
 	start, end := visibleRange(m.sourceCursor, len(m.source), visible)
 	if len(m.source) == 0 {
 		empty := "No matches"
@@ -368,12 +442,12 @@ func (m *model) renderSourcePane(width, height int) string {
 			lines = append(lines, row)
 		}
 	}
-	return m.panelStyle(m.focus == sourcePane, width, height).Render(strings.Join(lines, "\n"))
+	return m.panelStyle(width, height).Render(strings.Join(lines, "\n"))
 }
 
 func (m *model) renderDetailPane(width, height int) string {
 	innerWidth := max(1, width-4)
-	lines := []string{titleStyle.Render("Details"), ""}
+	lines := []string{renderBreadcrumb(m.breadcrumb(detailPane), "", innerWidth), ""}
 	if height < 8 {
 		lines = append(lines, m.compactDetails()...)
 	} else if m.activePane() == sourcePane {
@@ -392,7 +466,7 @@ func (m *model) renderDetailPane(width, height int) string {
 	for i, line := range lines {
 		lines[i] = ansi.Truncate(line, innerWidth, "…")
 	}
-	return m.renderPanel(detailPane, width, height, lines)
+	return m.renderPanel(width, height, lines)
 }
 
 func (m *model) compactDetails() []string {

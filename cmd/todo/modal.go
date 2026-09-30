@@ -382,7 +382,7 @@ func (f *taskModal) branchSuggestions(width int) []string {
 			if len(matches) > rows {
 				lineWidth = max(1, width-2)
 			}
-			line := ansi.Truncate(mark+" "+matches[i], lineWidth, "…")
+			line := ansi.Truncate(mark+branchIcon+" "+matches[i], lineWidth, "…")
 			if len(matches) > rows {
 				line += strings.Repeat(" ", max(0, lineWidth-ansi.StringWidth(line)))
 				thumb := min(rows-1, max(0, f.branchCursor)*rows/len(matches))
@@ -504,7 +504,7 @@ func (f *taskModal) contentLines(width, height int) []string {
 
 func (f *taskModal) editLocation(width int) string {
 	if f.selected.Branch != "" {
-		return ansi.Truncate(mutedStyle.Render("Branch    ")+lipgloss.NewStyle().Foreground(colorGreen).Render(" "+f.selected.Branch), width, "…")
+		return ansi.Truncate(mutedStyle.Render("Branch    ")+lipgloss.NewStyle().Foreground(colorGreen).Render(branchIcon+" "+f.selected.Branch), width, "…")
 	}
 	if category := f.selected.Category; category != "" {
 		return ansi.Truncate(mutedStyle.Render("Category  ")+lipgloss.NewStyle().Foreground(colorPurple).Render("@"+category), width, "…")

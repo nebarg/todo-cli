@@ -90,6 +90,7 @@ type model struct {
 	categoryInput         bool
 	editTask              store.Task
 	modal                 *taskModal
+	helpOpen              bool
 	status                string
 	width                 int
 	height                int
@@ -202,6 +203,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key == "ctrl+c" {
 			return m, tea.Quit
 		}
+		if m.helpOpen {
+			m.helpOpen = false
+			return m, nil
+		}
 		if m.modal != nil {
 			return m.updateTaskModal(msg)
 		}
@@ -214,6 +219,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "q":
 			return m, tea.Quit
+		case "?":
+			m.helpOpen = true
 		case "i":
 			m.indexMode = true
 			m.indexSort = sortPriority
@@ -787,6 +794,8 @@ func (m *model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.status = ""
 	case "q":
 		return m, tea.Quit
+	case "?":
+		m.helpOpen = true
 	case "up", "k":
 		m.moveCursor(-1)
 	case "down", "j":

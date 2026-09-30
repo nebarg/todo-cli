@@ -6,6 +6,12 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+// Nerd Font glyphs: the Octicons branch and the Git logo.
+const (
+	branchIcon = "\uf418"
+	gitIcon    = "\ue702"
+)
+
 // The palette is package-level so the render helpers can share it. It starts
 // dark and applyTheme swaps it once the terminal reports its background.
 var (
@@ -18,6 +24,7 @@ var (
 	colorBar          color.Color
 	colorModal        color.Color
 	colorGreen        color.Color
+	colorGit          color.Color
 	colorPurple       color.Color
 	colorHigh         color.Color
 	colorMedium       color.Color
@@ -28,6 +35,8 @@ var (
 	selectedStyle     lipgloss.Style
 	selectedDoneStyle lipgloss.Style
 	statusBarStyle    lipgloss.Style
+	statusStyle       lipgloss.Style
+	keyStyle          lipgloss.Style
 )
 
 func init() {
@@ -48,6 +57,7 @@ func applyTheme(dark bool) {
 	colorBar = hex("#E2E8F0", "#17253A")
 	colorModal = hex("#F7FAFC", "#111E2F")
 	colorGreen = hex("#2F855A", "#80C99B")
+	colorGit = hex("#C2410C", "#F05032")
 	colorPurple = hex("#6B46C1", "#B7A4EB")
 	colorHigh = hex("#C53030", "#F07777")
 	colorMedium = hex("#C05621", "#F4A261")
@@ -59,4 +69,6 @@ func applyTheme(dark bool) {
 	selectedStyle = lipgloss.NewStyle().Foreground(colorStrong).Background(colorSelection)
 	selectedDoneStyle = lipgloss.NewStyle().Foreground(hex("#4A5568", "#B6C2D3")).Background(colorSelection)
 	statusBarStyle = lipgloss.NewStyle().Foreground(colorHigh).Background(colorBar)
+	statusStyle = lipgloss.NewStyle().Foreground(colorStrong)
+	keyStyle = lipgloss.NewStyle().Bold(true).Foreground(colorFocus)
 }

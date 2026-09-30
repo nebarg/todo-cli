@@ -32,8 +32,12 @@ func (m *model) renderIndex(width, height int) string {
 	tasks := m.indexTasks()
 	scopeWidth := min(24, max(17, innerWidth/3))
 	taskWidth := max(1, innerWidth-2-scopeWidth)
-	heading := fmt.Sprintf("All tasks  %d/%d · Sort: %s", completedCount(tasks), len(tasks), m.indexSort)
-	lines := []string{titleStyle.Render(ansi.Truncate(heading, innerWidth, "…")), ""}
+	heading := titleStyle.Render("All tasks") + mutedStyle.Render(fmt.Sprintf("  %d/%d", completedCount(tasks), len(tasks)))
+	sorted := mutedStyle.Render("sorted by ") + lipgloss.NewStyle().Foreground(colorText).Render(string(m.indexSort))
+	if gap := innerWidth - ansi.StringWidth(heading) - ansi.StringWidth(sorted); gap >= 2 {
+		heading += strings.Repeat(" ", gap) + sorted
+	}
+	lines := []string{ansi.Truncate(heading, innerWidth, "…"), ""}
 	columns := indexColumn("TASK: DETAILS", taskWidth) + "  " + indexColumn("CATEGORY / BRANCH", scopeWidth)
 	lines = append(lines, mutedStyle.Render(columns))
 	visible := max(1, height-5)
@@ -48,24 +52,21 @@ func (m *model) renderIndex(width, height int) string {
 			scope = "@" + t.Category
 		}
 		if t.Branch != "" {
-			scope = " " + t.Branch
+			scope = branchIcon + " " + t.Branch
 		}
-		mark := "○ "
+		mark, markStyle := "○ ", mutedStyle
+		if t.Priority != "" {
+			markStyle = priorityStyle(t.Priority)
+		}
+		taskStyle := lipgloss.NewStyle().Foreground(colorStrong)
 		if t.Done {
-			mark = "✓ "
+			mark, markStyle, taskStyle = "✓ ", mutedStyle, mutedStyle
 		}
-		title := mark + cleanDisplay(t.Text)
+		title := cleanDisplay(t.Text)
 		if details := strings.Join(strings.Fields(cleanDisplay(t.Details)), " "); details != "" {
 			title += ": " + details
 		}
 		selected := i == m.indexCursor
-		taskStyle := lipgloss.NewStyle().Foreground(colorStrong)
-		if t.Priority != "" {
-			taskStyle = priorityStyle(t.Priority)
-		}
-		if t.Done {
-			taskStyle = mutedStyle
-		}
 		scopeStyle := mutedStyle
 		if t.Branch != "" {
 			scopeStyle = lipgloss.NewStyle().Foreground(colorGreen)
@@ -73,6 +74,7 @@ func (m *model) renderIndex(width, height int) string {
 			scopeStyle = lipgloss.NewStyle().Foreground(colorPurple)
 		}
 		if selected {
+			markStyle = markStyle.Background(colorSelection)
 			taskStyle = taskStyle.Background(colorSelection)
 			scopeStyle = scopeStyle.Background(colorSelection)
 		}
@@ -80,9 +82,9 @@ func (m *model) renderIndex(width, height int) string {
 		if selected {
 			gap = lipgloss.NewStyle().Background(colorSelection).Render(gap)
 		}
-		row := taskStyle.Render(indexColumn(title, taskWidth)) + gap +
+		row := markStyle.Render(mark) + taskStyle.Render(indexColumn(title, taskWidth-ansi.StringWidth(mark))) + gap +
 			scopeStyle.Render(indexColumn(scope, scopeWidth))
 		lines = append(lines, row)
 	}
-	return m.panelStyle(true, width, height).Render(strings.Join(lines, "\n"))
+	return m.panelStyle(width, height).Render(strings.Join(lines, "\n"))
 }

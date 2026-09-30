@@ -479,7 +479,7 @@ func TestBranchPickerFitsCompactAndRegularModals(t *testing.T) {
 				t.Errorf("picker height at %dx%d = %d, want %d", size[0], size[1], got, height)
 			}
 			plain := ansi.Strip(view)
-			if !strings.Contains(plain, "Branch") || !strings.Contains(plain, " feature/auth") || !strings.Contains(plain, " feature/ui") || !strings.Contains(plain, "Details") {
+			if !strings.Contains(plain, "Branch") || !strings.Contains(plain, branchIcon+" feature/auth") || !strings.Contains(plain, branchIcon+" feature/ui") || !strings.Contains(plain, "Details") {
 				t.Errorf("picker content missing at %dx%d: %s", size[0], size[1], plain)
 			}
 		})
