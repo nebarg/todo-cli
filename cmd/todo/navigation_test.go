@@ -80,6 +80,7 @@ func TestMissingBranchTasksAreReadOnly(t *testing.T) {
 	if len(lines) != m.height || !strings.Contains(lines[len(lines)-3], "⚠ Branch no longer exists · tasks cannot be edited") {
 		t.Fatalf("status bar missing from bottom of panel: %q", lines)
 	}
+	assertNoEditHints(t, m)
 	for _, key := range []tea.KeyPressMsg{{Code: 'd', Text: "d"}, {Code: 'p', Text: "p"}, {Code: 'e', Text: "e"}, {Code: tea.KeyEnter}} {
 		updated, _ = m.Update(key)
 		m = updated.(*model)
@@ -92,6 +93,7 @@ func TestMissingBranchTasksAreReadOnly(t *testing.T) {
 	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "Branch no longer exists") {
 		t.Fatalf("status bar missing from task details: %s", view)
 	}
+	assertNoEditHints(t, m)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -264,5 +266,17 @@ func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 	m.toggleSelected()
 	if selected, ok := m.selectedTask(); !ok || selected.text != "Branch open first" || !selected.done || m.branchCursor != 2 {
 		t.Fatalf("completed branch task did not stay selected at the end: %+v", m.branchRows())
+	}
+}
+
+func assertNoEditHints(t *testing.T, m *model) {
+	t.Helper()
+	for _, narrow := range []bool{false, true} {
+		hints := m.footerHints(narrow)
+		for _, blocked := range []string{"(d)one", "(e)dit", "(p)riority"} {
+			if strings.Contains(hints, blocked) {
+				t.Fatalf("read-only branch footer offers %s (narrow=%v): %q", blocked, narrow, hints)
+			}
+		}
 	}
 }

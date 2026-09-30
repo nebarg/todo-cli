@@ -416,7 +416,6 @@ func (f *taskModal) isCompact(height int) bool {
 
 func (f *taskModal) resize(width, height int) {
 	modalWidth, modalHeight := f.dimensions(width, height)
-	compact := f.isCompact(modalHeight)
 	innerWidth := max(1, modalWidth-6)
 	f.title.SetWidth(innerWidth)
 	f.title.SetHeight(2)
@@ -424,23 +423,22 @@ func (f *taskModal) resize(width, height int) {
 		f.scope.SetWidth(max(1, innerWidth/2))
 	}
 	f.details.SetWidth(innerWidth)
-	var detailsSpace int
-	switch {
-	case f.mode == modalEdit:
-		detailsSpace = modalHeight - 11
-	case !compact && f.mode == modalAddBranch:
-		detailsSpace = modalHeight - 15
-	case !compact:
-		detailsSpace = modalHeight - 13
-	case f.mode == modalAddBranch:
-		detailsSpace = modalHeight - 11
-	default:
-		detailsSpace = modalHeight - 10
-	}
-	f.details.SetHeight(max(2, detailsSpace))
+	// Details takes whatever height the rest of the layout leaves, measured
+	// from the real content so the two can never drift apart.
+	f.details.SetHeight(1)
+	otherLines := lipgloss.Height(strings.Join(f.contentLines(modalWidth, modalHeight), "\n")) - 1
+	f.details.SetHeight(max(2, modalHeight-2*modalBorder-otherLines))
 }
 
+const modalBorder = 1
+
 func (f *taskModal) render(width, height int) string {
+	return lipgloss.NewStyle().Width(width).Height(height).Padding(0, 2).
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorFocus).
+		Background(colorModal).Render(strings.Join(f.contentLines(width, height), "\n"))
+}
+
+func (f *taskModal) contentLines(width, height int) []string {
 	innerWidth := max(1, width-6)
 	heading := "Add general task"
 	switch f.mode {
@@ -500,10 +498,7 @@ func (f *taskModal) render(width, height int) string {
 			help = "↑/↓ cycle · ctrl+enter save · esc cancel"
 		}
 	}
-	lines = append(lines, mutedStyle.Render(ansi.Truncate(help, innerWidth, "…")))
-	return lipgloss.NewStyle().Width(width).Height(height).Padding(0, 2).
-		Border(lipgloss.RoundedBorder()).BorderForeground(colorFocus).
-		Background(colorModal).Render(strings.Join(lines, "\n"))
+	return append(lines, mutedStyle.Render(ansi.Truncate(help, innerWidth, "…")))
 }
 
 func (f *taskModal) editLocation(width int) string {

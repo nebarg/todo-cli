@@ -121,8 +121,24 @@ func (m *model) renderFooter(width int) string {
 	return mutedStyle.Render(ansi.Truncate(hints, width, "…"))
 }
 
+// viewingMissingBranch is true inside a branch whose Git branch is gone, where
+// its tasks are read only.
+func (m *model) viewingMissingBranch() bool {
+	return m.activePane() == branchPane && m.branchMissing(m.branchFilter)
+}
+
 func (m *model) footerHints(narrow bool) string {
 	switch {
+	case m.focus == detailPane && m.viewingMissingBranch():
+		if narrow {
+			return "←/esc back"
+		}
+		return "←/esc back · (q)uit"
+	case m.viewingMissingBranch():
+		if narrow {
+			return "(a)dd · (b)ranch add"
+		}
+		return "→ details · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
 	case m.focus == detailPane && m.activePane() == sourcePane:
 		if narrow {
 			return "←/esc back · (e)dit/enter file"
@@ -179,7 +195,7 @@ func (m *model) panelStyle(focused bool, width, height int) lipgloss.Style {
 }
 
 func (m *model) panelStatus() string {
-	if m.activePane() == branchPane && m.branchMissing(m.branchFilter) {
+	if m.viewingMissingBranch() {
 		return missingBranchStatus
 	}
 	return ""

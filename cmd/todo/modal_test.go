@@ -632,3 +632,23 @@ func TestTwoLineTaskInputStaysOneMarkdownTask(t *testing.T) {
 		t.Fatalf("two-line Task changed the Markdown structure: %q", data)
 	}
 }
+
+func TestModalDetailsFillRemainingHeight(t *testing.T) {
+	for _, size := range [][2]int{{100, 30}, {80, 24}, {80, 18}, {80, 17}, {60, 16}, {56, 19}, {56, 16}} {
+		for _, mode := range []modalMode{modalAddGeneral, modalAddBranch, modalEdit} {
+			t.Run(fmt.Sprintf("%dx%d mode %d", size[0], size[1], mode), func(t *testing.T) {
+				m := &model{width: size[0], height: size[1], general: []task{{text: "Task"}}}
+				opened, _ := m.startTaskModal(mode)
+				m = opened.(*model)
+				width, height := m.modal.dimensions(size[0], size[1])
+				lines := strings.Split(ansi.Strip(m.modal.render(width, height)), "\n")
+				if len(lines) != height {
+					t.Fatalf("modal is %d lines, want %d", len(lines), height)
+				}
+				if help := lines[len(lines)-2]; !strings.Contains(help, "ctrl+enter save") {
+					t.Fatalf("help is not on the last content row, so details left a gap or overflowed: %q", help)
+				}
+			})
+		}
+	}
+}
