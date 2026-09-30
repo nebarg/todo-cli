@@ -45,7 +45,10 @@ func Load(path string) ([]Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.Split(string(data), "\n")
+	return parseTasks(strings.Split(string(data), "\n")), nil
+}
+
+func parseTasks(lines []string) []Task {
 	var tasks []Task
 	branchSectionLevel, branch, category, categoryLine := 0, "", "", -1
 	for i := 0; i < len(lines); i++ {
@@ -106,7 +109,7 @@ func Load(path string) ([]Task, error) {
 		tasks = append(tasks, t)
 		i = j - 1
 	}
-	return tasks, nil
+	return tasks
 }
 
 func taskIndent(raw string) string {
@@ -144,7 +147,7 @@ func Add(path, title, details string, p Priority, category, branch string) error
 		block = append(block, "")
 		block = append(block, body...)
 	}
-	updated := insertTaskBlock(string(data), block, branch, category)
+	updated := sortSection(insertTaskBlock(string(data), block, branch, category), category, branch)
 	return replaceFile(path, []byte(updated), mode)
 }
 
@@ -185,9 +188,9 @@ func Edit(path string, selected Task, title, details, category, branch string) e
 	}
 	return rewriteTask(path, selected, func(lines []string) string {
 		if branch == selected.Branch && strings.EqualFold(category, selected.Category) {
-			return strings.Join(editedTaskLines(lines, selected, title, details), "\n")
+			return sortSection(strings.Join(editedTaskLines(lines, selected, title, details), "\n"), category, branch)
 		}
-		return movedTaskLines(lines, selected, taskBlock(selected, title, details), category, branch)
+		return sortSection(movedTaskLines(lines, selected, taskBlock(selected, title, details), category, branch), category, branch)
 	})
 }
 
@@ -317,7 +320,6 @@ func headingCategoryName(name string) string {
 }
 
 func insertTaskBlock(data string, block []string, branch, category string) string {
-	p := priorityFromBlock(block)
 	if strings.TrimSpace(data) == "" {
 		if branch != "" {
 			return "# Branches\n\n## " + branch + "\n\n" + strings.Join(block, "\n") + "\n"
@@ -343,7 +345,7 @@ func insertTaskBlock(data string, block []string, branch, category string) strin
 				break
 			}
 		}
-		return insertBlockSorted(lines, branchStart+1, branchEnd, block, p)
+		return insertBlockAt(lines, trimBlankEnd(lines, branchEnd, branchStart+1), block)
 	}
 	if category == "" {
 		end := len(lines)
@@ -353,10 +355,10 @@ func insertTaskBlock(data string, block []string, branch, category string) strin
 				break
 			}
 		}
-		return insertBlockSorted(lines, 0, end, block, p)
+		return insertBlockAt(lines, trimBlankEnd(lines, end, 0), block)
 	}
 	if start, end := findCategorySection(lines, category); start >= 0 {
-		return insertBlockSorted(lines, start+1, end, block, p)
+		return insertBlockAt(lines, trimBlankEnd(lines, end, start+1), block)
 	}
 	idx := len(lines)
 	if branchesStart, _, _ := findBranchesSection(lines); branchesStart >= 0 {
@@ -447,26 +449,6 @@ func findCategorySection(lines []string, category string) (int, int) {
 	return -1, -1
 }
 
-func priorityFromBlock(block []string) Priority {
-	_, p := SplitPriority(taskLine.FindStringSubmatch(block[0])[3])
-	return p
-}
-
-func insertBlockSorted(lines []string, start, end int, block []string, p Priority) string {
-	idx := trimBlankEnd(lines, end, start)
-	for i := start; i < end; i++ {
-		parts := taskLine.FindStringSubmatch(lines[i])
-		if parts == nil || strings.TrimSpace(parts[3]) == "" || strings.HasPrefix(lines[i], " ") || strings.HasPrefix(lines[i], "\t") {
-			continue
-		}
-		if _, oldPriority := SplitPriority(strings.TrimSuffix(parts[3], "\r")); oldPriority.Rank() > p.Rank() {
-			idx = i
-			break
-		}
-	}
-	return insertBlockAt(lines, idx, block)
-}
-
 func insertBlockAt(lines []string, idx int, block []string) string {
 	addition := append([]string(nil), block...)
 	if idx > 0 && strings.TrimSpace(lines[idx-1]) != "" {
@@ -524,7 +506,7 @@ func normalizedTaskLine(selected Task, title string, done bool, p Priority) stri
 func Toggle(path string, selected Task) error {
 	return rewriteTask(path, selected, func(lines []string) string {
 		lines[selected.Line] = normalizedTaskLine(selected, selected.Text, !selected.Done, selected.Priority)
-		return strings.Join(lines, "\n")
+		return sortSection(strings.Join(lines, "\n"), selected.Category, selected.Branch)
 	})
 }
 
@@ -532,7 +514,7 @@ func Toggle(path string, selected Task) error {
 func SetPriority(path string, selected Task, p Priority) error {
 	return rewriteTask(path, selected, func(lines []string) string {
 		lines[selected.Line] = normalizedTaskLine(selected, selected.Text, selected.Done, p)
-		return strings.Join(lines, "\n")
+		return sortSection(strings.Join(lines, "\n"), selected.Category, selected.Branch)
 	})
 }
 
@@ -550,7 +532,7 @@ func SetCategory(path string, selected Task, category string) error {
 		return nil
 	}
 	return rewriteTask(path, selected, func(lines []string) string {
-		return movedTaskLines(lines, selected, taskBlock(selected, selected.Text, selected.Details), category, "")
+		return sortSection(movedTaskLines(lines, selected, taskBlock(selected, selected.Text, selected.Details), category, ""), category, "")
 	})
 }
 

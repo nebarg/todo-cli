@@ -438,7 +438,7 @@ func TestBareItemsBecomeCheckboxesOnlyWhenEdited(t *testing.T) {
 	}
 }
 
-func TestNewTasksSortedPriorityAndEditsStayInPlace(t *testing.T) {
+func TestTasksStaySortedByPriority(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
 	for _, scope := range []struct{ category, branch string }{{}, {category: "Work"}, {branch: "feature/login"}} {
 		for _, item := range []struct {
@@ -465,8 +465,11 @@ func TestNewTasksSortedPriorityAndEditsStayInPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 	tasks, err = Load(path)
-	if err != nil || tasks[0].Text != "high" || tasks[1].Text != "medium" || tasks[2].Text != "low" || tasks[3].Text != "none" || tasks[3].Priority != "high" {
-		t.Fatalf("priority edit moved a task: %v, %+v", err, tasks)
+	if err != nil || indexOrder(tasks[:4]) != "high,none,medium,low" || tasks[1].Priority != "high" {
+		t.Fatalf("raised task did not move up behind the other high task: %v, %+v", err, tasks)
+	}
+	if indexOrder(tasks[4:]) != "highWork,mediumWork,lowWork,noneWork,highfeature/login,mediumfeature/login,lowfeature/login,nonefeature/login" {
+		t.Fatalf("a priority change reordered other sections: %+v", tasks)
 	}
 }
 
@@ -610,4 +613,12 @@ func TestOldPriorityLinesAreDetails(t *testing.T) {
 	if tasks[0].Priority != PriorityNone || tasks[0].Details != "- Priority: High" {
 		t.Fatalf("old priority line = %+v", tasks[0])
 	}
+}
+
+func indexOrder(tasks []Task) string {
+	names := make([]string, len(tasks))
+	for i, t := range tasks {
+		names[i] = t.Text
+	}
+	return strings.Join(names, ",")
 }

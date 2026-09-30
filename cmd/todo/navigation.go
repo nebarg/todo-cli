@@ -119,13 +119,27 @@ func (m *model) selectNavigationTask(selected store.Task) {
 	default:
 		return
 	}
+	// Writes can move the task in the file, so the nearest task with the same
+	// title in the same place is taken to be it.
+	best, distance := -1, int(^uint(0)>>1)
 	for i, row := range rows {
-		if row.kind == rowTask && row.todo.Line == selected.Line && row.todo.Text == selected.Text &&
-			row.todo.Branch == selected.Branch && strings.EqualFold(row.todo.Category, selected.Category) {
-			*cursor = i
-			return
+		if row.kind != rowTask || row.todo.Text != selected.Text || row.todo.Branch != selected.Branch || !strings.EqualFold(row.todo.Category, selected.Category) {
+			continue
+		}
+		if d := abs(row.todo.Line - selected.Line); d < distance {
+			best, distance = i, d
 		}
 	}
+	if best >= 0 {
+		*cursor = best
+	}
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
 }
 
 func sortedNames(counts map[string]int) []string {
