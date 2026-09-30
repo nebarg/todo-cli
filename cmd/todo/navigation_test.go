@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
 )
 
@@ -395,5 +396,46 @@ func TestTwoTogglesBetweenBranchListAndCurrentBranch(t *testing.T) {
 	}
 	if m = press(press(m, "2"), "2"); m.branchFilter != "" || m.focus != branchPane {
 		t.Fatalf("branch without tasks opened %q", m.branchFilter)
+	}
+}
+
+func TestFilesCategoriesOpenLikeGeneral(t *testing.T) {
+	m := &model{width: 100, height: 20, source: []scan.Match{
+		{Path: "a.go", Line: 1, Note: "urgent", Level: "0"},
+		{Path: "b.css", Line: 2, Note: "hide", Category: "Boundary"},
+		{Path: "c.css", Line: 3, Note: "show", Category: "boundary"},
+	}}
+	m = press(m, "3")
+	if rows := m.sourceRows(); len(rows) != 2 || rows[0].name != "Boundary" || rows[0].count != 2 {
+		t.Fatalf("root rows = %+v", rows)
+	}
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(*model)
+	if m.sourceCategory != "Boundary" || len(m.sourceRows()) != 2 || cmd == nil {
+		t.Fatalf("enter did not open the category with a preview: %q, %+v", m.sourceCategory, m.sourceRows())
+	}
+	if !slices.Equal(m.breadcrumb(sourcePane), []string{"Files", "@Boundary"}) {
+		t.Fatalf("breadcrumb = %v", m.breadcrumb(sourcePane))
+	}
+	if selected, ok := m.selectedSource(); !ok || selected.Note != "hide" {
+		t.Fatalf("selected %+v", selected)
+	}
+	m = press(m, "3")
+	if m.sourceCategory != "" || m.sourceCursor != 0 {
+		t.Fatalf("3 again: category %q, cursor %d", m.sourceCategory, m.sourceCursor)
+	}
+	m = press(m, "enter")
+	m = press(m, "esc")
+	if m.sourceCategory != "" {
+		t.Fatal("esc did not leave the category")
+	}
+	m = press(m, "enter")
+	updated, _ = m.Update(sourceScanMsg{matches: []scan.Match{{Path: "a.go", Line: 1, Note: "urgent", Level: "0"}}})
+	m = updated.(*model)
+	if m.sourceCategory != "" || m.sourceCursor != 0 {
+		t.Fatalf("a category gone after a rescan stayed open: %q", m.sourceCategory)
+	}
+	if selected, ok := m.selectedSource(); !ok || selected.Note != "urgent" {
+		t.Fatalf("selected %+v after rescan", selected)
 	}
 }

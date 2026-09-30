@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
 )
 
@@ -13,6 +14,8 @@ const (
 	rowTask navigationKind = iota
 	rowCategory
 	rowBranch
+	rowFileCategory
+	rowFile
 )
 
 type navigationRow struct {
@@ -22,6 +25,7 @@ type navigationRow struct {
 	completed        int
 	missingGitBranch bool
 	todo             store.Task
+	match            scan.Match
 }
 
 func completedCount(tasks []store.Task) int {
@@ -96,6 +100,48 @@ func (m *model) branchRows() []navigationRow {
 		rows = append(rows, navigationRow{kind: rowBranch, name: name, count: counts[name], completed: completed[name], missingGitBranch: m.branchMissing(name)})
 	}
 	return rows
+}
+
+// sourceRows lists file TODOs as General lists tasks: todo@category rows
+// first, then the rest, most urgent first as the scan returned them.
+func (m *model) sourceRows() []navigationRow {
+	var rows []navigationRow
+	if m.sourceCategory != "" {
+		for _, match := range m.source {
+			if strings.EqualFold(match.Category, m.sourceCategory) {
+				rows = append(rows, navigationRow{kind: rowFile, match: match})
+			}
+		}
+		return rows
+	}
+	counts := make(map[string]int)
+	display := make(map[string]string)
+	for _, match := range m.source {
+		if match.Category != "" {
+			key := strings.ToLower(match.Category)
+			counts[key]++
+			if display[key] == "" {
+				display[key] = match.Category
+			}
+		}
+	}
+	for _, key := range sortedNames(counts) {
+		rows = append(rows, navigationRow{kind: rowFileCategory, name: display[key], count: counts[key]})
+	}
+	for _, match := range m.source {
+		if match.Category == "" {
+			rows = append(rows, navigationRow{kind: rowFile, match: match})
+		}
+	}
+	return rows
+}
+
+func (m *model) selectedSource() (scan.Match, bool) {
+	rows := m.sourceRows()
+	if m.sourceCursor < 0 || m.sourceCursor >= len(rows) || rows[m.sourceCursor].kind != rowFile {
+		return scan.Match{}, false
+	}
+	return rows[m.sourceCursor].match, true
 }
 
 func (m *model) branchMissing(name string) bool {
@@ -190,6 +236,18 @@ func (m *model) enterSelectedGroup() bool {
 	if m.focus == detailPane {
 		return false
 	}
+	if m.focus == sourcePane {
+		rows := m.sourceRows()
+		if m.sourceCursor >= len(rows) || rows[m.sourceCursor].kind != rowFileCategory {
+			return false
+		}
+		m.sourceRootCursor = m.sourceCursor
+		m.sourceCategory = rows[m.sourceCursor].name
+		m.sourceCursor = 0
+		m.detailScroll = 0
+		m.status = ""
+		return true
+	}
 	row, ok := m.selectedNavigationRow()
 	if !ok {
 		return false
@@ -244,6 +302,12 @@ func (m *model) leaveGroup() {
 		}
 		m.branchFilter = ""
 		m.branchCursor = m.branchRootCursor
+	case sourcePane:
+		if m.sourceCategory == "" {
+			return
+		}
+		m.sourceCategory = ""
+		m.sourceCursor = m.sourceRootCursor
 	default:
 		return
 	}

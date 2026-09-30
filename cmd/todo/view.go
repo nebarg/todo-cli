@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
 )
 
@@ -214,7 +215,14 @@ func (m *model) contextHints() []keyHint {
 	case m.focus == detailPane:
 		return []keyHint{{"d", "done"}, {"e", "edit"}, {"p", "priority"}, {"c", "category"}, back}
 	case m.focus == sourcePane:
-		return []keyHint{{"e", "open file"}, {"→", "details"}, index, reload}
+		if _, ok := m.selectedSource(); !ok && len(m.sourceRows()) > 0 {
+			return []keyHint{{"→", "open"}, index, reload}
+		}
+		hints := []keyHint{{"e", "open file"}, {"→", "details"}}
+		if m.sourceCategory != "" {
+			hints = append(hints, back)
+		}
+		return append(hints, index, reload)
 	}
 	if row, ok := m.selectedNavigationRow(); ok && row.kind != rowTask {
 		hints := []keyHint{{"→", "open"}, {"a", "add"}}
@@ -253,6 +261,9 @@ func (m *model) breadcrumb(kind pane) []string {
 		}
 		return []string{"Branches"}
 	case sourcePane:
+		if m.sourceCategory != "" {
+			return []string{"Files", "@" + m.sourceCategory}
+		}
 		return []string{"Files"}
 	case detailPane:
 		return append(m.breadcrumb(m.detailFrom), "Details")
@@ -286,6 +297,15 @@ func (m *model) panelStyle(width, height int) lipgloss.Style {
 func (m *model) panelStatus() string {
 	if m.viewingMissingBranch() {
 		return statusBarStyle.Render(missingBranchStatus)
+	}
+	if m.activePane() == sourcePane {
+		if item, ok := m.selectedSource(); ok {
+			return mutedStyle.Render(fmt.Sprintf("%s:%d", cleanDisplay(item.Path), item.Line))
+		}
+		if rows := m.sourceRows(); m.sourceCursor < len(rows) {
+			return mutedStyle.Render(plural(rows[m.sourceCursor].count, "TODO", "TODOs"))
+		}
+		return ""
 	}
 	row, ok := m.selectedNavigationRow()
 	switch {
@@ -378,11 +398,15 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 // branches, or -1 when the list is not mixed.
 func firstTaskAfterGroups(rows []navigationRow) int {
 	for i := 1; i < len(rows); i++ {
-		if rows[i].kind == rowTask && rows[i-1].kind != rowTask {
+		if isItem(rows[i].kind) && !isItem(rows[i-1].kind) {
 			return i
 		}
 	}
 	return -1
+}
+
+func isItem(kind navigationKind) bool {
+	return kind == rowTask || kind == rowFile
 }
 
 func renderGroupRow(item navigationRow, width int, selected, current bool) string {
@@ -397,12 +421,12 @@ func renderGroupRow(item navigationRow, width int, selected, current bool) strin
 	case current:
 		note = "current"
 		nameStyle = nameStyle.Foreground(colorGreen)
-	case item.kind == rowCategory:
+	case item.kind == rowCategory || item.kind == rowFileCategory:
 		nameStyle = nameStyle.Foreground(colorPurple)
 	}
 	countStyle, fillStyle := mutedStyle, lipgloss.NewStyle()
 	if selected {
-		if item.kind == rowCategory || (item.kind == rowBranch && !current && !item.missingGitBranch) {
+		if item.kind != rowBranch || (!current && !item.missingGitBranch) {
 			nameStyle = nameStyle.Foreground(colorStrong)
 		}
 		nameStyle = nameStyle.Background(colorSelection)
@@ -413,6 +437,9 @@ func renderGroupRow(item navigationRow, width int, selected, current bool) strin
 		note = "  " + note
 	}
 	count := fmt.Sprintf("%d/%d", item.completed, item.count)
+	if item.kind == rowFileCategory {
+		count = fmt.Sprint(item.count)
+	}
 	fixed := ansi.StringWidth(marker) + ansi.StringWidth(note) + ansi.StringWidth(count) + 2
 	name := ansi.Truncate(item.name, max(0, width-fixed), "…")
 	gap := max(2, width-fixed+2-ansi.StringWidth(name))
@@ -455,10 +482,18 @@ func renderTaskRow(t store.Task, width int, selected bool) string {
 
 func (m *model) renderSourcePane(width, height int) string {
 	innerWidth := max(1, width-4)
+	rows := m.sourceRows()
 	var lines []string
-	visible := max(1, height-2)
-	start, end := visibleRange(m.sourceCursor, len(m.source), visible)
-	if len(m.source) == 0 {
+	if crumbs := m.breadcrumb(sourcePane); len(crumbs) > 1 {
+		lines = append(lines, renderBreadcrumb(crumbs, fmt.Sprint(len(rows)), innerWidth), "")
+	}
+	visible := max(1, m.panelContentHeight(height)-len(lines))
+	divider := firstTaskAfterGroups(rows)
+	if divider > 0 {
+		visible = max(1, visible-1)
+	}
+	start, end := visibleRange(m.sourceCursor, len(rows), visible)
+	if len(rows) == 0 {
 		empty := "No matches"
 		if m.sourceLoading {
 			empty = "Scanning…"
@@ -468,17 +503,81 @@ func (m *model) renderSourcePane(width, height int) string {
 		}
 		lines = append(lines, mutedStyle.Render(empty))
 	}
+	levelWidth := 0
+	for _, row := range rows {
+		levelWidth = max(levelWidth, len(levelLabel(row.match.Level)))
+	}
 	for i := start; i < end; i++ {
-		item := m.source[i]
-		row := fmt.Sprintf("%s:%d  %s", item.Path, item.Line, cleanDisplay(item.Text))
-		row = ansi.Truncate(row, innerWidth, "…")
-		if i == m.sourceCursor && (m.focus == sourcePane || (m.focus == detailPane && m.detailFrom == sourcePane)) {
-			lines = append(lines, selectedStyle.Width(innerWidth).Render(row))
+		selected := i == m.sourceCursor && (m.focus == sourcePane || (m.focus == detailPane && m.detailFrom == sourcePane))
+		if i == divider && i > start {
+			lines = append(lines, "")
+		}
+		if rows[i].kind == rowFileCategory {
+			lines = append(lines, renderGroupRow(rows[i], innerWidth, selected, false))
 		} else {
-			lines = append(lines, row)
+			lines = append(lines, renderSourceRow(rows[i].match, innerWidth, levelWidth, selected))
 		}
 	}
-	return m.panelStyle(width, height).Render(strings.Join(lines, "\n"))
+	return m.renderPanel(width, height, lines)
+}
+
+// renderSourceRow shows a file TODO's level, its text, and where it is.
+// Levels of zeros must be cleared first, so they are red; other levels are
+// yellow, and a TODO without one has a dim dot. A levelWidth of 0 means no
+// row has a level, so the column is left out.
+// levelLabel keeps a level short: four or more zeros are written as 0x4 up
+// to 0x9, and 0x9+ for anything longer; the list still sorts by the real
+// count.
+func levelLabel(level string) string {
+	switch {
+	case len(level) < 4 || strings.Trim(level, "0") != "":
+		return level
+	case len(level) > 9:
+		return "0x9+"
+	}
+	return fmt.Sprintf("0x%d", len(level))
+}
+
+func renderSourceRow(item scan.Match, width, levelWidth int, selected bool) string {
+	level, levelStyle := "·", mutedStyle
+	switch {
+	case levelWidth == 0:
+		level = ""
+	case item.Level == "":
+	case strings.Trim(item.Level, "0") == "":
+		level, levelStyle = levelLabel(item.Level), lipgloss.NewStyle().Foreground(colorHigh)
+	default:
+		level, levelStyle = item.Level, lipgloss.NewStyle().Foreground(colorMedium)
+	}
+	if levelWidth > 0 {
+		level += strings.Repeat(" ", levelWidth-ansi.StringWidth(level)+1)
+	}
+	note := lipgloss.NewStyle().Foreground(colorStrong)
+	file := mutedStyle
+	gap := "  "
+	if selected {
+		levelStyle, note, file = levelStyle.Background(colorSelection), note.Background(colorSelection), file.Background(colorSelection)
+		gap = lipgloss.NewStyle().Background(colorSelection).Render(gap)
+	}
+	fileWidth := min(40, max(20, width*2/5))
+	noteWidth := max(1, width-ansi.StringWidth(level)-2-fileWidth)
+	location := truncatePath(fmt.Sprintf("%s:%d", item.Path, item.Line), fileWidth)
+	return levelStyle.Render(level) + note.Render(indexColumn(item.Note, noteWidth)) + gap + file.Render(indexColumn(location, fileWidth))
+}
+
+// truncatePath shortens a path from the left, a whole directory at a time,
+// so its file name and line stay visible.
+func truncatePath(value string, width int) string {
+	value = cleanDisplay(value)
+	for rest := value; ansi.StringWidth(value) > width; {
+		cut := strings.Index(rest, "/")
+		if cut < 0 {
+			return "…" + ansi.TruncateLeft(rest, ansi.StringWidth(rest)-width+1, "")
+		}
+		rest = rest[cut+1:]
+		value = "…/" + rest
+	}
+	return value
 }
 
 func (m *model) renderDetailPane(width, height int) string {
@@ -535,13 +634,13 @@ func (m *model) taskDetails(width int) []string {
 }
 
 func (m *model) sourceDetails(width int) []string {
-	if m.sourceCursor >= len(m.source) {
+	item, ok := m.selectedSource()
+	if !ok {
 		if m.sourceError != "" {
 			return wrapLines([]string{"", "Scan failed", m.sourceError, "", "Press r to try again"}, width)
 		}
 		return []string{"", mutedStyle.Render("No file TODO selected.")}
 	}
-	item := m.source[m.sourceCursor]
 	result := []string{"", mutedStyle.Render("FILE TODO"), item.Path + ":" + fmt.Sprint(item.Line),
 		"", cleanDisplay(item.Text), "", mutedStyle.Render("CONTEXT")}
 	switch {

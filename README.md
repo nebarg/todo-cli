@@ -2,6 +2,8 @@
 
 A small TODO app that keeps your tasks in a Markdown file, with a terminal dashboard for working through them.
 
+It also finds TODO comments in your code, and understands [todo-system](https://github.com/archtechx/todo-system)'s categories (`todo@boundary`) and priorities (`todo0`, `todo1`).
+
 Use a terminal with a [Nerd Font](https://www.nerdfonts.com/) for the Git and branch icons; without one they show as empty boxes.
 
 ## Install
@@ -46,9 +48,9 @@ The task file is `todo.md` at the repository root, or in the current directory o
 
 - **1 General**: tasks outside branch sections. `▸ category` rows open to show that category's tasks; uncategorised tasks follow.
 - **2 Branches**: every branch with tasks. At startup it opens on the current branch's tasks, if it has any.
-- **3 Files**: TODO comments in source files under the working directory. Scanning runs in the background, and these are read only.
+- **3 Files**: TODO comments in source files under the working directory, with [todo-system](#todo-system-syntax) categories and levels. Scanning runs in the background, and these are read only.
 
-Each tab returns to where you left it. Press `1` again to leave an opened category, and `2` again to switch between the branch list and the current branch. `←` or `esc` goes back one level.
+Each tab returns to where you left it. Press `1` or `3` again to leave an opened category, and `2` again to switch between the branch list and the current branch. `←` or `esc` goes back one level.
 
 A branch whose local Git branch has been deleted shows as `⚠ branch-name  missing` in red. Its tasks stay visible but read only. Opening a branch re-checks it; `r` re-checks them all.
 
@@ -146,11 +148,15 @@ The file stays readable without the app. When the app writes a task, it re-sorts
 
 ## TODOs in source files
 
-`todo scan [directory]` lists case-insensitive `TODO` and `@todo` comments with their file and line. The dashboard's Files tab shows the same results, up to 1,000 matches.
+`todo scan [directory]` lists case-insensitive `TODO` and `@todo` comments with their file and line. A marker counts when it starts the comment, as in `// TODO fix`, or is followed by `:` or `(` anywhere in it, so `* @return todo` doesn't match. [todo-system markers](#todo-system-syntax) count anywhere in a comment.
+
+The dashboard's Files tab shows the same results, up to 1,000 matches, with the comment text first and a shortened path beside it. The status bar shows the full path of the highlighted TODO.
 
 - Scanning covers the working directory and below, and uses ripgrep (`rg`) if it's installed.
 - It skips gitignored, hidden, binary and Markdown files. `todo -all-files scan` includes them, apart from binaries.
 - Directories starting with `.` are always skipped, as are `node_modules` and `vendor` by default.
+
+### Skipping directories
 
 To skip other directories, use `-e` / `-exclude`, once per directory. It works for `todo scan` and the dashboard:
 
@@ -162,6 +168,24 @@ todo -e ./web/generated
 - A bare name, such as `dist`, skips every directory with that name.
 - Anything with a slash, such as `./web/generated`, is a path from the working directory.
 - Giving `-e` replaces the defaults, so list `node_modules` and `vendor` again if you still want them skipped.
+
+### todo-system syntax
+
+The scanner supports [todo-system](https://github.com/archtechx/todo-system)'s markers, anywhere in a comment:
+
+| Marker | Meaning |
+| --- | --- |
+| `todo@boundary Split this` | Category: listed under a `▸ boundary` row in the Files tab |
+| `todo000`, `todo00`, `todo0` | Priority levels: the more zeros, the more urgent |
+| `todo1` … `todo9` | Lower priority levels, in order |
+| `TODO: fix`, `todo refactor` | Generic |
+
+- Category rows open like categories in General, and `3` again goes back.
+- Levels are listed first, most urgent at the top, with the level beside the text. Zero levels are red, and other levels yellow.
+- Four or more zeros are labelled `0x4` to `0x9`, then `0x9+`, so the column stays narrow. They still sort by the real count.
+- As in todo-system, a TODO has a category or a level, not both: `todo1@boundary` is just in `boundary`.
+- Numbers todo-system doesn't accept, such as `todo12`, are treated as generic rather than hidden.
+- `todo scan` lists levels first too, then the rest by file.
 
 ## Development
 

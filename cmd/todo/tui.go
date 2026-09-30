@@ -79,6 +79,8 @@ type model struct {
 	localBranchNames      map[string]bool
 	branchesVerified      bool
 	sourceCursor          int
+	sourceCategory        string
+	sourceRootCursor      int
 	sourceLoading         bool
 	scanExclude           scan.Exclude
 	sourceScanned         bool
@@ -131,10 +133,10 @@ func (m *model) scanCmd() tea.Cmd {
 }
 
 func (m *model) previewCmd() tea.Cmd {
-	if m.sourceCursor >= len(m.source) {
+	selected, ok := m.selectedSource()
+	if !ok {
 		return nil
 	}
-	selected := m.source[m.sourceCursor]
 	path := filepath.Join(m.scanDir(), selected.Path)
 	return func() tea.Msg {
 		lines, err := scan.ReadContext(path, selected.Line)
@@ -162,15 +164,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.sourceError = ""
 			m.source = msg.matches
-			if m.sourceCursor >= len(m.source) {
+			if m.sourceCategory != "" && len(m.sourceRows()) == 0 {
+				m.sourceCategory, m.sourceCursor = "", m.sourceRootCursor
+			}
+			if m.sourceCursor >= len(m.sourceRows()) {
 				m.sourceCursor = 0
 			}
 			m.status = ""
 			return m, m.previewCmd()
 		}
 	case sourcePreviewMsg:
-		if m.sourceCursor < len(m.source) {
-			selected := m.source[m.sourceCursor]
+		if selected, ok := m.selectedSource(); ok {
 			if selected.Path == msg.path && selected.Line == msg.line {
 				m.previewPath, m.previewLine = msg.path, msg.line
 				m.preview = msg.lines
@@ -249,17 +253,19 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "2":
 			m.jumpToTab(branchPane)
 		case "3":
-			m.focus = sourcePane
-			m.detailScroll = 0
+			m.jumpToTab(sourcePane)
+			return m, m.previewCmd()
 		case "right":
 			if m.focus != detailPane {
-				if !m.enterSelectedGroup() {
-					_, taskSelected := m.selectedTask()
-					if taskSelected || (m.focus == sourcePane && m.sourceCursor < len(m.source)) {
-						m.detailFrom = m.focus
-						m.focus = detailPane
-						m.detailScroll = 0
-					}
+				if m.enterSelectedGroup() {
+					return m, m.previewCmd()
+				}
+				_, taskSelected := m.selectedTask()
+				_, sourceSelected := m.selectedSource()
+				if taskSelected || (m.focus == sourcePane && sourceSelected) {
+					m.detailFrom = m.focus
+					m.focus = detailPane
+					m.detailScroll = 0
 				}
 			}
 		case "left", "esc":
@@ -269,6 +275,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.leaveGroup()
 			}
+			return m, m.previewCmd()
 		case "up", "k":
 			if m.focus == detailPane {
 				m.detailScroll = max(0, m.detailScroll-1)
@@ -304,12 +311,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "u":
 			m.undoClear()
 		case "enter":
+			if m.enterSelectedGroup() {
+				return m, m.previewCmd()
+			}
 			if m.activePane() == sourcePane {
 				return m, m.openSource()
 			}
-			if !m.enterSelectedGroup() {
-				return m.startTaskModal(modalEdit)
-			}
+			return m.startTaskModal(modalEdit)
 		case "r":
 			m.project = currentProject()
 			if err := m.reload(); err != nil {
@@ -333,7 +341,7 @@ func (m *model) moveCursor(delta int) bool {
 	case branchPane:
 		cursor, length = &m.branchCursor, len(m.branchRows())
 	case sourcePane:
-		cursor, length = &m.sourceCursor, len(m.source)
+		cursor, length = &m.sourceCursor, len(m.sourceRows())
 	}
 	next := max(*cursor+delta, 0)
 	if next >= length {
@@ -523,10 +531,10 @@ func (m *model) cyclePriority() {
 }
 
 func (m *model) openSource() tea.Cmd {
-	if m.sourceCursor >= len(m.source) {
+	item, ok := m.selectedSource()
+	if !ok {
 		return nil
 	}
-	item := m.source[m.sourceCursor]
 	return openEditor(filepath.Join(m.scanDir(), item.Path), item.Line)
 }
 

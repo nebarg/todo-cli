@@ -145,7 +145,7 @@ func scanFile(ctx context.Context, dir, relative string, allFiles bool, found ch
 		if !todoMarker.MatchString(text) || (!allFiles && !hasTodoComment(text)) {
 			continue
 		}
-		match := Match{Path: filepath.ToSlash(relative), Line: line, Text: strings.TrimSpace(text)}
+		match := newMatch(filepath.ToSlash(relative), line, text)
 		select {
 		case found <- match:
 		case <-ctx.Done():

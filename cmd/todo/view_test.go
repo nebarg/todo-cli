@@ -384,3 +384,70 @@ func TestStatusBarDescribesTheHighlightedRow(t *testing.T) {
 		t.Fatalf("file TODOs have no status, but the bar showed %q", got)
 	}
 }
+
+func TestLongZeroLevelsAreShortened(t *testing.T) {
+	for level, want := range map[string]string{"": "", "1": "1", "0": "0", "000": "000", "0000": "0x4", "000000000": "0x9", "0000000000": "0x9+"} {
+		if got := levelLabel(level); got != want {
+			t.Errorf("levelLabel(%q) = %q, want %q", level, got, want)
+		}
+	}
+	m := &model{focus: sourcePane, source: []scan.Match{{Path: "a.go", Line: 1, Note: "urgent", Level: "000000"}, {Path: "b.go", Line: 1, Note: "next", Level: "1"}}}
+	pane := ansi.Strip(m.renderSourcePane(80, 8))
+	if !strings.Contains(pane, "0x6 urgent") || !strings.Contains(pane, "1   next") {
+		t.Fatalf("long level was not shortened:\n%s", pane)
+	}
+}
+
+func TestFilesListShowsTheTodoBeforeItsFile(t *testing.T) {
+	long := "ebuyer_site/private/common/classes/Blocks/BlockPage.class.php"
+	m := &model{focus: sourcePane, width: 100, height: 12, source: []scan.Match{
+		{Path: "retry.go", Line: 8, Note: "solve first", Level: "000"},
+		{Path: "retry.go", Line: 9, Note: "then this", Level: "1"},
+		{Path: long, Line: 30, Note: "Remove these once the new layout ships"},
+		{Path: "mobile.css", Line: 3, Note: "Hide on mobile", Category: "responsive"},
+	}}
+	pane := ansi.Strip(m.renderSourcePane(100, 12))
+	rows := strings.Split(pane, "\n")
+	for i, want := range []string{
+		"▸ responsive",
+		"",
+		"000 solve first",
+		"1   then this",
+		"·   Remove these once the new layout ships",
+	} {
+		if got := strings.Trim(rows[i+1], "│ "); !strings.HasPrefix(got, want) {
+			t.Fatalf("row %d = %q, want prefix %q\n%s", i, got, want, pane)
+		}
+	}
+	if !strings.Contains(rows[5], "…/Blocks/BlockPage.class.php:30") || !strings.HasSuffix(strings.TrimRight(rows[1], "│ "), " 1") {
+		t.Fatalf("file or count column missing:\n%s", pane)
+	}
+	for _, row := range rows {
+		if ansi.StringWidth(row) != 100 {
+			t.Fatalf("row is %d wide: %q", ansi.StringWidth(row), row)
+		}
+	}
+	if status := ansi.Strip(m.panelStatus()); status != "1 TODO" {
+		t.Fatalf("category status = %q", status)
+	}
+	styled := m.renderSourcePane(100, 12)
+	if !strings.Contains(styled, lipgloss.NewStyle().Foreground(colorHigh).Render("000 ")) || !strings.Contains(styled, lipgloss.NewStyle().Foreground(colorMedium).Render("1   ")) {
+		t.Error("zero levels are not red, or numbered levels not yellow")
+	}
+	m.sourceCursor = 3
+	if status := ansi.Strip(m.panelStatus()); status != long+":30" {
+		t.Fatalf("status = %q", status)
+	}
+	m.sourceCategory = "responsive"
+	if row := strings.Split(ansi.Strip(m.renderSourcePane(100, 12)), "\n")[3]; !strings.HasPrefix(strings.Trim(row, "│ "), "Hide on mobile") {
+		t.Fatalf("a list without levels kept the level column: %q", row)
+	}
+	for _, c := range []struct {
+		width int
+		want  string
+	}{{80, long}, {28, "…/Blocks/BlockPage.class.php"}, {27, "…/BlockPage.class.php"}, {10, "…class.php"}} {
+		if got := truncatePath(long, c.width); got != c.want {
+			t.Errorf("truncatePath(%d) = %q, want %q", c.width, got, c.want)
+		}
+	}
+}

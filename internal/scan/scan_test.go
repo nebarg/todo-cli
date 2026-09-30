@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"os/exec"
@@ -26,6 +27,7 @@ func TestScanSource(t *testing.T) {
 		"pkg/dist/out.js":       "// TODO: package dist\n",
 		"pkg/gen/gen.go":        "// TODO: generated\n",
 		"odd[1]/x.go":           "// TODO: glob characters\n",
+		"sys.php":               "// todo@boundary Split this\n// todo00 First\n// todo1@boundary Split more\n",
 	}
 	cases := []struct {
 		name     string
@@ -34,11 +36,11 @@ func TestScanSource(t *testing.T) {
 		want     []string
 	}{
 		{"defaults skip dependencies, dot directories and Markdown", false, defaultExclude,
-			[]string{"code.go:1", "code.go:3", "dist/out.js:1", "odd[1]/x.go:1", "pkg/dist/out.js:1", "pkg/gen/gen.go:1"}},
+			[]string{"sys.php:2", "code.go:1", "code.go:3", "dist/out.js:1", "odd[1]/x.go:1", "pkg/dist/out.js:1", "pkg/gen/gen.go:1", "sys.php:1", "sys.php:3"}},
 		{"all files still skips excluded and dot directories", true, defaultExclude,
-			[]string{".hidden.go:1", "TODO.md:1", "code.go:1", "code.go:2", "code.go:3", "dist/out.js:1", "odd[1]/x.go:1", "pkg/dist/out.js:1", "pkg/gen/gen.go:1"}},
+			[]string{"sys.php:2", ".hidden.go:1", "TODO.md:1", "code.go:1", "code.go:2", "code.go:3", "dist/out.js:1", "odd[1]/x.go:1", "pkg/dist/out.js:1", "pkg/gen/gen.go:1", "sys.php:1", "sys.php:3"}},
 		{"custom excludes replace the defaults", false, Exclude{Names: []string{"gen", "odd[1]"}, Paths: []string{"pkg/dist"}},
-			[]string{"code.go:1", "code.go:3", "dist/out.js:1", "node_modules/dep.js:1", "vendor/lib.go:1", "web/node_modules/d.js:1"}},
+			[]string{"sys.php:2", "code.go:1", "code.go:3", "dist/out.js:1", "node_modules/dep.js:1", "sys.php:1", "sys.php:3", "vendor/lib.go:1", "web/node_modules/d.js:1"}},
 	}
 	for _, scanner := range scanners(t) {
 		t.Run(scanner.name, func(t *testing.T) {
@@ -129,5 +131,60 @@ func TestBuiltInScanLimitIsDeterministic(t *testing.T) {
 		if len(matches) != 3 || matches[0].Path != "f00.go" || matches[2].Path != "f02.go" {
 			t.Fatalf("limited scan picked arbitrary files: %+v", matches)
 		}
+	}
+}
+
+func TestTodoComments(t *testing.T) {
+	for _, c := range []struct {
+		line                  string
+		note, category, level string
+		found                 bool
+	}{
+		{"// TODO: fix this", "fix this", "", "", true},
+		{"//TODO make this smarter with postcode", "make this smarter with postcode", "", "", true},
+		{"* @todo Make the 'x' configurable", "Make the 'x' configurable", "", "", true},
+		{"-- TODO check int size for id", "check int size for id", "", "", true},
+		{"/* TODO in future */", "in future", "", "", true},
+		{"<!-- todo: tidy -->", "tidy", "", "", true},
+		{"# TODO(gb): rename", "rename", "", "", true},
+		{"// TODO - later", "later", "", "", true},
+		{"/** TODO document */", "document", "", "", true},
+		{"$x = load(); // TODO: cache", "cache", "", "", true},
+		{"// ported from the old code, TODO: remove", "remove", "", "", true},
+		{"// TODO", "", "", "", true},
+		{"// todo@responsivity Hide this on mobile", "Hide this on mobile", "responsivity", "", true},
+		{"{{-- todo@dark-mode: input styling --}}", "input styling", "dark-mode", "", true},
+		{"// todo000 solve first", "solve first", "", "000", true},
+		{"// needed before merging todo0", "", "", "0", true},
+		{"# todo7: later", "later", "", "7", true},
+		{"// todo1@boundary split this", "split this", "boundary", "", true},
+		{"// todo12 not a todo-system level", "not a todo-system level", "", "", true},
+		{"// todo@types: add types", "add types", "types", "", true},
+		{"* @return todo", "", "", "", false},
+		{"// maybe todo later", "", "", "", false},
+		{`const name = "// TODO: not a comment"`, "", "", "", false},
+		{"// todos are done", "", "", "", false},
+		{"// todo2x is not a level", "", "", "", false},
+	} {
+		got, found := commentTodo(c.line)
+		want := todoComment{note: c.note, category: c.category, level: c.level}
+		if got != want || found != c.found {
+			t.Errorf("commentTodo(%q) = %+v, %v; want %+v, %v", c.line, got, found, want, c.found)
+		}
+	}
+	if m := newMatch("a.go", 1, "  // TODO  "); m.Note != "// TODO" {
+		t.Errorf("empty note = %q", m.Note)
+	}
+}
+
+func TestLevelsSortMostUrgentFirst(t *testing.T) {
+	levels := []string{"", "2", "0", "000", "1", "00", "9"}
+	slices.SortFunc(levels, func(a, b string) int { return cmp.Compare(LevelRank(a), LevelRank(b)) })
+	if want := []string{"000", "00", "0", "1", "2", "9", ""}; !slices.Equal(levels, want) {
+		t.Fatalf("levels = %q, want %q", levels, want)
+	}
+	matches := sortedMatches([]Match{{Path: "a.go", Line: 1}, {Path: "z.go", Line: 9, Level: "0"}, {Path: "b.go", Line: 2, Level: "1"}}, 2)
+	if len(matches) != 2 || matches[0].Path != "z.go" || matches[1].Path != "b.go" {
+		t.Fatalf("limit dropped an urgent to-do: %+v", matches)
 	}
 }
