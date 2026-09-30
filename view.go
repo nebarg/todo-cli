@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"unicode"
 
@@ -91,16 +90,8 @@ func (m model) View() tea.View {
 }
 
 func (m model) renderHeader(width int) string {
-	repo := "No Git repository"
-	if m.project.root != "" {
-		repo = filepath.Base(m.project.root)
-	}
-	branch := m.project.branch
-	if branch == "" {
-		branch = "no branch"
-	}
-	line := fmt.Sprintf("  TODO  /  %s  /  %s", repo, branch)
-	count := fmt.Sprintf("  %d / %d general · %d / %d branch · %d files",
+	line := "  To Do"
+	count := fmt.Sprintf("  %d/%d general · %d/%d branch · %d files",
 		completedCount(m.general), len(m.general), completedCount(m.branches), len(m.branches), len(m.source))
 	available := width - ansi.StringWidth(count)
 	if available < 1 {
@@ -142,18 +133,18 @@ func (m model) renderFooter(width int) string {
 		return ansi.Truncate(m.input.View()+"  enter save · esc cancel", width, "…")
 	}
 	if m.indexMode {
-		hints := "i/esc back · ↑/↓ move · (d)one/space · (e)dit/enter · (p)riority · (b)ranch · (l)abel · (r)eload · (q)uit"
+		hints := "i/esc back · ↑/↓ move · (d)one/space · (e)dit/enter · (p)riority sort · Shift+B branch sort · (c)ategory sort · (b)ranch add · (r)eload · (q)uit"
 		if width < 80 {
-			hints = "(d)one/space · (e)dit/enter · p/b/l sort"
+			hints = "(b)ranch add · p/B/c sort · (e)dit/enter"
 		}
 		if m.status != "" {
 			return mutedStyle.Render(ansi.Truncate(m.status, width, "…"))
 		}
 		return mutedStyle.Render(ansi.Truncate(hints, width, "…"))
 	}
-	hints := "↑/↓ move · → details · (d)one/space · (e)dit/enter · (p)riority · (l)abel · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
+	hints := "↑/↓ move · → details · (d)one/space · (e)dit/enter · (p)riority · (c)ategory · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
 	if m.focus == detailPane {
-		hints = "←/esc back · ↑/↓ scroll · (d)one/space · (e)dit/enter · (p)riority · (l)abel · (q)uit"
+		hints = "←/esc back · ↑/↓ scroll · (d)one/space · (e)dit/enter · (p)riority · (c)ategory · (q)uit"
 		if m.activePane() == sourcePane {
 			hints = "←/esc back · ↑/↓ scroll · (e)dit/enter file · (q)uit"
 		} else if m.activePane() == branchPane {
@@ -162,7 +153,7 @@ func (m model) renderFooter(width int) string {
 	} else if m.focus == sourcePane {
 		hints = "↑/↓ move · → details · (e)dit/enter file · (i)ndex · (r)eload · (q)uit"
 	} else if m.focus == branchPane {
-		hints = "↑/↓ move · → open · (d)one/space · (e)dit/enter · (p)riority · (b)ranch add · (i)ndex · (r)eload · (q)uit"
+		hints = "↑/↓ move · → open · (d)one/space · (e)dit/enter · (p)riority · (a)dd · (b)ranch add · (i)ndex · (r)eload · (q)uit"
 	}
 	if width < 80 {
 		switch m.focus {
@@ -172,14 +163,14 @@ func (m model) renderFooter(width int) string {
 			} else if m.activePane() == branchPane {
 				hints = "esc · (d)one/space · (e)dit/enter · (p)riority"
 			} else {
-				hints = "esc · (d)one/space · (e)dit/enter · (p)riority · (l)abel"
+				hints = "esc · (d)one/space · (e)dit/enter · p · (c)ategory"
 			}
 		case sourcePane:
 			hints = "→ details · (e)dit/enter file · (i)ndex"
 		case branchPane:
-			hints = "(d)one/space · (e)dit/enter · (p)riority"
+			hints = "(a)dd · (d)one/space · (e)dit/enter · (p)riority"
 		default:
-			hints = "(d)one/space · (e)dit/enter · (p)riority · (l)abel"
+			hints = "(d)one/space · (e)dit/enter · (p)riority · (c)ategory"
 		}
 	}
 	if m.status != "" {
@@ -232,7 +223,7 @@ func (m model) renderNavigationPane(title string, rows []navigationRow, cursor i
 			}
 		}
 	}
-	heading := fmt.Sprintf("%s  %d / %d", title, completed, count)
+	heading := fmt.Sprintf("%s  %d/%d", title, completed, count)
 	lines := []string{titleStyle.Render(ansi.Truncate(heading, innerWidth, "…")), ""}
 	visible := max(1, height-4)
 	start, end := visibleRange(cursor, len(rows), visible)
@@ -253,13 +244,13 @@ func (m model) renderNavigationPane(title string, rows []navigationRow, cursor i
 		row := ""
 		switch item.kind {
 		case rowLabel:
-			row = fmt.Sprintf("@%s  %d / %d ›", item.name, item.completed, item.count)
+			row = fmt.Sprintf("@%s  %d/%d ›", item.name, item.completed, item.count)
 		case rowBranch:
 			marker := "  "
 			if item.name == m.project.branch {
 				marker = "* "
 			}
-			row = fmt.Sprintf("%s%s  %d / %d ›", marker, item.name, item.completed, item.count)
+			row = fmt.Sprintf("%s%s  %d/%d ›", marker, item.name, item.completed, item.count)
 		}
 		row = ansi.Truncate(row, innerWidth, "…")
 		if selected {
@@ -369,7 +360,7 @@ func (m model) compactDetails() []string {
 		return []string{item.path + ":" + fmt.Sprint(item.line), cleanDisplay(item.text)}
 	}
 	if row, ok := m.selectedNavigationRow(); ok && row.kind != rowTask {
-		return []string{groupName(row), fmt.Sprintf("%d / %d tasks · enter/→ open", row.completed, row.count)}
+		return []string{groupName(row), fmt.Sprintf("%d/%d tasks · enter/→ open", row.completed, row.count)}
 	}
 	t, ok := m.selectedTask()
 	if !ok {
@@ -397,7 +388,7 @@ func (m model) groupDetails(row navigationRow, width int) []string {
 	if row.kind == rowBranch {
 		scope = "branch tasks"
 	}
-	return wrapLines([]string{taskTitleStyle.Render(groupName(row)), "", fmt.Sprintf("%d / %d %s", row.completed, row.count, scope), "", mutedStyle.Render("enter or → to open")}, width)
+	return wrapLines([]string{taskTitleStyle.Render(groupName(row)), "", fmt.Sprintf("%d/%d %s", row.completed, row.count, scope), "", mutedStyle.Render("enter or → to open")}, width)
 }
 
 func (m model) taskDetails(width int) []string {
@@ -426,7 +417,7 @@ func (m model) taskDetails(width int) []string {
 		}
 	}
 	result = append(result, "", mutedStyle.Render("Status    "+status), mutedStyle.Render("Scope     "+taskLocation(t)),
-		mutedStyle.Render("Priority  ")+priority, mutedStyle.Render("Label     "+label))
+		mutedStyle.Render("Priority  ")+priority, mutedStyle.Render("Category  "+label))
 	return wrapLines(result, width)
 }
 

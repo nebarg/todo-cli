@@ -164,7 +164,7 @@ func addTaskWithDetails(path, title, details, priority string, labels []string, 
 		return errors.New("branch name must be one line")
 	}
 	if len(labels) > 1 {
-		return errors.New("a task can have only one label")
+		return errors.New("a task can have only one category")
 	}
 	label := ""
 	if len(labels) > 0 {
@@ -273,14 +273,14 @@ func trimTaskBlock(block []string) []string {
 
 func validateLabel(label string) error {
 	if label == "" {
-		return errors.New("label must be one word of letters and numbers")
+		return errors.New("category must be one word of letters and numbers")
 	}
 	if strings.EqualFold(label, "Branches") {
 		return errors.New("Branches is reserved for the branch section")
 	}
 	for _, r := range label {
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-			return errors.New("label must be one word of letters and numbers")
+			return errors.New("category must be one word of letters and numbers")
 		}
 	}
 	return nil

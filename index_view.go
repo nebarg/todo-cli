@@ -41,9 +41,9 @@ func (m model) renderIndex(width, height int) string {
 	labelWidth := min(18, max(8, (innerWidth-22)/4))
 	branchWidth := min(26, max(10, (innerWidth-22)/3))
 	taskWidth := max(1, innerWidth-3-6-labelWidth-branchWidth)
-	heading := fmt.Sprintf("All tasks  %d / %d · Sort: %s", completedCount(tasks), len(tasks), m.indexSort)
+	heading := fmt.Sprintf("All tasks  %d/%d · Sort: %s", completedCount(tasks), len(tasks), m.indexSort)
 	lines := []string{titleStyle.Render(ansi.Truncate(heading, innerWidth, "…"))}
-	columns := indexColumn("PRI", 3) + "  " + indexColumn("LABEL", labelWidth) + "  " + indexColumn("BRANCH", branchWidth) + "  " + indexColumn("TASK: DETAILS", taskWidth)
+	columns := indexColumn("PRI", 3) + "  " + indexColumn("CATEGORY", labelWidth) + "  " + indexColumn("BRANCH", branchWidth) + "  " + indexColumn("TASK: DETAILS", taskWidth)
 	lines = append(lines, mutedStyle.Render(columns))
 	visible := max(1, height-4)
 	start, end := visibleRange(m.indexCursor, len(tasks), visible)

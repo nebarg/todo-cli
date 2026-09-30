@@ -95,7 +95,7 @@ func TestLabelPrefixesAreNormalized(t *testing.T) {
 func TestLabelsRequireOneAlphanumericWord(t *testing.T) {
 	for _, label := range []string{"two words", "bug-fix", "under_score", "a?", "@", "@@auth", "emoji🙂"} {
 		path := filepath.Join(t.TempDir(), "TODO.md")
-		if err := addTaskWithOptions(path, "Task", "", []string{label}, ""); err == nil || !strings.Contains(err.Error(), "one word") {
+		if err := addTaskWithOptions(path, "Task", "", []string{label}, ""); err == nil || !strings.Contains(err.Error(), "category must be one word") {
 			t.Errorf("label %q was accepted or gave an unclear error: %v", label, err)
 		}
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
@@ -200,8 +200,8 @@ func TestSingleLabelHeadingsAndMoves(t *testing.T) {
 	if strings.Contains(string(data), "\n# auth\n") || !strings.Contains(string(data), "\n# docs\n") {
 		t.Fatalf("relabel left an empty heading or missed the new heading: %s", data)
 	}
-	if err := addTaskWithOptions(path, "Too many", "", []string{"one", "two"}, ""); err == nil {
-		t.Fatal("multiple labels were accepted")
+	if err := addTaskWithOptions(path, "Too many", "", []string{"one", "two"}, ""); err == nil || err.Error() != "a task can have only one category" {
+		t.Fatalf("multiple categories returned %v", err)
 	}
 }
 

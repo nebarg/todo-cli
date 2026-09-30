@@ -165,7 +165,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sourceLoading = true
 		return m, m.scanCmd()
 	case tea.PasteMsg:
-		if m.inputMode == "labels" {
+		if m.modal != nil {
+			return m.updateTaskModalPaste(msg)
+		}
+		if m.inputMode == "category" {
 			msg.Content = stripLabelSpaces(msg.Content)
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
@@ -248,11 +251,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.previewCmd()
 			}
 		case "a":
+			if m.activePane() == branchPane {
+				return m.startTaskModal("add-branch")
+			}
 			return m.startTaskModal("add-general")
 		case "b":
 			return m.startTaskModal("add-branch")
-		case "l":
-			return m.startInput("labels")
+		case "c", "l":
+			return m.startInput("category")
 		case "e":
 			if m.activePane() == sourcePane {
 				return m, m.openSource()
@@ -343,10 +349,10 @@ func (m model) activePane() pane {
 }
 
 func (m model) startInput(mode string) (tea.Model, tea.Cmd) {
-	if mode == "labels" {
+	if mode == "category" {
 		selected, ok := m.selectedTask()
 		if !ok {
-			m.status = "Select a Markdown task to edit its label"
+			m.status = "Select a Markdown task to edit its category"
 			return m, nil
 		}
 		if selected.branch != "" {
@@ -354,7 +360,7 @@ func (m model) startInput(mode string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.editTask = selected
-		m.input.Prompt = "Label: "
+		m.input.Prompt = "Category: "
 		m.input.SetValue(taskLabel(selected))
 	}
 	m.inputMode = mode
@@ -376,7 +382,7 @@ func (m model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		newLabel := normalizeLabelInput(m.input.Value())
 		var err error
 		switch mode {
-		case "labels":
+		case "category":
 			err = setTaskLabel(m.file, m.editTask, m.input.Value())
 		}
 		if err != nil {
@@ -386,7 +392,7 @@ func (m model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.inputMode = ""
 		m.input.Blur()
 		m.input.SetValue("")
-		if mode == "labels" && !m.indexMode {
+		if mode == "category" && !m.indexMode {
 			switch m.activePane() {
 			case generalPane:
 				m.generalLabel = newLabel
@@ -397,9 +403,9 @@ func (m model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.status = err.Error()
 			return m, nil
 		}
-		if mode == "labels" && m.indexMode {
+		if mode == "category" && m.indexMode {
 			m.selectIndexTask(oldTask)
-		} else if mode == "labels" {
+		} else if mode == "category" {
 			if m.activePane() == generalPane {
 				if newLabel != "" {
 					root := m
@@ -422,7 +428,7 @@ func (m model) updateInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		return m, nil
 	}
-	if m.inputMode == "labels" {
+	if m.inputMode == "category" {
 		if msg.Code == tea.KeySpace {
 			return m, nil
 		}
@@ -448,7 +454,7 @@ func (m *model) toggleSelected() {
 		if m.activePane() == sourcePane {
 			m.status = "File TODOs are read only"
 		} else {
-			m.status = "Open a label or branch to select a task"
+			m.status = "Open a category or branch to select a task"
 		}
 		return
 	}
@@ -657,7 +663,7 @@ func (m model) indexTasks() []task {
 			if c := compareIndexGroup(a.branch, b.branch); c != 0 {
 				return c < 0
 			}
-		case "label":
+		case "category":
 			if c := compareIndexGroup(taskLabel(a), taskLabel(b)); c != 0 {
 				return c < 0
 			}
@@ -733,13 +739,15 @@ func (m model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.moveCursor(-1)
 	case "down", "j":
 		m.moveCursor(1)
-	case "p", "b", "l":
+	case "p", "B", "c", "l":
 		selected, ok := m.selectedTask()
-		m.indexSort = map[string]string{"p": "priority", "b": "branch", "l": "label"}[msg.String()]
+		m.indexSort = map[string]string{"p": "priority", "B": "branch", "c": "category", "l": "category"}[msg.String()]
 		m.indexPriorityExplicit = msg.String() == "p"
 		if ok {
 			m.selectIndexTask(selected)
 		}
+	case "b":
+		return m.startTaskModal("add-branch")
 	case "space", "d":
 		m.toggleSelected()
 	case "enter", "e":

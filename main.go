@@ -13,14 +13,25 @@ import (
 func main() {
 	fileFlag := flag.String("file", "", "markdown file (default: repository root/todo.md)")
 	priority := flag.String("priority", "", "high, medium, or low for a new task")
-	labelsFlag := flag.String("label", "", "one label for a new task")
+	categoryFlag := flag.String("category", "", "one category for a new task")
 	onBranch := flag.Bool("branch", false, "put a new task under the current Git branch")
 	branchName := flag.String("branch-name", "", "put a new task under this branch heading")
 	allFiles := flag.Bool("all-files", false, "include Markdown, hidden, and ignored text in scan")
 	flag.StringVar(priority, "p", "", "shorthand for -priority")
-	flag.StringVar(labelsFlag, "l", "", "shorthand for -label")
-	flag.StringVar(labelsFlag, "labels", "", "alias for -label")
+	flag.StringVar(categoryFlag, "c", "", "shorthand for -category")
+	flag.StringVar(categoryFlag, "l", "", "")
+	flag.StringVar(categoryFlag, "label", "", "") // Accept older command lines.
+	flag.StringVar(categoryFlag, "labels", "", "")
 	flag.BoolVar(onBranch, "b", false, "shorthand for -branch")
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [flags] [task text]\n\nFlags:\n", os.Args[0])
+		flag.VisitAll(func(option *flag.Flag) {
+			if option.Name == "l" || option.Name == "label" || option.Name == "labels" {
+				return
+			}
+			fmt.Fprintf(flag.CommandLine.Output(), "  -%s\t%s\n", option.Name, option.Usage)
+		})
+	}
 	flag.Parse()
 
 	project := currentProject()
@@ -79,17 +90,17 @@ func main() {
 			}
 		}
 		title := strings.Join(args, " ")
-		var labels []string
-		if strings.TrimSpace(*labelsFlag) != "" {
-			labels = []string{*labelsFlag}
+		var categories []string
+		if strings.TrimSpace(*categoryFlag) != "" {
+			categories = []string{*categoryFlag}
 		}
-		if err := addTaskWithOptions(file, title, *priority, labels, branch); err != nil {
+		if err := addTaskWithOptions(file, title, *priority, categories, branch); err != nil {
 			fail(err)
 		}
 		fmt.Printf("Added to %s: %s\n", file, title)
 		return
 	}
-	if *priority != "" || *labelsFlag != "" || *onBranch || *branchName != "" || *allFiles {
+	if *priority != "" || *categoryFlag != "" || *onBranch || *branchName != "" || *allFiles {
 		fmt.Fprintln(os.Stderr, "task flags need task text")
 		os.Exit(2)
 	}
