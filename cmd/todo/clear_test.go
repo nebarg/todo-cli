@@ -286,3 +286,13 @@ func TestClearDoneCommandDeletesMissingBranches(t *testing.T) {
 		t.Fatalf("file = %q", got)
 	}
 }
+
+func TestIndexMarksMissingBranches(t *testing.T) {
+	m, _ := missingBranchModel(t)
+	m.indexMode = true
+	view := m.renderIndex(100, 20)
+	gone := lipgloss.NewStyle().Foreground(colorHigh).Render(indexColumn("⚠ feature/gone", 24))
+	if !strings.Contains(view, gone) || !strings.Contains(ansi.Strip(view), branchIcon+" feature/live") {
+		t.Fatalf("index does not mark the missing branch:\n%s", view)
+	}
+}

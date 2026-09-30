@@ -60,8 +60,12 @@ func (m *model) renderIndex(width, height int) string {
 		if t.Category != "" {
 			scope = "@" + t.Category
 		}
+		missing := m.branchMissing(t.Branch)
 		if t.Branch != "" {
 			scope = branchIcon + " " + t.Branch
+		}
+		if missing {
+			scope = "⚠ " + t.Branch
 		}
 		mark, markStyle := priorityMark(t.Priority)+" ", mutedStyle
 		if t.Priority != "" {
@@ -77,9 +81,12 @@ func (m *model) renderIndex(width, height int) string {
 		}
 		selected := i == m.indexCursor
 		scopeStyle := mutedStyle
-		if t.Branch != "" {
+		switch {
+		case missing:
+			scopeStyle = lipgloss.NewStyle().Foreground(colorHigh)
+		case t.Branch != "":
 			scopeStyle = lipgloss.NewStyle().Foreground(colorGreen)
-		} else if t.Category != "" {
+		case t.Category != "":
 			scopeStyle = lipgloss.NewStyle().Foreground(colorPurple)
 		}
 		if selected {
