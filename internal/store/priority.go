@@ -16,11 +16,24 @@ const (
 	PriorityLow    Priority = "low"
 )
 
-var errInvalidPriority = errors.New("priority must be high, medium, or low")
+var errInvalidPriority = errors.New("priority must be h, high, m, medium, l, or low")
 
-// ParsePriority accepts high, medium, low or blank, ignoring case and spaces.
+// ParsePriority reads a priority as typed for the -p flag: high, medium, low,
+// their first letters, or blank, ignoring case and spaces.
 func ParsePriority(value string) (Priority, error) {
-	switch p := Priority(strings.ToLower(strings.TrimSpace(value))); p {
+	value = strings.ToLower(strings.TrimSpace(value))
+	for _, p := range []Priority{PriorityHigh, PriorityMedium, PriorityLow} {
+		if value == string(p[:1]) {
+			return p, nil
+		}
+	}
+	return parsePriorityName(value)
+}
+
+// parsePriorityName accepts only the full names, ignoring case, so that in
+// a task file a shorter trailing word such as "!h" stays part of the title.
+func parsePriorityName(value string) (Priority, error) {
+	switch p := Priority(strings.ToLower(value)); p {
 	case PriorityNone, PriorityHigh, PriorityMedium, PriorityLow:
 		return p, nil
 	}
@@ -64,7 +77,7 @@ func SplitPriority(text string) (string, Priority) {
 	if cut < 0 || !strings.HasPrefix(trimmed[cut+1:], "!") {
 		return text, PriorityNone
 	}
-	p, err := ParsePriority(trimmed[cut+2:])
+	p, err := parsePriorityName(trimmed[cut+2:])
 	title := strings.TrimRightFunc(trimmed[:cut], unicode.IsSpace)
 	if err != nil || p == PriorityNone || title == "" {
 		return text, PriorityNone

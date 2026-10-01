@@ -16,7 +16,7 @@ import (
 
 func main() {
 	fileFlag := flag.String("file", "", "markdown file (default: repository root/todo.md)")
-	priorityFlag := flag.String("priority", "", "high, medium, or low for a new task")
+	priorityFlag := flag.String("priority", "", "h|high, m|medium, or l|low for a new task")
 	categoryFlag := flag.String("category", "", "one category for a new task")
 	onBranch := flag.Bool("branch", false, "put a new task under the current Git branch")
 	branchName := flag.String("branch-name", "", "put a new task under this existing local Git branch")

@@ -20,13 +20,13 @@ With no arguments, `todo` opens the dashboard. With text, it adds a task and exi
 
 ```sh
 todo Test login failures
-todo -p high @tests Fix flaky login test
+todo -p h @tests Fix flaky login test
 todo -b Fix the bug on this branch
 ```
 
 | Option | Effect |
 | --- | --- |
-| `-p` / `-priority high\|medium\|low` | Set the priority. A trailing `'!high'` in the text does the same; quote it, as shells treat `!` as history expansion |
+| `-p` / `-priority h\|high\|m\|medium\|l\|low` | Set the priority |
 | `@category` as the first word | File the task under a category. `-c` / `-category` does the same; use one or the other |
 | `-b` / `-branch` | Add to the current Git branch |
 | `-branch-name feature/login` | Add to another local Git branch |
@@ -82,7 +82,6 @@ In the form:
 
 - `tab` / `shift+tab` move between Task, Category or Branch, and Details.
 - `enter` adds a new line in Task or Details, `ctrl+enter` saves, and `esc` cancels.
-- A trailing `!high` in the title sets the priority.
 - The Branch field suggests local Git branches as you type. You can only pick a branch that exists.
 - When editing, changing the category or branch moves the task. A heading left empty is removed.
 

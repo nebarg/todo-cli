@@ -15,6 +15,10 @@ func TestParsePriority(t *testing.T) {
 		{" High ", PriorityHigh, false},
 		{"MEDIUM", PriorityMedium, false},
 		{"low", PriorityLow, false},
+		{"h", PriorityHigh, false},
+		{" M ", PriorityMedium, false},
+		{"L", PriorityLow, false},
+		{"hi", PriorityNone, true},
 		{"urgent", PriorityNone, true},
 	} {
 		t.Run(item.input, func(t *testing.T) {
@@ -53,6 +57,7 @@ func TestSplitPriority(t *testing.T) {
 		{"Fix !important CSS", "Fix !important CSS", PriorityNone},
 		{"Fix !important", "Fix !important", PriorityNone},
 		{"Fix !", "Fix !", PriorityNone},
+		{"Plan A !h", "Plan A !h", PriorityNone},
 		{"!high", "!high", PriorityNone},
 		{"Fix!high", "Fix!high", PriorityNone},
 		{"Keep !high in title !low", "Keep !high in title", PriorityLow},
