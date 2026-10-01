@@ -13,6 +13,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/store"
+	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
@@ -179,7 +180,7 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	if !m.categoryInput || m.indexSort != "priority" {
 		t.Fatal("c should edit the selected task's category without changing sort")
 	}
-	for p, want := range map[store.Priority]color.Color{"high": colorHigh, "medium": colorMedium, "low": colorLow} {
+	for p, want := range map[store.Priority]color.Color{"high": ui.ColorHigh, "medium": ui.ColorMedium, "low": ui.ColorLow} {
 		t.Run(string(p), func(t *testing.T) {
 			if got := priorityStyle(p).GetForeground(); got != want {
 				t.Errorf("%s priority color = %v, want %v", p, got, want)

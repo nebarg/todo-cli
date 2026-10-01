@@ -7,21 +7,22 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/nebarg/todo-cli/internal/store"
+	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 func TestThemeFollowsTerminalBackground(t *testing.T) {
-	t.Cleanup(func() { applyTheme(true) })
+	t.Cleanup(func() { ui.ApplyTheme(true) })
 	m := &model{}
-	dark := colorText
+	dark := ui.ColorText
 	m.Update(tea.BackgroundColorMsg{Color: color.White})
-	if colorText == dark || colorStrong == color.Color(lipgloss.Color("#FFFFFF")) {
+	if ui.ColorText == dark || ui.ColorStrong == color.Color(lipgloss.Color("#FFFFFF")) {
 		t.Fatal("light background kept the dark palette")
 	}
-	if got := priorityStyle(store.PriorityHigh).GetForeground(); got != colorHigh {
+	if got := priorityStyle(store.PriorityHigh).GetForeground(); got != ui.ColorHigh {
 		t.Fatalf("priority style did not use the light palette: %v", got)
 	}
 	m.Update(tea.BackgroundColorMsg{Color: color.Black})
-	if colorText != dark {
+	if ui.ColorText != dark {
 		t.Fatal("dark background did not restore the dark palette")
 	}
 }

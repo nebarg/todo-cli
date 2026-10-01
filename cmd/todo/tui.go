@@ -3,9 +3,7 @@ package main
 import (
 	"cmp"
 	"errors"
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -14,8 +12,11 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/nebarg/todo-cli/internal/editor"
+	"github.com/nebarg/todo-cli/internal/filesui"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
+	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 type pane int
@@ -26,18 +27,6 @@ const (
 	sourcePane
 	detailPane
 )
-
-type sourceScanMsg struct {
-	matches []scan.Match
-	err     error
-}
-type sourcePreviewMsg struct {
-	path  string
-	line  int
-	lines []scan.ContextLine
-	err   error
-}
-type editorFinishedMsg struct{ err error }
 
 type sortOrder string
 
@@ -70,7 +59,6 @@ type model struct {
 	readme                []store.Task
 	readmeOpen            bool
 	branches              []store.Task
-	source                []scan.Match
 	focus                 pane
 	detailFrom            pane
 	detailScroll          int
@@ -82,17 +70,7 @@ type model struct {
 	branchFilter          string
 	localBranchNames      map[string]bool
 	branchesVerified      bool
-	sourceCursor          int
-	sourceCategory        string
-	sourceRootCursor      int
-	sourceLoading         bool
-	scanExclude           scan.Exclude
-	sourceScanned         bool
-	sourceError           string
-	preview               []scan.ContextLine
-	previewPath           string
-	previewLine           int
-	previewError          string
+	files                 filesui.Model
 	input                 textinput.Model
 	categoryInput         bool
 	editTask              store.Task
@@ -110,7 +88,11 @@ func newModel(file string, project projectContext) (*model, error) {
 	input.Prompt = "New task: "
 	input.Placeholder = "What needs doing?"
 	input.SetWidth(72)
-	m := &model{file: file, project: project, input: input, width: 100, height: 30, sourceLoading: true, indexSort: sortPriority}
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
+	m := &model{file: file, project: project, input: input, width: 100, height: 30, indexSort: sortPriority, files: filesui.New(cwd, scan.Exclude{})}
 	if err := m.reload(); err != nil {
 		return nil, err
 	}
@@ -118,39 +100,7 @@ func newModel(file string, project projectContext) (*model, error) {
 	return m, nil
 }
 
-func (m *model) Init() tea.Cmd { return tea.Batch(m.scanCmd(), tea.RequestBackgroundColor) }
-
-func (m *model) scanDir() string {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "."
-	}
-	return dir
-}
-
-func (m *model) scanCmd() tea.Cmd {
-	dir, exclude := m.scanDir(), m.scanExclude
-	return func() tea.Msg {
-		matches, err := scan.Source(dir, 1000, false, exclude)
-		return sourceScanMsg{matches: matches, err: err}
-	}
-}
-
-// previewRadius is how many lines either side of a file TODO are read, enough
-// to fill the detail page of a tall terminal.
-const previewRadius = 40
-
-func (m *model) previewCmd() tea.Cmd {
-	selected, ok := m.selectedSource()
-	if !ok {
-		return nil
-	}
-	path := filepath.Join(m.scanDir(), selected.Path)
-	return func() tea.Msg {
-		lines, err := scan.ReadContext(path, selected.Line, previewRadius)
-		return sourcePreviewMsg{path: selected.Path, line: selected.Line, lines: lines, err: err}
-	}
-}
+func (m *model) Init() tea.Cmd { return tea.Batch(m.files.Scan(), tea.RequestBackgroundColor) }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -162,47 +112,24 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		inputWidth := max(msg.Width-4, 20)
 		m.input.SetWidth(inputWidth)
 	case tea.BackgroundColorMsg:
-		applyTheme(msg.IsDark())
-	case sourceScanMsg:
-		m.sourceLoading = false
-		m.sourceScanned = true
-		if msg.err != nil {
-			m.sourceError = msg.err.Error()
-			m.status = "File scan failed: " + m.sourceError
-		} else {
-			m.sourceError = ""
-			m.source = msg.matches
-			if m.sourceCategory != "" && len(m.sourceRows()) == 0 {
-				m.sourceCategory, m.sourceCursor = "", m.sourceRootCursor
-			}
-			if m.sourceCursor >= len(m.sourceRows()) {
-				m.sourceCursor = 0
-			}
-			m.status = ""
-			return m, m.previewCmd()
+		ui.ApplyTheme(msg.IsDark())
+	case filesui.ScannedMsg:
+		cmd := m.files.Update(msg)
+		m.status = ""
+		if err := m.files.Err(); err != "" {
+			m.status = "File scan failed: " + err
 		}
-	case sourcePreviewMsg:
-		if selected, ok := m.selectedSource(); ok {
-			if selected.Path == msg.path && selected.Line == msg.line {
-				m.previewPath, m.previewLine = msg.path, msg.line
-				m.preview = msg.lines
-				m.previewError = ""
-				if msg.err != nil {
-					m.previewError = msg.err.Error()
-				}
-			}
-		}
-	case editorFinishedMsg:
-		if msg.err != nil {
-			m.status = msg.err.Error()
+		return m, cmd
+	case editor.ClosedMsg:
+		if msg.Err != nil {
+			m.status = msg.Err.Error()
 		} else {
 			m.status = ""
 		}
 		if err := m.refresh(); err != nil {
 			m.status = err.Error()
 		}
-		m.sourceLoading = true
-		return m, m.scanCmd()
+		return m, m.files.Scan()
 	case tea.PasteMsg:
 		if m.modal != nil {
 			return m.updateTaskModalPaste(msg)
@@ -234,6 +161,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.indexMode {
 			return m.updateIndex(msg)
 		}
+		if m.focus == sourcePane {
+			switch key {
+			case "right", "left", "esc", "up", "k", "down", "j", "e", "enter":
+				return m, m.files.Update(msg)
+			}
+		}
 		switch key {
 		case "q":
 			return m, tea.Quit
@@ -252,6 +185,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focus = (m.focus + 1) % 3
 			}
 			m.detailScroll = 0
+			m.files.CloseDetails()
 		case "shift+tab":
 			if m.focus == detailPane {
 				m.focus = m.detailFrom
@@ -259,21 +193,22 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focus = (m.focus + 2) % 3
 			}
 			m.detailScroll = 0
+			m.files.CloseDetails()
 		case "1":
 			m.jumpToTab(generalPane)
 		case "2":
 			m.jumpToTab(branchPane)
 		case "3":
-			m.jumpToTab(sourcePane)
-			return m, m.previewCmd()
+			if m.focus == sourcePane {
+				m.files.Top()
+			} else {
+				m.focus = sourcePane
+				m.detailScroll = 0
+			}
+			return m, m.files.PreviewCmd()
 		case "right":
-			if m.focus != detailPane {
-				if m.enterSelectedGroup() {
-					return m, m.previewCmd()
-				}
-				_, taskSelected := m.selectedTask()
-				_, sourceSelected := m.selectedSource()
-				if taskSelected || (m.focus == sourcePane && sourceSelected) {
+			if m.focus != detailPane && !m.enterSelectedGroup() {
+				if _, ok := m.selectedTask(); ok {
 					m.detailFrom = m.focus
 					m.focus = detailPane
 					m.detailScroll = 0
@@ -286,18 +221,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.leaveGroup()
 			}
-			return m, m.previewCmd()
 		case "up", "k":
 			if m.focus == detailPane {
 				m.detailScroll = max(0, m.detailScroll-1)
-			} else if m.moveCursor(-1) && m.focus == sourcePane {
-				return m, m.previewCmd()
+			} else {
+				m.moveCursor(-1)
 			}
 		case "down", "j":
 			if m.focus == detailPane {
 				m.detailScroll++
-			} else if m.moveCursor(1) && m.focus == sourcePane {
-				return m, m.previewCmd()
+			} else {
+				m.moveCursor(1)
 			}
 		case "a":
 			if m.activePane() == branchPane {
@@ -309,9 +243,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "c":
 			return m.startCategoryInput()
 		case "e":
-			if m.activePane() == sourcePane {
-				return m, m.openSource()
-			}
 			if m.readmeSelected() {
 				return m, m.openReadme()
 			}
@@ -326,10 +257,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.undoClear()
 		case "enter":
 			if m.enterSelectedGroup() {
-				return m, m.previewCmd()
-			}
-			if m.activePane() == sourcePane {
-				return m, m.openSource()
+				return m, nil
 			}
 			if m.readmeSelected() {
 				return m, m.openReadme()
@@ -342,40 +270,23 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.status = ""
 			}
-			m.sourceLoading = true
-			return m, m.scanCmd()
+			return m, m.files.Scan()
 		}
+	default:
+		return m, m.files.Update(msg)
 	}
 	return m, nil
 }
 
-func (m *model) moveCursor(delta int) bool {
-	if m.indexMode {
-		return m.moveIndexCursor(delta)
-	}
+func (m *model) moveCursor(delta int) {
 	cursor, length := &m.generalCursor, len(m.generalRows())
-	switch m.focus {
-	case branchPane:
+	switch {
+	case m.indexMode:
+		cursor, length = &m.indexCursor, len(m.allTasks)
+	case m.focus == branchPane:
 		cursor, length = &m.branchCursor, len(m.branchRows())
-	case sourcePane:
-		cursor, length = &m.sourceCursor, len(m.sourceRows())
 	}
-	next := max(*cursor+delta, 0)
-	if next >= length {
-		next = length - 1
-	}
-	if next < 0 {
-		next = 0
-	}
-	if next == *cursor {
-		return false
-	}
-	*cursor = next
-	if m.focus == sourcePane {
-		m.previewPath = ""
-		m.preview = nil
-	}
-	return true
+	*cursor = max(0, min(*cursor+delta, length-1))
 }
 
 func (m *model) selectedTask() (store.Task, bool) {
@@ -419,7 +330,7 @@ func (m *model) openReadme() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return openEditor(m.readmeFile(), selected.Line+1)
+	return editor.Open(m.readmeFile(), selected.Line+1)
 }
 
 func (m *model) startCategoryInput() (tea.Model, tea.Cmd) {
@@ -579,43 +490,6 @@ func (m *model) cyclePriority() {
 		return
 	}
 	m.status = ""
-}
-
-func (m *model) openSource() tea.Cmd {
-	item, ok := m.selectedSource()
-	if !ok {
-		return nil
-	}
-	return openEditor(filepath.Join(m.scanDir(), item.Path), item.Line)
-}
-
-func openEditor(path string, line int) tea.Cmd {
-	cmd := editorProcess(path, line)
-	return tea.ExecProcess(cmd, func(err error) tea.Msg { return editorFinishedMsg{err: err} })
-}
-
-func editorProcess(path string, line int) *exec.Cmd {
-	editor := os.Getenv("VISUAL")
-	if editor == "" {
-		editor = os.Getenv("EDITOR")
-	}
-	if editor == "" {
-		editor = "vi"
-	}
-	parts := strings.Fields(editor)
-	if len(parts) == 0 {
-		parts = []string{"vi"}
-	}
-	args := append([]string{}, parts[1:]...)
-	switch filepath.Base(parts[0]) {
-	case "code", "codium", "cursor":
-		args = append(args, "--wait", "--goto", fmt.Sprintf("%s:%d", path, line))
-	case "vi", "vim", "nvim", "view":
-		args = append(args, fmt.Sprintf("+%d", line), path)
-	default:
-		args = append(args, path)
-	}
-	return exec.Command(parts[0], args...)
 }
 
 // reload is for startup and explicit refreshes. Otherwise Git is only asked
@@ -847,15 +721,6 @@ func (m *model) selectIndexTask(selected store.Task) {
 	}
 }
 
-func (m *model) moveIndexCursor(delta int) bool {
-	next := max(0, min(m.indexCursor+delta, len(m.allTasks)-1))
-	if next == m.indexCursor {
-		return false
-	}
-	m.indexCursor = next
-	return true
-}
-
 func (m *model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "i", "esc", "left":
@@ -899,8 +764,7 @@ func (m *model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.status = ""
 		}
-		m.sourceLoading = true
-		return m, m.scanCmd()
+		return m, m.files.Scan()
 	}
 	return m, nil
 }

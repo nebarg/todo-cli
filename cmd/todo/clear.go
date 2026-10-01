@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/store"
+	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 // clearConfirmation is a planned clear waiting for the user to confirm it.
@@ -96,7 +97,7 @@ func (m *model) clearScope() ([]store.Task, string) {
 }
 
 // clearHint offers X only when there is something for it to clear.
-func (m *model) clearHint() []keyHint {
+func (m *model) clearHint() []ui.KeyHint {
 	tasks, _ := m.clearScope()
 	targets := pickClearTargets(tasks, m.branchMissing)
 	var parts []string
@@ -105,13 +106,13 @@ func (m *model) clearHint() []keyHint {
 	}
 	switch {
 	case m.viewingMissingBranch():
-		return []keyHint{{"X", "remove its tasks"}}
+		return []ui.KeyHint{{Key: "X", Label: "remove its tasks"}}
 	case len(targets.branches) > 0:
 		parts = append(parts, fmt.Sprintf("%d missing", len(targets.branches)))
 	case len(parts) == 0:
 		return nil
 	}
-	return []keyHint{{"X", "clear " + strings.Join(parts, " + ")}}
+	return []ui.KeyHint{{Key: "X", Label: "clear " + strings.Join(parts, " + ")}}
 }
 
 func (m *model) startClearDone() {
@@ -188,19 +189,12 @@ func (m *model) undoClear() {
 	m.status = "Restored " + taskCount(len(removal.Tasks))
 }
 
-func doneTaskCount(n int) string { return plural(n, "done task", "done tasks") }
+func doneTaskCount(n int) string { return ui.Plural(n, "done task", "done tasks") }
 
-func taskCount(n int) string { return plural(n, "task", "tasks") }
+func taskCount(n int) string { return ui.Plural(n, "task", "tasks") }
 
 func missingTaskCount(n int) string {
-	return plural(n, "task of a missing branch", "tasks of missing branches")
-}
-
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-	return fmt.Sprintf("%d %s", n, many)
+	return ui.Plural(n, "task of a missing branch", "tasks of missing branches")
 }
 
 func (c clearConfirmation) render() string {
@@ -224,9 +218,9 @@ func (c clearConfirmation) render() string {
 	default:
 		title = fmt.Sprintf("Remove %s from %s?", c.targets.summary(), c.scope)
 	}
-	lines := []string{titleStyle.Render(ansi.Wrap(title, width, ""))}
+	lines := []string{ui.TitleStyle.Render(ansi.Wrap(title, width, ""))}
 	if reason != "" {
-		lines = append(lines, mutedStyle.Render(ansi.Wrap(reason, width, "")))
+		lines = append(lines, ui.MutedStyle.Render(ansi.Wrap(reason, width, "")))
 	}
 	var headings []string
 	for _, category := range c.removal.Categories {
@@ -242,12 +236,12 @@ func (c clearConfirmation) render() string {
 		if len(headings) > 1 {
 			noun = "headings"
 		}
-		lines = append(lines, mutedStyle.Render(ansi.Wrap(fmt.Sprintf("The %s %s will be empty and removed too.", joinNames(headings), noun), width, "")))
+		lines = append(lines, ui.MutedStyle.Render(ansi.Wrap(fmt.Sprintf("The %s %s will be empty and removed too.", joinNames(headings), noun), width, "")))
 	}
-	lines = append(lines, "", renderHints([]keyHint{{"y", "remove"}, {"esc", "cancel"}}))
+	lines = append(lines, "", ui.RenderHints([]ui.KeyHint{{Key: "y", Label: "remove"}, {Key: "esc", Label: "cancel"}}))
 	return lipgloss.NewStyle().Padding(0, 2).
-		Border(lipgloss.RoundedBorder()).BorderForeground(colorHigh).BorderBackground(colorModal).
-		Background(colorModal).Render(onBackground(strings.Join(lines, "\n"), colorModal))
+		Border(lipgloss.RoundedBorder()).BorderForeground(ui.ColorHigh).BorderBackground(ui.ColorModal).
+		Background(ui.ColorModal).Render(ui.OnBackground(strings.Join(lines, "\n"), ui.ColorModal))
 }
 
 // joinNames lists names as "a", "a and b" or "a, b and c".

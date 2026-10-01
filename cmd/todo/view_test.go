@@ -11,8 +11,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/filesui"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
+	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 func TestDashboardFitsTerminal(t *testing.T) {
@@ -25,8 +27,7 @@ func TestDashboardFitsTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.source = []scan.Match{{Path: "main.go", Line: 12, Text: "// TODO: improve"}}
-	m.sourceLoading = false
+	m.files.Update(filesui.ScannedMsg{Matches: []scan.Match{{Path: "main.go", Line: 12, Text: "// TODO: improve"}}})
 	for _, size := range [][2]int{{120, 35}, {80, 24}, {78, 16}, {60, 20}, {56, 19}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			m.width, m.height = size[0], size[1]
@@ -76,13 +77,13 @@ func TestDashboardFitsTerminal(t *testing.T) {
 func TestInactiveTabsShareTheBarBackground(t *testing.T) {
 	m := &model{focus: sourcePane}
 	tabs := m.renderHeader(80)
-	inactive := lipgloss.NewStyle().Foreground(colorMuted).Background(colorBar)
+	inactive := lipgloss.NewStyle().Foreground(ui.ColorMuted).Background(ui.ColorBar)
 	for _, tab := range []string{" General ", " Branches "} {
 		if !strings.Contains(tabs, inactive.Render(tab)) {
 			t.Errorf("inactive tab %q has the wrong background: %q", tab, tabs)
 		}
 	}
-	if !strings.Contains(tabs, keyStyle.Background(colorBar).Render("1")) || !strings.Contains(tabs, keyStyle.Background(colorSelection).Render("3")) {
+	if !strings.Contains(tabs, ui.KeyStyle.Background(ui.ColorBar).Render("1")) || !strings.Contains(tabs, ui.KeyStyle.Background(ui.ColorSelection).Render("3")) {
 		t.Errorf("tab numbers are not styled as keys: %q", tabs)
 	}
 	if ansi.StringWidth(tabs) != 80 {
@@ -90,16 +91,8 @@ func TestInactiveTabsShareTheBarBackground(t *testing.T) {
 	}
 }
 
-func TestScanErrorVisibleInDetails(t *testing.T) {
-	m := &model{focus: sourcePane, sourceError: "permission denied"}
-	got := strings.Join(m.sourceDetails(60, 20), "\n")
-	if !strings.Contains(got, "permission denied") {
-		t.Fatalf("scan error missing from detail pane: %s", got)
-	}
-}
-
 func TestTaskDetailsShownOnDetailPage(t *testing.T) {
-	if taskTitleStyle.GetForeground() != colorStrong {
+	if ui.TaskTitleStyle.GetForeground() != ui.ColorStrong {
 		t.Fatal("task title is not styled with the white text color")
 	}
 	m := &model{general: []store.Task{{Text: "Fix login redirect", Details: "When a session expires, return to the previous page.\n\n- Add a regression test"}}}
@@ -192,7 +185,7 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.sourceLoading = false
+	m.files.Update(filesui.ScannedMsg{})
 	if header := ansi.Strip(m.renderHeader(100)); !strings.HasSuffix(header, " "+gitIcon+" main  ") || strings.Contains(header, "To Do") || strings.Contains(header, ".") {
 		t.Fatalf("header without a repository root = %q", header)
 	}
@@ -237,7 +230,7 @@ func TestHeaderShowsRepositoryAndBranch(t *testing.T) {
 	if plain := ansi.Strip(header); ansi.StringWidth(header) != 80 || !strings.HasPrefix(plain, " 1 General") || !strings.HasSuffix(plain, "todo-cli  "+gitIcon+" feature/login  ") {
 		t.Fatalf("header = %q", plain)
 	}
-	if !strings.Contains(header, lipgloss.NewStyle().Foreground(colorGit).Background(colorBar).Render(gitIcon+" ")) {
+	if !strings.Contains(header, lipgloss.NewStyle().Foreground(ui.ColorGit).Background(ui.ColorBar).Render(gitIcon+" ")) {
 		t.Fatalf("git icon is not coloured: %q", header)
 	}
 	m.project.branch = strings.Repeat("b", 100)
@@ -357,9 +350,9 @@ func TestPriorityReadsFromShapeAsWellAsColour(t *testing.T) {
 func TestStatusBarDescribesTheHighlightedRow(t *testing.T) {
 	m := &model{
 		general: []store.Task{{Text: "Loose", Priority: store.PriorityMedium}, {Text: "Filed", Category: "Docs", Done: true}, {Text: "Open filed", Category: "Docs"}},
-		source:  []scan.Match{{Path: "main.go", Line: 1, Text: "// TODO"}},
 		width:   80, height: 20,
 	}
+	m.files.Update(filesui.ScannedMsg{Matches: []scan.Match{{Path: "main.go", Line: 1, Text: "// TODO"}}})
 	bottom := func() string {
 		lines := strings.Split(ansi.Strip(m.View().Content), "\n")
 		return strings.Trim(lines[len(lines)-3], " │")
@@ -382,104 +375,5 @@ func TestStatusBarDescribesTheHighlightedRow(t *testing.T) {
 	m.focus = sourcePane
 	if got := bottom(); strings.Contains(got, "priority") || strings.Contains(got, "done") {
 		t.Fatalf("file TODOs have no status, but the bar showed %q", got)
-	}
-}
-
-func TestLongZeroLevelsAreShortened(t *testing.T) {
-	for level, want := range map[string]string{"": "", "1": "1", "0": "0", "000": "000", "0000": "0x4", "000000000": "0x9", "0000000000": "0x9+"} {
-		if got := levelLabel(level); got != want {
-			t.Errorf("levelLabel(%q) = %q, want %q", level, got, want)
-		}
-	}
-	m := &model{focus: sourcePane, source: []scan.Match{{Path: "a.go", Line: 1, Note: "urgent", Level: "000000"}, {Path: "b.go", Line: 1, Note: "next", Level: "1"}}}
-	pane := ansi.Strip(m.renderSourcePane(80, 8))
-	if !strings.Contains(pane, "0x6 urgent") || !strings.Contains(pane, "1   next") {
-		t.Fatalf("long level was not shortened:\n%s", pane)
-	}
-}
-
-func TestFilesListShowsTheTodoBeforeItsFile(t *testing.T) {
-	long := "ebuyer_site/private/common/classes/Blocks/BlockPage.class.php"
-	m := &model{focus: sourcePane, width: 100, height: 12, source: []scan.Match{
-		{Path: "retry.go", Line: 8, Note: "solve first", Level: "000"},
-		{Path: "retry.go", Line: 9, Note: "then this", Level: "1"},
-		{Path: long, Line: 30, Note: "Remove these once the new layout ships"},
-		{Path: "mobile.css", Line: 3, Note: "Hide on mobile", Category: "responsive"},
-	}}
-	pane := ansi.Strip(m.renderSourcePane(100, 12))
-	rows := strings.Split(pane, "\n")
-	for i, want := range []string{
-		"▸ responsive",
-		"",
-		"000 solve first",
-		"1   then this",
-		"·   Remove these once the new layout ships",
-	} {
-		if got := strings.Trim(rows[i+1], "│ "); !strings.HasPrefix(got, want) {
-			t.Fatalf("row %d = %q, want prefix %q\n%s", i, got, want, pane)
-		}
-	}
-	if !strings.Contains(rows[5], "…/Blocks/BlockPage.class.php:30") || !strings.HasSuffix(strings.TrimRight(rows[1], "│ "), " 1") {
-		t.Fatalf("file or count column missing:\n%s", pane)
-	}
-	for _, row := range rows {
-		if ansi.StringWidth(row) != 100 {
-			t.Fatalf("row is %d wide: %q", ansi.StringWidth(row), row)
-		}
-	}
-	if status := ansi.Strip(m.panelStatus()); status != "1 TODO" {
-		t.Fatalf("category status = %q", status)
-	}
-	styled := m.renderSourcePane(100, 12)
-	if !strings.Contains(styled, lipgloss.NewStyle().Foreground(colorHigh).Render("000 ")) || !strings.Contains(styled, lipgloss.NewStyle().Foreground(colorMedium).Render("1   ")) {
-		t.Error("zero levels are not red, or numbered levels not yellow")
-	}
-	m.sourceCursor = 3
-	if status := ansi.Strip(m.panelStatus()); status != long+":30" {
-		t.Fatalf("status = %q", status)
-	}
-	m.sourceCategory = "responsive"
-	if row := strings.Split(ansi.Strip(m.renderSourcePane(100, 12)), "\n")[3]; !strings.HasPrefix(strings.Trim(row, "│ "), "Hide on mobile") {
-		t.Fatalf("a list without levels kept the level column: %q", row)
-	}
-	for _, c := range []struct {
-		width int
-		want  string
-	}{{80, long}, {28, "…/Blocks/BlockPage.class.php"}, {27, "…/BlockPage.class.php"}, {10, "…class.php"}} {
-		if got := truncatePath(long, c.width); got != c.want {
-			t.Errorf("truncatePath(%d) = %q, want %q", c.width, got, c.want)
-		}
-	}
-}
-
-func TestFileTodoDetailsFillThePageAroundTheTodo(t *testing.T) {
-	var preview []scan.ContextLine
-	for n := 1; n <= 60; n++ {
-		preview = append(preview, scan.ContextLine{Number: n, Text: fmt.Sprintf("\tline %d", n)})
-	}
-	preview[29].Text = "// todo00000000000 this is urgent " + strings.Repeat("x", 80)
-	item := scan.Match{Path: "classes copy/Clients.class.php", Line: 30, Note: "this is urgent", Level: "00000000000"}
-	m := &model{focus: detailPane, detailFrom: sourcePane, source: []scan.Match{item},
-		preview: preview, previewPath: item.Path, previewLine: item.Line}
-	lines := m.sourceDetails(60, 12)
-	plain := make([]string, len(lines))
-	for i, line := range lines {
-		plain[i] = ansi.Strip(line)
-		if ansi.StringWidth(line) > 60 {
-			t.Fatalf("line %d is wider than the page: %q", i, plain[i])
-		}
-	}
-	if plain[0] != "0x9+ this is urgent" || plain[1] != "" || len(lines) != 12 {
-		t.Fatalf("details = %q", plain)
-	}
-	if got := strings.Join(plain, "\n"); strings.Contains(got, item.Path) {
-		t.Fatalf("details repeat the path from the status bar:\n%s", got)
-	}
-	if plain[2] != "  26 │     line 26" || !strings.HasPrefix(plain[6], "  30 │ // todo") || !strings.HasSuffix(strings.TrimRight(plain[6], " "), "…") || plain[11] != "  35 │     line 35" {
-		t.Fatalf("context is not centred on the TODO, or wrapped:\n%s", strings.Join(plain, "\n"))
-	}
-	m.source[0].Line, m.previewLine, preview[1].Text = 2, 2, "// TODO near the top"
-	if lines := m.sourceDetails(60, 12); !strings.HasPrefix(ansi.Strip(lines[2]), "   1 │") {
-		t.Fatalf("a TODO near the top of the file did not start at line 1: %q", ansi.Strip(lines[2]))
 	}
 }

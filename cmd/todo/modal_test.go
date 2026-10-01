@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/store"
+	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 func TestAddingWithinGroupsKeepsScope(t *testing.T) {
@@ -520,7 +521,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 			}
 		}
 	}
-	if rendered := m.modal.render(76, 20); !strings.Contains(rendered, mutedStyle.Render("Category")) {
+	if rendered := m.modal.render(76, 20); !strings.Contains(rendered, ui.MutedStyle.Render("Category")) {
 		t.Fatal("unfocused category label is not muted")
 	}
 	for _, size := range [][2]int{{120, 35}, {78, 16}, {60, 20}, {56, 19}} {
@@ -559,7 +560,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if help := ansi.Strip(m.modal.render(76, 20)); !strings.Contains(help, "ctrl+enter save  esc cancel  tab next field") {
 		t.Fatalf("category help changed by focus: %s", help)
 	}
-	if rendered := m.modal.render(76, 20); !strings.Contains(rendered, titleStyle.Render("Category")) {
+	if rendered := m.modal.render(76, 20); !strings.Contains(rendered, ui.TitleStyle.Render("Category")) {
 		t.Fatal("focused category label is not highlighted")
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
@@ -669,12 +670,12 @@ func TestModalDetailsFillRemainingHeight(t *testing.T) {
 }
 
 func TestOnBackgroundSurvivesNestedResets(t *testing.T) {
-	seq := ansi.NewStyle().BackgroundColor(colorModal).String()
-	got := onBackground(keyStyle.Render("esc")+" "+mutedStyle.Render("cancel"), colorModal)
+	seq := ansi.NewStyle().BackgroundColor(ui.ColorModal).String()
+	got := ui.OnBackground(ui.KeyStyle.Render("esc")+" "+ui.MutedStyle.Render("cancel"), ui.ColorModal)
 	if !strings.HasPrefix(got, seq) || strings.Count(got, "\x1b[m"+seq) != 2 {
 		t.Fatalf("background not restored after resets: %q", got)
 	}
-	if got := onBackground("a\x1b[49mb", colorModal); got != seq+"a"+seq+"b" {
+	if got := ui.OnBackground("a\x1b[49mb", ui.ColorModal); got != seq+"a"+seq+"b" {
 		t.Fatalf("default background not replaced: %q", got)
 	}
 }

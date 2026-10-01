@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/nebarg/todo-cli/internal/filesui"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
 	"github.com/spf13/pflag"
@@ -167,9 +168,11 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		if m.scanExclude, err = scanExclude(cwd, cwd, o.excludes); err != nil {
+		exclude, err := scanExclude(cwd, cwd, o.excludes)
+		if err != nil {
 			fail(err)
 		}
+		m.files = filesui.New(cwd, exclude)
 		if _, err := tea.NewProgram(m).Run(); err != nil {
 			fail(err)
 		}

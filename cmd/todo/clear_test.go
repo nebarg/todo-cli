@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 const clearContent = "- [x] Loose done\n\n- [ ] Loose open\n\n# docs\n\n- [x] Doc done\n\n# auth\n\n- [x] Auth done\n\n- [ ] Auth open\n\n# Branches\n\n## feature/x\n\n- [x] Branch done\n"
@@ -126,7 +127,7 @@ func TestClearDoneOnlyRemovesOnY(t *testing.T) {
 func TestUndoClearRestoresTheFile(t *testing.T) {
 	m, path := clearModel(t)
 	m = press(press(m, "X"), "y")
-	if hints := m.footerHints(); len(hints) == 0 || hints[0] != (keyHint{"u", "undo clear"}) {
+	if hints := m.footerHints(); len(hints) == 0 || hints[0] != (ui.KeyHint{Key: "u", Label: "undo clear"}) {
 		t.Fatalf("footer does not offer undo first: %v", hints)
 	}
 	m = press(m, "u")
@@ -159,7 +160,7 @@ func TestLaterEditsDropUndoClear(t *testing.T) {
 		t.Fatal("undo clear survived another edit")
 	}
 	for _, hint := range m.footerHints() {
-		if hint.key == "u" {
+		if hint.Key == "u" {
 			t.Fatal("footer still offers undo clear")
 		}
 	}
@@ -295,7 +296,7 @@ func TestIndexMarksMissingBranches(t *testing.T) {
 	m, _ := missingBranchModel(t)
 	m.indexMode = true
 	view := m.renderIndex(100, 20)
-	gone := lipgloss.NewStyle().Foreground(colorHigh).Render(indexColumn("⚠ feature/gone", 24))
+	gone := lipgloss.NewStyle().Foreground(ui.ColorHigh).Render(ui.Column("⚠ feature/gone", 24))
 	if !strings.Contains(view, gone) || !strings.Contains(ansi.Strip(view), branchIcon+" feature/live") {
 		t.Fatalf("index does not mark the missing branch:\n%s", view)
 	}

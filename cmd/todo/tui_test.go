@@ -119,19 +119,6 @@ func TestEnterEditsAndDoneOrSpaceTogglesTasks(t *testing.T) {
 	}
 }
 
-func TestEditorCommandUsesLineNumber(t *testing.T) {
-	t.Setenv("VISUAL", "vi")
-	cmd := editorProcess("/tmp/TODO.md", 12)
-	if got := strings.Join(cmd.Args, " "); got != "vi +12 /tmp/TODO.md" {
-		t.Fatalf("vi command = %q", got)
-	}
-	t.Setenv("VISUAL", "code")
-	cmd = editorProcess("/tmp/TODO.md", 12)
-	if got := strings.Join(cmd.Args, " "); got != "code --wait --goto /tmp/TODO.md:12" {
-		t.Fatalf("code command = %q", got)
-	}
-}
-
 func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
 	content := "- [ ] Urgent !high\n\n- [ ] Routine !medium\n\n- Bare\n\n- [ ] Another unprioritized\n\n# Docs\n\n- [ ] Document it\n\n# Tests\n\n- [ ] Test it\n"

@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/filesui"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
 )
@@ -211,7 +212,10 @@ func TestArrowOpensDetailsAndEscapeReturnsToList(t *testing.T) {
 	if m.focus != sourcePane {
 		t.Fatal("right arrow opened details without a selected file TODO")
 	}
-	updated, _ = m.Update(sourceScanMsg{matches: nil})
+	if m.files.Details() {
+		t.Fatal("right arrow opened file details without a selected file TODO")
+	}
+	updated, _ = m.Update(filesui.ScannedMsg{})
 	m = updated.(*model)
 	footer := ansi.Strip(m.renderFooter(100))
 	if !strings.Contains(footer, "e open file") || strings.Contains(footer, "Found 0") {
@@ -271,8 +275,8 @@ func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 func assertNoEditHints(t *testing.T, m *model) {
 	t.Helper()
 	for _, hint := range m.footerHints() {
-		if slices.Contains([]string{"d", "e", "p"}, hint.key) {
-			t.Fatalf("read-only branch footer offers %q: %v", hint.key, m.footerHints())
+		if slices.Contains([]string{"d", "e", "p"}, hint.Key) {
+			t.Fatalf("read-only branch footer offers %q: %v", hint.Key, m.footerHints())
 		}
 	}
 }
@@ -399,43 +403,41 @@ func TestTwoTogglesBetweenBranchListAndCurrentBranch(t *testing.T) {
 	}
 }
 
-func TestFilesCategoriesOpenLikeGeneral(t *testing.T) {
-	m := &model{width: 100, height: 20, source: []scan.Match{
+func TestFilesTabKeysReachTheBrowser(t *testing.T) {
+	m := &model{width: 100, height: 20}
+	m.files.Update(filesui.ScannedMsg{Matches: []scan.Match{
 		{Path: "a.go", Line: 1, Note: "urgent", Level: "0"},
 		{Path: "b.css", Line: 2, Note: "hide", Category: "Boundary"},
-		{Path: "c.css", Line: 3, Note: "show", Category: "boundary"},
-	}}
+	}})
+	files := func() string { return ansi.Strip(m.View().Content) }
 	m = press(m, "3")
-	if rows := m.sourceRows(); len(rows) != 2 || rows[0].name != "Boundary" || rows[0].count != 2 {
-		t.Fatalf("root rows = %+v", rows)
+	m = press(m, "enter")
+	if !strings.Contains(files(), "Files › @Boundary") {
+		t.Fatalf("enter did not open the category:\n%s", files())
 	}
-	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(*model)
-	if m.sourceCategory != "Boundary" || len(m.sourceRows()) != 2 || cmd == nil {
-		t.Fatalf("enter did not open the category with a preview: %q, %+v", m.sourceCategory, m.sourceRows())
+	m = press(m, "right")
+	if !m.files.Details() || !strings.Contains(files(), "Files › @Boundary › Details") {
+		t.Fatalf("right did not open the file TODO's details:\n%s", files())
 	}
-	if !slices.Equal(m.breadcrumb(sourcePane), []string{"Files", "@Boundary"}) {
-		t.Fatalf("breadcrumb = %v", m.breadcrumb(sourcePane))
-	}
-	if selected, ok := m.selectedSource(); !ok || selected.Note != "hide" {
-		t.Fatalf("selected %+v", selected)
+	if footer := ansi.Strip(m.renderFooter(100)); !strings.Contains(footer, "e open file") || strings.Contains(footer, "all tasks") {
+		t.Fatalf("detail footer = %q", footer)
 	}
 	m = press(m, "3")
-	if m.sourceCategory != "" || m.sourceCursor != 0 {
-		t.Fatalf("3 again: category %q, cursor %d", m.sourceCategory, m.sourceCursor)
+	if m.files.Details() || !strings.Contains(files(), "Files › @Boundary") {
+		t.Fatalf("3 did not return from details to the category:\n%s", files())
 	}
-	m = press(m, "enter")
-	m = press(m, "esc")
-	if m.sourceCategory != "" {
-		t.Fatal("esc did not leave the category")
+	m = press(m, "3")
+	if strings.Contains(files(), "@Boundary") {
+		t.Fatalf("3 again did not leave the category:\n%s", files())
 	}
-	m = press(m, "enter")
-	updated, _ = m.Update(sourceScanMsg{matches: []scan.Match{{Path: "a.go", Line: 1, Note: "urgent", Level: "0"}}})
-	m = updated.(*model)
-	if m.sourceCategory != "" || m.sourceCursor != 0 {
-		t.Fatalf("a category gone after a rescan stayed open: %q", m.sourceCategory)
+	m = press(m, "j")
+	m = press(m, "right")
+	m = press(m, "tab")
+	if m.focus != generalPane || m.files.Details() {
+		t.Fatal("leaving the Files tab kept its details open")
 	}
-	if selected, ok := m.selectedSource(); !ok || selected.Note != "urgent" {
-		t.Fatalf("selected %+v after rescan", selected)
+	m = press(m, "3")
+	if !strings.Contains(files(), "urgent") || strings.Contains(files(), "Details") {
+		t.Fatalf("returning to Files did not show its list:\n%s", files())
 	}
 }

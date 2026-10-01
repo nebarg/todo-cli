@@ -13,6 +13,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/store"
+	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 type modalMode int
@@ -377,17 +378,17 @@ func (f *taskModal) branchSuggestions(width int) []string {
 		if len(f.branches) == 0 {
 			message = "No local Git branches"
 		}
-		lines = append(lines, mutedStyle.Render(ansi.Truncate(message, width, "…")))
+		lines = append(lines, ui.MutedStyle.Render(ansi.Truncate(message, width, "…")))
 	} else {
 		start := max(0, f.branchCursor-rows+1)
 		for i := start; i < len(matches) && len(lines) < rows; i++ {
 			mark := "  "
-			style := mutedStyle
+			style := ui.MutedStyle
 			if i == f.branchCursor {
 				mark = "› "
-				style = lipgloss.NewStyle().Foreground(colorGreen)
+				style = lipgloss.NewStyle().Foreground(ui.ColorGreen)
 				if f.field == scopeField {
-					style = style.Background(colorSelection)
+					style = style.Background(ui.ColorSelection)
 				}
 			}
 			lineWidth := width
@@ -402,7 +403,7 @@ func (f *taskModal) branchSuggestions(width int) []string {
 				if i-start == thumb {
 					bar = "┃"
 				}
-				lines = append(lines, style.Render(line)+mutedStyle.Render(" "+bar))
+				lines = append(lines, style.Render(line)+ui.MutedStyle.Render(" "+bar))
 			} else {
 				lines = append(lines, style.Render(line))
 			}
@@ -445,8 +446,8 @@ const modalBorder = 1
 
 func (f *taskModal) render(width, height int) string {
 	return lipgloss.NewStyle().Width(width).Height(height).Padding(0, 2, 0, 1).
-		Border(lipgloss.RoundedBorder()).BorderForeground(colorFocus).BorderBackground(colorModal).
-		Background(colorModal).Render(strings.Join(f.contentLines(width, height), "\n"))
+		Border(lipgloss.RoundedBorder()).BorderForeground(ui.ColorFocus).BorderBackground(ui.ColorModal).
+		Background(ui.ColorModal).Render(strings.Join(f.contentLines(width, height), "\n"))
 }
 
 // contentLines lays out the form. Every line starts with a one-cell gutter
@@ -458,21 +459,21 @@ func (f *taskModal) contentLines(width, height int) []string {
 	add := func(focused bool, blocks ...string) {
 		gutter := " "
 		if focused {
-			gutter = lipgloss.NewStyle().Foreground(colorFocus).Render("┃")
+			gutter = lipgloss.NewStyle().Foreground(ui.ColorFocus).Render("┃")
 		}
 		for _, block := range blocks {
 			for line := range strings.SplitSeq(block, "\n") {
-				lines = append(lines, onBackground(gutter+line, colorModal))
+				lines = append(lines, ui.OnBackground(gutter+line, ui.ColorModal))
 			}
 		}
 	}
 	gap := func() { lines = append(lines, "") }
 
-	add(false, renderBreadcrumb(f.breadcrumb(), "", innerWidth))
+	add(false, ui.Breadcrumb(f.breadcrumb(), "", innerWidth))
 	if !compact {
 		gap()
 	}
-	add(f.field == titleField, onBackground(f.title.View(), colorField))
+	add(f.field == titleField, ui.OnBackground(f.title.View(), ui.ColorField))
 	if !f.branchScope() || !compact {
 		gap()
 	}
@@ -480,14 +481,14 @@ func (f *taskModal) contentLines(width, height int) []string {
 	if f.branchScope() {
 		scopeName = "Branch"
 	}
-	add(f.field == scopeField, f.label(scopeName, scopeField), onBackground(fieldStyle().Width(innerWidth).Render(f.scope.View()), colorField))
+	add(f.field == scopeField, f.label(scopeName, scopeField), ui.OnBackground(fieldStyle().Width(innerWidth).Render(f.scope.View()), ui.ColorField))
 	if f.branchScope() {
 		add(f.field == scopeField, f.branchSuggestions(innerWidth)...)
 	}
 	if !compact {
 		gap()
 	}
-	add(f.field == detailsField, f.label("Details", detailsField), onBackground(f.details.View(), colorField))
+	add(f.field == detailsField, f.label("Details", detailsField), ui.OnBackground(f.details.View(), ui.ColorField))
 	if !compact {
 		gap()
 	}
@@ -511,24 +512,24 @@ func (f *taskModal) breadcrumb() []string {
 
 func (f *taskModal) label(name string, field int) string {
 	if f.field == field {
-		return titleStyle.Render(name)
+		return ui.TitleStyle.Render(name)
 	}
-	return mutedStyle.Render(name)
+	return ui.MutedStyle.Render(name)
 }
 
 func (f *taskModal) footer(width int) string {
 	if f.err != "" {
-		return lipgloss.NewStyle().Bold(true).Foreground(colorHigh).Render(ansi.Truncate(f.err, width, "…"))
+		return lipgloss.NewStyle().Bold(true).Foreground(ui.ColorHigh).Render(ansi.Truncate(f.err, width, "…"))
 	}
-	hints := []keyHint{{"ctrl+enter", "save"}, {"esc", "cancel"}, {"tab", "next field"}}
+	hints := []ui.KeyHint{{Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}, {Key: "tab", Label: "next field"}}
 	if f.branchScope() && f.field == scopeField {
-		hints = []keyHint{{"ctrl+enter", "save"}, {"esc", "cancel"}, {"↑↓", "choose"}, {"tab", "accept"}}
+		hints = []ui.KeyHint{{Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}, {Key: "↑↓", Label: "choose"}, {Key: "tab", Label: "accept"}}
 	}
-	return fitHints(hints, width)
+	return ui.FitHints(hints, width)
 }
 
 func fieldStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Background(colorField)
+	return lipgloss.NewStyle().Background(ui.ColorField)
 }
 
 // fieldAreaStyles fills a textarea with the field colour, without the default
@@ -537,32 +538,32 @@ func fieldAreaStyles() textarea.Styles {
 	styles := textarea.DefaultStyles(true)
 	state := textarea.StyleState{
 		Base:        fieldStyle(),
-		Text:        fieldStyle().Foreground(colorStrong),
-		CursorLine:  fieldStyle().Foreground(colorStrong),
-		Placeholder: fieldStyle().Foreground(colorMuted),
-		EndOfBuffer: fieldStyle().Foreground(colorField),
+		Text:        fieldStyle().Foreground(ui.ColorStrong),
+		CursorLine:  fieldStyle().Foreground(ui.ColorStrong),
+		Placeholder: fieldStyle().Foreground(ui.ColorMuted),
+		EndOfBuffer: fieldStyle().Foreground(ui.ColorField),
 		Prompt:      fieldStyle(),
-		Selection:   fieldStyle().Background(colorSelection),
+		Selection:   fieldStyle().Background(ui.ColorSelection),
 	}
 	styles.Focused = state
 	styles.Blurred = state
-	styles.Blurred.Text = fieldStyle().Foreground(colorText)
+	styles.Blurred.Text = fieldStyle().Foreground(ui.ColorText)
 	styles.Blurred.CursorLine = styles.Blurred.Text
-	styles.Cursor.Color = colorFocus
+	styles.Cursor.Color = ui.ColorFocus
 	return styles
 }
 
 func fieldInputStyles() textinput.Styles {
 	styles := textinput.DefaultStyles(true)
 	state := textinput.StyleState{
-		Text:        fieldStyle().Foreground(colorStrong),
-		Placeholder: fieldStyle().Foreground(colorMuted),
-		Suggestion:  fieldStyle().Foreground(colorMuted),
+		Text:        fieldStyle().Foreground(ui.ColorStrong),
+		Placeholder: fieldStyle().Foreground(ui.ColorMuted),
+		Suggestion:  fieldStyle().Foreground(ui.ColorMuted),
 		Prompt:      fieldStyle(),
 	}
 	styles.Focused = state
 	styles.Blurred = state
-	styles.Blurred.Text = fieldStyle().Foreground(colorText)
-	styles.Cursor.Color = colorFocus
+	styles.Blurred.Text = fieldStyle().Foreground(ui.ColorText)
+	styles.Cursor.Color = ui.ColorFocus
 	return styles
 }
