@@ -16,29 +16,36 @@ Or build from a checkout with `go build ./cmd/todo`.
 
 ## Command line
 
-With no arguments, `todo` opens the dashboard. With text, it adds a task and exits:
-
-```sh
-todo Test login failures
-todo -p h @tests Fix flaky login test
-todo -b Fix the bug on this branch
+```
+todo [flags]                     open the dashboard
+todo [flags] [@category] task    add a task
+todo [flags] --scan [directory]  list TODO comments in source files
+todo [flags] --clear-done        remove done tasks
+todo [flags] --clear-missing     remove tasks of branches no longer in Git
 ```
 
-| Option | Effect |
+Flags come first, and everything after them is the task, so a task can start with any word. To start a task with a dash, put `--` before it: `todo -- -v flag is broken`.
+
+```sh
+todo Update the changelog
+todo @tests Fix the flaky login test
+todo -b . -p h Fix the bug on this branch
+```
+
+| Flag | Effect |
 | --- | --- |
-| `-p` / `-priority h\|high\|m\|medium\|l\|low` | Set the priority |
-| `@category` as the first word | File the task under a category. `-c` / `-category` does the same; use one or the other |
-| `-b` / `-branch` | Add to the current Git branch |
-| `-branch-name feature/login` | Add to another local Git branch |
-| `-file path/to/tasks.md` | Use another task file, for the dashboard too |
-| `-e` / `-exclude dir` | Skip a directory when scanning for TODO comments. See [TODOs in source files](#todos-in-source-files) |
+| `-p`, `--priority h\|high\|m\|medium\|l\|low` | Priority of the new task |
+| `-c`, `--category name` | Category of the new task. A leading `@name` word does the same; use one or the other |
+| `-b`, `--branch name` | Local Git branch of the new task. `.` means the current branch |
+| `-f`, `--file path` | Use another task file instead of `todo.md` |
+| `-e`, `--exclude dir` | Skip a directory in `--scan` and the dashboard's Files tab. See [Skipping directories](#skipping-directories) |
+| `--all-files` | With `--scan`, include Markdown, hidden and ignored files |
+| `--scan [directory]` | List TODO comments under the directory, or here. See [TODOs in source files](#todos-in-source-files) |
+| `--clear-done` | Remove every done task, and list what went |
+| `--clear-missing` | Remove every task of branches whose local Git branch no longer exists, open ones included, and their headings. Your Git branches aren't touched. Needs Git. Give both `--clear-` flags to do both |
+| `-h`, `--help` | Show usage |
 
-Flags go before the task text. `todo add scan` adds a task literally named “scan”.
-
-Other commands:
-
-- `todo clear-done` removes every done task and lists what went. Inside a Git repository it also deletes branch sections whose local branch no longer exists, open tasks included.
-- `todo scan [directory]` lists TODO comments in source files. See [TODOs in source files](#todos-in-source-files).
+A task goes in one place: the general list, a category, or a branch. Branch tasks can't have a category. Categories are one word, and `Branches` is reserved; a branch must already exist locally.
 
 The task file is `todo.md` at the repository root, or in the current directory outside Git. It's created when you add the first task.
 
@@ -89,7 +96,7 @@ In the form:
 
 ### Clearing done tasks
 
-`X` clears done tasks from where you are: the opened category or branch, the whole tab, or everything in the All tasks view. Missing branches go too, open tasks included. Inside a missing branch, `X` deletes that branch.
+`X` clears done tasks from where you are: the opened category or branch, the whole tab, or everything in the All tasks view. The tasks of missing branches go too, open ones included. Inside a missing branch, `X` removes all of its tasks.
 
 A dialog shows what will be removed, including headings left empty. Only `y` goes ahead. Afterwards `u` undoes it, until the file next changes.
 
@@ -163,20 +170,20 @@ As in todo-system, the dashboard reads the TODO list in the `README.md` beside t
 
 ## TODOs in source files
 
-`todo scan [directory]` lists case-insensitive `TODO` and `@todo` comments with their file and line. A marker counts when it starts the comment, as in `// TODO fix`, or is followed by `:` or `(` anywhere in it, so `* @return todo` doesn't match. [todo-system markers](#todo-system-syntax) count anywhere in a comment.
+`todo --scan [directory]` lists case-insensitive `TODO` and `@todo` comments with their file and line. A marker counts when it starts the comment, as in `// TODO fix`, or is followed by `:` or `(` anywhere in it, so `* @return todo` doesn't match. [todo-system markers](#todo-system-syntax) count anywhere in a comment.
 
 The dashboard's Files tab shows the same results, up to 1,000 matches, with the comment text first and a shortened path beside it. The status bar shows the full path of the highlighted TODO. `→` opens a detail page with the TODO's text and as much of the surrounding code as fits, and `e` opens the file in your editor.
 
 - Scanning covers the working directory and below, and uses ripgrep (`rg`) if it's installed.
-- It skips gitignored, hidden, binary and Markdown files. `todo -all-files scan` includes them, apart from binaries.
+- It skips gitignored, hidden, binary and Markdown files. `todo --all-files --scan` includes them, apart from binaries.
 - Directories starting with `.` are always skipped, as are `node_modules` and `vendor` by default.
 
 ### Skipping directories
 
-To skip other directories, use `-e` / `-exclude`, once per directory. It works for `todo scan` and the dashboard:
+To skip other directories, use `-e` / `--exclude`, once per directory. It works for `--scan` and the dashboard:
 
 ```sh
-todo -e node_modules -e vendor -e dist scan
+todo -e node_modules -e vendor -e dist --scan
 todo -e ./web/generated
 ```
 
@@ -200,7 +207,7 @@ The scanner supports [todo-system](https://github.com/archtechx/todo-system)'s m
 - Four or more zeros are labelled `0x4` to `0x9`, then `0x9+`, so the column stays narrow. They still sort by the real count.
 - As in todo-system, a TODO has a category or a level, not both: `todo1@boundary` is just in `boundary`.
 - Numbers todo-system doesn't accept, such as `todo12`, are treated as generic rather than hidden.
-- `todo scan` lists levels first too, then the rest by file.
+- `todo --scan` lists levels first too, then the rest by file.
 
 ## Development
 

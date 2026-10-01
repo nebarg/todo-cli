@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -190,7 +191,7 @@ func TestClearDoneCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out strings.Builder
-	if err := clearDone(&out, path, noneMissing); err != nil {
+	if err := clearTasks(&out, path, true, nil); err != nil {
 		t.Fatal(err)
 	}
 	want := "Removed 4 done tasks from " + path + ":\n  Loose done\n  Doc done\n  Auth done\n  Branch done\nRemoved empty headings: @docs, feature/x\n"
@@ -201,16 +202,14 @@ func TestClearDoneCommand(t *testing.T) {
 		t.Fatalf("file = %q", got)
 	}
 	out.Reset()
-	if err := clearDone(&out, path, noneMissing); err != nil || out.String() != "No done tasks in "+path+"\n" {
+	if err := clearTasks(&out, path, true, nil); err != nil || out.String() != "No done tasks in "+path+"\n" {
 		t.Fatalf("second clear = %q, %v", out.String(), err)
 	}
 	out.Reset()
-	if err := clearDone(&out, filepath.Join(t.TempDir(), "missing.md"), noneMissing); err != nil || !strings.HasPrefix(out.String(), "No done tasks") {
+	if err := clearTasks(&out, filepath.Join(t.TempDir(), "missing.md"), true, nil); err != nil || !strings.HasPrefix(out.String(), "No done tasks") {
 		t.Fatalf("missing file = %q, %v", out.String(), err)
 	}
 }
-
-func noneMissing(string) bool { return false }
 
 const missingContent = "- [x] Loose done\n\n# Branches\n\n## feature/gone\n\n- [ ] Gone open\n\n- [x] Gone done\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n"
 
@@ -233,19 +232,19 @@ func missingBranchModel(t *testing.T) (*model, string) {
 func TestClearInsideMissingBranchDeletesIt(t *testing.T) {
 	m, path := missingBranchModel(t)
 	m.branchFilter = "feature/gone"
-	if footer := ansi.Strip(m.renderFooter(200)); !strings.Contains(footer, "X delete branch") {
-		t.Fatalf("missing branch footer lacks delete: %q", footer)
+	if footer := ansi.Strip(m.renderFooter(200)); !strings.Contains(footer, "X remove its tasks") {
+		t.Fatalf("missing branch footer lacks remove: %q", footer)
 	}
 	m = press(m, "X")
 	if m.confirmClear == nil {
 		t.Fatalf("X did not ask for confirmation: %q", m.status)
 	}
-	if dialog := ansi.Strip(m.confirmClear.render()); !strings.Contains(dialog, "Delete "+branchIcon+" feature/gone and its 2 tasks?") || !strings.Contains(dialog, "no longer exists in Git") {
+	if dialog := ansi.Strip(m.confirmClear.render()); !strings.Contains(dialog, "Remove the 2 tasks of "+branchIcon+" feature/gone?") || !strings.Contains(dialog, "no longer exists in Git") {
 		t.Fatalf("dialog = %s", dialog)
 	}
 	m = press(m, "y")
 	want := "- [x] Loose done\n\n# Branches\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n"
-	if got := fileContent(t, path); got != want || m.status != "Deleted branch feature/gone" || m.branchFilter != "" {
+	if got := fileContent(t, path); got != want || m.status != "Removed the tasks of feature/gone" || m.branchFilter != "" {
 		t.Fatalf("file = %q, status %q, filter %q", got, m.status, m.branchFilter)
 	}
 	if press(m, "u"); fileContent(t, path) != missingContent {
@@ -260,28 +259,30 @@ func TestClearingBranchesRemovesMissingOnes(t *testing.T) {
 	}
 	m = press(m, "X")
 	dialog := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(m.confirmClear.render()), "│", " ")), " ")
-	for _, want := range []string{"Remove 1 done task and 1 missing branch from Branches?", branchIcon + " feature/gone no longer exists in Git, so all of its 2 tasks go too."} {
+	for _, want := range []string{"Remove 1 done task and 2 tasks of missing branches from Branches?", branchIcon + " feature/gone no longer exists in Git, so all of its 2 tasks go too."} {
 		if !strings.Contains(dialog, want) {
 			t.Errorf("dialog lacks %q: %s", want, dialog)
 		}
 	}
 	m = press(m, "y")
 	want := "- [x] Loose done\n\n# Branches\n\n## feature/live\n\n- [ ] Live open\n"
-	if got := fileContent(t, path); got != want || m.status != "Removed 1 done task and 1 missing branch" {
+	if got := fileContent(t, path); got != want || m.status != "Removed 1 done task and 2 tasks of missing branches" {
 		t.Fatalf("file = %q, status %q", got, m.status)
 	}
 }
 
-func TestClearDoneCommandDeletesMissingBranches(t *testing.T) {
+func goneMissing(branch string) bool { return branch == "feature/gone" }
+
+func TestClearDoneAndMissingTogether(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
 	if err := os.WriteFile(path, []byte(missingContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 	var out strings.Builder
-	if err := clearDone(&out, path, func(branch string) bool { return branch == "feature/gone" }); err != nil {
+	if err := clearTasks(&out, path, true, goneMissing); err != nil {
 		t.Fatal(err)
 	}
-	want := "Removed 2 done tasks and 1 missing branch from " + path + ":\n  Loose done\n  Gone open\n  Gone done\n  Live done\nDeleted branches missing from Git: feature/gone\n"
+	want := "Removed 2 done tasks and 2 tasks of missing branches from " + path + ":\n  Loose done\n  Gone open\n  Gone done\n  Live done\nBranches no longer in Git: feature/gone\n"
 	if out.String() != want {
 		t.Fatalf("output = %q, want %q", out.String(), want)
 	}
@@ -297,5 +298,75 @@ func TestIndexMarksMissingBranches(t *testing.T) {
 	gone := lipgloss.NewStyle().Foreground(colorHigh).Render(indexColumn("⚠ feature/gone", 24))
 	if !strings.Contains(view, gone) || !strings.Contains(ansi.Strip(view), branchIcon+" feature/live") {
 		t.Fatalf("index does not mark the missing branch:\n%s", view)
+	}
+}
+
+func TestClearDoneOrMissingAlone(t *testing.T) {
+	for _, item := range []struct {
+		name    string
+		done    bool
+		missing func(string) bool
+		output  string
+		file    string
+	}{
+		{
+			"done only keeps open tasks of missing branches", true, nil,
+			"Removed 3 done tasks from %s:\n  Loose done\n  Gone done\n  Live done\n",
+			"# Branches\n\n## feature/gone\n\n- [ ] Gone open\n\n## feature/live\n\n- [ ] Live open\n",
+		},
+		{
+			"missing only keeps done tasks elsewhere", false, goneMissing,
+			"Removed 2 tasks of missing branches from %s:\n  Gone open\n  Gone done\nBranches no longer in Git: feature/gone\n",
+			"- [x] Loose done\n\n# Branches\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n",
+		},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "todo.md")
+			if err := os.WriteFile(path, []byte(missingContent), 0644); err != nil {
+				t.Fatal(err)
+			}
+			var out strings.Builder
+			if err := clearTasks(&out, path, item.done, item.missing); err != nil {
+				t.Fatal(err)
+			}
+			if want := fmt.Sprintf(item.output, path); out.String() != want {
+				t.Fatalf("output = %q, want %q", out.String(), want)
+			}
+			if got := fileContent(t, path); got != item.file {
+				t.Fatalf("file = %q, want %q", got, item.file)
+			}
+		})
+	}
+}
+
+func TestClearSaysWhatThereWasNothingOf(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("- [ ] Open\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct {
+		done    bool
+		missing func(string) bool
+		want    string
+	}{
+		{true, nil, "No done tasks in "},
+		{false, goneMissing, "No branches missing from Git in "},
+		{true, goneMissing, "No done tasks or branches missing from Git in "},
+	} {
+		var out strings.Builder
+		if err := clearTasks(&out, path, item.done, item.missing); err != nil || out.String() != item.want+path+"\n" {
+			t.Fatalf("clear = %q, %v; want %q", out.String(), err, item.want)
+		}
+	}
+}
+
+func TestClearMissingNeedsGit(t *testing.T) {
+	if _, err := missingBranches(projectContext{}); err == nil {
+		t.Fatal("missing branches were checked without Git")
+	}
+	project := testGitProject(t, t.TempDir(), "main", "feature/live")
+	missing, err := missingBranches(project)
+	if err != nil || !missing("feature/gone") || missing("feature/live") || missing("") {
+		t.Fatalf("missingBranches = %v", err)
 	}
 }

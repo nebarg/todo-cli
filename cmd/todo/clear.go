@@ -47,14 +47,14 @@ func pickClearTargets(tasks []store.Task, missing func(string) bool) clearTarget
 	return c
 }
 
-// summary reads like "3 done tasks and 1 missing branch".
+// summary reads like "3 done tasks and 2 tasks of missing branches".
 func (c clearTargets) summary() string {
 	var parts []string
 	if c.done > 0 {
 		parts = append(parts, doneTaskCount(c.done))
 	}
 	if len(c.branches) > 0 {
-		parts = append(parts, missingBranchCount(len(c.branches)))
+		parts = append(parts, missingTaskCount(len(c.tasks)-c.done))
 	}
 	return strings.Join(parts, " and ")
 }
@@ -105,7 +105,7 @@ func (m *model) clearHint() []keyHint {
 	}
 	switch {
 	case m.viewingMissingBranch():
-		return []keyHint{{"X", "delete branch"}}
+		return []keyHint{{"X", "remove its tasks"}}
 	case len(targets.branches) > 0:
 		parts = append(parts, fmt.Sprintf("%d missing", len(targets.branches)))
 	case len(parts) == 0:
@@ -159,7 +159,7 @@ func (m *model) updateClearConfirmation(msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 	}
 	m.lastClear = &confirmation.removal
 	if confirmation.wholeBranch {
-		m.status = "Deleted branch " + confirmation.targets.branches[0]
+		m.status = "Removed the tasks of " + confirmation.targets.branches[0]
 	} else {
 		m.status = "Removed " + confirmation.targets.summary()
 	}
@@ -192,7 +192,9 @@ func doneTaskCount(n int) string { return plural(n, "done task", "done tasks") }
 
 func taskCount(n int) string { return plural(n, "task", "tasks") }
 
-func missingBranchCount(n int) string { return plural(n, "missing branch", "missing branches") }
+func missingTaskCount(n int) string {
+	return plural(n, "task of a missing branch", "tasks of missing branches")
+}
 
 func plural(n int, one, many string) string {
 	if n == 1 {
@@ -211,7 +213,7 @@ func (c clearConfirmation) render() string {
 	}
 	switch {
 	case c.wholeBranch:
-		title = fmt.Sprintf("Delete %s and its %s?", missing[0], taskCount(missingTasks))
+		title = fmt.Sprintf("Remove the %s of %s?", taskCount(missingTasks), missing[0])
 		reason = "The branch no longer exists in Git."
 	case len(missing) == 1:
 		title = fmt.Sprintf("Remove %s from %s?", c.targets.summary(), c.scope)
