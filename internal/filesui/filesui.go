@@ -4,7 +4,6 @@
 package filesui
 
 import (
-	"fmt"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -184,13 +183,11 @@ func (m *Model) Details() bool { return m.details }
 // Err is the last scan's error, if it failed.
 func (m *Model) Err() string { return m.err }
 
-// Count is how many TODOs were found, or "…" while scanning.
-func (m *Model) Count() string {
-	if m.loading {
-		return "…"
-	}
-	return fmt.Sprint(len(m.matches))
-}
+// Loading is true while a scan is running.
+func (m *Model) Loading() bool { return m.loading }
+
+// Total is how many TODOs the last scan found.
+func (m *Model) Total() int { return len(m.matches) }
 
 func (m *Model) move(delta int) tea.Cmd {
 	next := max(0, min(m.cursor+delta, len(m.rows())-1))

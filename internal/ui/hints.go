@@ -27,3 +27,19 @@ func FitHints(hints []KeyHint, width int) string {
 	}
 	return ""
 }
+
+// Footer lays out a status message and the keys for where the user is on
+// the left, dropping the least important keys first, and pinned keys on the
+// right.
+func Footer(status string, hints, pinned []KeyHint, width int) string {
+	right := RenderHints(pinned)
+	available := max(0, width-ansi.StringWidth(right)-3)
+	left := FitHints(hints, available)
+	if status != "" {
+		left = StatusStyle.Render(ansi.Truncate(status, max(1, available), "…"))
+		if keys := FitHints(hints, available-ansi.StringWidth(left)-3); keys != "" {
+			left += "   " + keys
+		}
+	}
+	return left + strings.Repeat(" ", max(0, width-ansi.StringWidth(left)-ansi.StringWidth(right))) + right
+}

@@ -2,7 +2,7 @@
 
 A small TODO app that keeps your tasks in a Markdown file, with a terminal dashboard for working through them.
 
-It also finds TODO comments in your code and the TODO list in your README, and understands [todo-system](https://github.com/archtechx/todo-system)'s categories (`todo@boundary`) and priorities (`todo0`, `todo1`).
+It also finds TODO comments in your code and the TODO list in your README, and understands [todo-system](https://github.com/archtechx/todo-system)'s categories (`todo@boundary`) and priorities (`todo0`, `todo1`). If you only want to browse TODO comments, [`todo-scan`](#todo-scan) does that on its own, without a task file.
 
 Use a terminal with a [Nerd Font](https://www.nerdfonts.com/) for the Git and branch icons; without one they show as empty boxes.
 
@@ -10,9 +10,10 @@ Use a terminal with a [Nerd Font](https://www.nerdfonts.com/) for the Git and br
 
 ```sh
 go install github.com/nebarg/todo-cli/cmd/todo@latest
+go install github.com/nebarg/todo-cli/cmd/todo-scan@latest
 ```
 
-Or build from a checkout with `go build ./cmd/todo`.
+Install either or both. From a checkout, `go build ./cmd/todo ./cmd/todo-scan`.
 
 ## Command line
 
@@ -172,9 +173,9 @@ As in todo-system, the dashboard reads the TODO list in the `README.md` beside t
 
 `todo --scan [directory]` lists case-insensitive `TODO` and `@todo` comments with their file and line. A marker counts when it starts the comment, as in `// TODO fix`, or is followed by `:` or `(` anywhere in it, so `* @return todo` doesn't match. [todo-system markers](#todo-system-syntax) count anywhere in a comment.
 
-The dashboard's Files tab shows the same results, up to 1,000 matches, with the comment text first and a shortened path beside it. The status bar shows the full path of the highlighted TODO. `→` opens a detail page with the TODO's text and as much of the surrounding code as fits, and `e` opens the file in your editor.
+The dashboard's Files tab and [`todo-scan`](#todo-scan) show the same results, up to 1,000 matches, with the comment text first and a shortened path beside it. The status bar shows the full path of the highlighted TODO. `→` opens a detail page with the TODO's text and as much of the surrounding code as fits, and `e` opens the file in your editor.
 
-- Scanning covers the working directory and below, and uses ripgrep (`rg`) if it's installed.
+- The dashboard scans the working directory and below, and `todo-scan` the directory you give it. Both use ripgrep (`rg`) if it's installed.
 - It skips gitignored, hidden, binary and Markdown files. `todo --all-files --scan` includes them, apart from binaries.
 - Directories starting with `.` are always skipped, as are `node_modules` and `vendor` by default.
 
@@ -190,6 +191,18 @@ todo -e ./web/generated
 - A bare name, such as `dist`, skips every directory with that name.
 - Anything with a slash, such as `./web/generated`, is a path from the working directory.
 - Giving `-e` replaces the defaults, so list `node_modules` and `vendor` again if you still want them skipped.
+
+### todo-scan
+
+`todo-scan` is the Files tab on its own, full screen. It never reads or creates a task file, so it's safe to point at any directory:
+
+```sh
+todo-scan
+todo-scan ~/Code/other-project
+todo-scan -e dist web
+```
+
+The directory defaults to the current one. `-e` / `--exclude` works as above, with paths taken from where you run it. The keys are the Files tab's, plus `r` to rescan and `q` to quit.
 
 ### todo-system syntax
 

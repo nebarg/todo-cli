@@ -120,7 +120,7 @@ func (m *model) renderTabs() string {
 	}{
 		{"1", "General", fmt.Sprintf("%d/%d", completedCount(m.general)+completedCount(m.readme), len(m.general)+len(m.readme)), generalPane},
 		{"2", "Branches", fmt.Sprintf("%d/%d", completedCount(m.branches), len(m.branches)), branchPane},
-		{"3", "Files", m.files.Count(), sourcePane},
+		{"3", "Files", m.filesCount(), sourcePane},
 	}
 	var tabs strings.Builder
 	for i, item := range items {
@@ -138,6 +138,13 @@ func (m *model) renderTabs() string {
 	return tabs.String()
 }
 
+func (m *model) filesCount() string {
+	if m.files.Loading() {
+		return "…"
+	}
+	return fmt.Sprint(m.files.Total())
+}
+
 var pinnedHints = []ui.KeyHint{{Key: "?", Label: "help"}, {Key: "q", Label: "quit"}}
 
 func (m *model) renderFooter(width int) string {
@@ -145,18 +152,7 @@ func (m *model) renderFooter(width int) string {
 		input := m.input.View()
 		return input + "  " + ui.FitHints([]ui.KeyHint{{Key: "enter", Label: "save"}, {Key: "esc", Label: "cancel"}}, width-ansi.StringWidth(input)-2)
 	}
-	pinned := ui.RenderHints(pinnedHints)
-	available := max(0, width-ansi.StringWidth(pinned)-3)
-	left := ""
-	if m.status != "" {
-		left = ui.StatusStyle.Render(ansi.Truncate(m.status, max(1, available), "…"))
-		if hints := ui.FitHints(m.footerHints(), available-ansi.StringWidth(left)-3); hints != "" {
-			left += "   " + hints
-		}
-	} else {
-		left = ui.FitHints(m.footerHints(), available)
-	}
-	return left + strings.Repeat(" ", max(0, width-ansi.StringWidth(left)-ansi.StringWidth(pinned))) + pinned
+	return ui.Footer(m.status, m.footerHints(), pinnedHints, width)
 }
 
 func (m *model) footerHints() []ui.KeyHint {

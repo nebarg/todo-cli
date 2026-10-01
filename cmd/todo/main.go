@@ -138,7 +138,7 @@ func main() {
 				fail(err)
 			}
 		}
-		exclude, err := scanExclude(cwd, dir, o.excludes)
+		exclude, err := scan.ParseExclude(cwd, dir, o.excludes)
 		if err != nil {
 			fail(err)
 		}
@@ -168,7 +168,7 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		exclude, err := scanExclude(cwd, cwd, o.excludes)
+		exclude, err := scan.ParseExclude(cwd, cwd, o.excludes)
 		if err != nil {
 			fail(err)
 		}

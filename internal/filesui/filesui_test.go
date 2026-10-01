@@ -109,11 +109,11 @@ func TestDetailPageOpensAndCloses(t *testing.T) {
 
 func TestEmptyListOpensNothing(t *testing.T) {
 	m := New("/nowhere", scan.Exclude{})
-	if m.Count() != "…" || !strings.Contains(ansi.Strip(m.View(60, 10)), "Scanning…") {
-		t.Fatalf("a list before its first scan should say it's scanning: %q", m.Count())
+	if !m.Loading() || !strings.Contains(ansi.Strip(m.View(60, 10)), "Scanning…") {
+		t.Fatal("a list before its first scan should say it's scanning")
 	}
 	m.Update(ScannedMsg{})
-	if press(&m, "right"); m.Details() || m.Count() != "0" {
+	if press(&m, "right"); m.Details() || m.Loading() || m.Total() != 0 {
 		t.Fatal("right opened details without a TODO")
 	}
 	if cmd := press(&m, "e"); cmd != nil {
