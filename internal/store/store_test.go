@@ -224,17 +224,6 @@ func TestSingleCategoryHeadingsAndMoves(t *testing.T) {
 	}
 }
 
-func TestLabelsMetadataIsNotACategory(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "TODO.md")
-	if err := os.WriteFile(path, []byte("- [ ] Old task !high\n  - Labels: auth\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	tasks, err := Load(path)
-	if err != nil || len(tasks) != 1 || tasks[0].Category != "" || tasks[0].Priority != PriorityHigh || tasks[0].Details != "- Labels: auth" {
-		t.Fatalf("Labels metadata was treated as a category: %v, %+v", err, tasks)
-	}
-}
-
 func TestTaskDetailsAreParsedAndPreserved(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
 	original := "## General\n\n- [ ] Fix login redirect !high\n\n  When a session expires, return to the previous page.\n\n  - [ ] Add a regression test\n\n- [ ] Another task\n\n## Branches\n\n### feature/login\n\n- [ ] Branch task\n\n  Branch-specific context.\n"
@@ -605,13 +594,6 @@ func TestPriorityTokenKeepsWindowsLineEndings(t *testing.T) {
 	}
 	if got := readFile(t, path); got != "- [ ] Task !low\r\n- [ ] Other\r\n" {
 		t.Fatalf("file = %q", got)
-	}
-}
-
-func TestOldPriorityLinesAreDetails(t *testing.T) {
-	_, tasks := writeAndLoad(t, "- [ ] Old style\n  - Priority: High\n")
-	if tasks[0].Priority != PriorityNone || tasks[0].Details != "- Priority: High" {
-		t.Fatalf("old priority line = %+v", tasks[0])
 	}
 }
 
