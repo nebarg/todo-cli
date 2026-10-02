@@ -89,8 +89,8 @@ func TestMissingBranchTasksAreReadOnly(t *testing.T) {
 	for _, key := range []tea.KeyPressMsg{{Code: 'd', Text: "d"}, {Code: 'p', Text: "p"}, {Code: 'e', Text: "e"}, {Code: tea.KeyEnter}} {
 		updated, _ = m.Update(key)
 		m = updated.(*model)
-		if m.modal != nil || m.status != missingBranchStatus {
-			t.Fatalf("%q was not blocked: modal=%v status=%q", key.String(), m.modal != nil, m.status)
+		if isOpen[*taskModal](m) || m.status != missingBranchStatus {
+			t.Fatalf("%q was not blocked: modal=%v status=%q", key.String(), isOpen[*taskModal](m), m.status)
 		}
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})

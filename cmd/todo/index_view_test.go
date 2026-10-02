@@ -130,13 +130,13 @@ func TestIndexEditShowsTaskLocation(t *testing.T) {
 			}
 			updated, _ := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 			m = updated.(*model)
-			if m.modal == nil {
+			if !isOpen[*taskModal](m) {
 				t.Fatalf("edit did not open for %s", item.task)
 			}
 			for _, size := range [][2]int{{76, 20}, {54, 12}} {
-				m.modal.resize(size[0]+2, size[1]+4)
-				width, height := m.modal.dimensions(size[0]+2, size[1]+4)
-				rendered := m.modal.render(width, height)
+				form(t, m).resize(size[0]+2, size[1]+4)
+				width, height := form(t, m).dimensions(size[0]+2, size[1]+4)
+				rendered := form(t, m).render(width, height)
 				if !strings.Contains(ansi.Strip(rendered), item.location) || lipgloss.Width(rendered) != width || lipgloss.Height(rendered) != height {
 					t.Errorf("edit location missing or overflowing for %s at %dx%d: %s", item.task, size[0], size[1], ansi.Strip(rendered))
 				}
@@ -165,7 +165,7 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 	m = updated.(*model)
-	if m.modal == nil || m.modal.title.Value() != "First" {
+	if !isOpen[*taskModal](m) || form(t, m).title.Value() != "First" {
 		t.Fatal("Edit did not open the indexed task")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -177,7 +177,7 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
 	m = updated.(*model)
-	if !m.categoryInput || m.indexSort != "priority" {
+	if !isOpen[*categoryPrompt](m) || m.indexSort != "priority" {
 		t.Fatal("c should edit the selected task's category without changing sort")
 	}
 	for p, want := range map[store.Priority]color.Color{"high": ui.ColorHigh, "medium": ui.ColorMedium, "low": ui.ColorLow} {

@@ -47,26 +47,20 @@ func (m *model) View() tea.View {
 		}
 	}
 	content := header + "\n" + body + "\n" + footer
-	if m.modal != nil {
-		modalWidth, modalHeight := m.modal.dimensions(width, height)
-		content = overlay(content, m.modal.render(modalWidth, modalHeight), width, height)
-	}
-	if m.confirmClear != nil {
-		content = overlay(content, m.confirmClear.render(), width, height)
-	}
-	if m.helpOpen {
-		content = overlay(content, renderHelp(), width, height)
+	if d, ok := m.overlay.(dialog); ok {
+		content = placeOver(content, d.view(width, height), width, height)
 	}
 	v := tea.NewView(content)
 	v.AltScreen = true
 	return v
 }
 
-func overlay(content, dialog string, width, height int) string {
-	x, y := (width-lipgloss.Width(dialog))/2, (height-lipgloss.Height(dialog))/2
+// placeOver draws box over the middle of content.
+func placeOver(content, box string, width, height int) string {
+	x, y := (width-lipgloss.Width(box))/2, (height-lipgloss.Height(box))/2
 	return lipgloss.NewCompositor(
 		lipgloss.NewLayer(content),
-		lipgloss.NewLayer(dialog).X(x).Y(y).Z(1),
+		lipgloss.NewLayer(box).X(x).Y(y).Z(1),
 	).Render()
 }
 
@@ -148,9 +142,8 @@ func (m *model) filesCount() string {
 var pinnedHints = []ui.KeyHint{{Key: "?", Label: "help"}, {Key: "q", Label: "quit"}}
 
 func (m *model) renderFooter(width int) string {
-	if m.categoryInput {
-		input := m.input.View()
-		return input + "  " + ui.FitHints([]ui.KeyHint{{Key: "enter", Label: "save"}, {Key: "esc", Label: "cancel"}}, width-ansi.StringWidth(input)-2)
+	if p, ok := m.overlay.(*categoryPrompt); ok {
+		return p.footer(width)
 	}
 	return ui.Footer(m.status, m.footerHints(), pinnedHints, width)
 }

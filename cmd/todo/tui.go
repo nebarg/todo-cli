@@ -7,9 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"unicode"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/nebarg/todo-cli/internal/editor"
 	"github.com/nebarg/todo-cli/internal/filesui"
@@ -70,12 +68,7 @@ type model struct {
 	localBranchNames      map[string]bool
 	branchesVerified      bool
 	files                 filesui.Model
-	input                 textinput.Model
-	categoryInput         bool
-	editTask              store.Task
-	modal                 *taskModal
-	helpOpen              bool
-	confirmClear          *clearConfirmation
+	overlay               overlay // nil when nothing is open over the dashboard
 	lastClear             *store.Removal
 	status                string
 	width                 int
@@ -83,11 +76,7 @@ type model struct {
 }
 
 func newModel(file string, project projectContext, files filesui.Model) (*model, error) {
-	input := textinput.New()
-	input.Prompt = "New task: "
-	input.Placeholder = "What needs doing?"
-	input.SetWidth(72)
-	m := &model{file: file, project: project, input: input, width: 100, height: 30, indexSort: sortPriority, files: files}
+	m := &model{file: file, project: project, width: 100, height: 30, indexSort: sortPriority, files: files}
 	if err := m.reload(); err != nil {
 		return nil, err
 	}
@@ -101,11 +90,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		if m.modal != nil {
-			m.modal.resize(msg.Width, msg.Height)
+		if m.overlay != nil {
+			return m.updateOverlay(msg)
 		}
-		inputWidth := max(msg.Width-4, 20)
-		m.input.SetWidth(inputWidth)
 	case tea.BackgroundColorMsg:
 		ui.ApplyTheme(msg.IsDark())
 	case filesui.ScannedMsg:
@@ -125,33 +112,23 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = err.Error()
 		}
 		return m, m.files.Scan()
+	case taskSavedMsg:
+		return m.taskSaved(msg)
+	case categorySetMsg:
+		return m.categorySet(msg)
+	case clearConfirmedMsg:
+		return m.applyClear(msg)
 	case tea.PasteMsg:
-		if m.modal != nil {
-			return m.updateTaskModalPaste(msg)
-		}
-		if m.categoryInput {
-			msg.Content = stripCategorySpaces(msg.Content)
-			var cmd tea.Cmd
-			m.input, cmd = m.input.Update(msg)
-			return m, cmd
+		if m.overlay != nil {
+			return m.updateOverlay(msg)
 		}
 	case tea.KeyPressMsg:
 		key := msg.String()
 		if key == "ctrl+c" {
 			return m, tea.Quit
 		}
-		if m.helpOpen {
-			m.helpOpen = false
-			return m, nil
-		}
-		if m.confirmClear != nil {
-			return m.updateClearConfirmation(msg)
-		}
-		if m.modal != nil {
-			return m.updateTaskModal(msg)
-		}
-		if m.categoryInput {
-			return m.updateCategoryInput(msg)
+		if m.overlay != nil {
+			return m.updateOverlay(msg)
 		}
 		if m.indexMode {
 			return m.updateIndex(msg)
@@ -166,7 +143,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q":
 			return m, tea.Quit
 		case "?":
-			m.helpOpen = true
+			m.overlay = helpOverlay{}
 		case "i":
 			m.indexMode = true
 			m.indexSort = sortPriority
@@ -324,95 +301,6 @@ func (m *model) openReadme() tea.Cmd {
 		return nil
 	}
 	return editor.Open(m.readmeFile(), selected.Line+1)
-}
-
-func (m *model) startCategoryInput() (tea.Model, tea.Cmd) {
-	if m.readmeSelected() {
-		m.status = readmeReadOnly
-		return m, nil
-	}
-	selected, ok := m.selectedTask()
-	if !ok {
-		m.status = "Select a Markdown task to edit its category"
-		return m, nil
-	}
-	if selected.Branch != "" {
-		m.status = "Categories are only for general tasks"
-		return m, nil
-	}
-	m.editTask = selected
-	m.input.Prompt = "Category: "
-	m.input.SetValue(selected.Category)
-	m.categoryInput = true
-	m.status = ""
-	return m, m.input.Focus()
-}
-
-func (m *model) updateCategoryInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.categoryInput = false
-		m.input.Blur()
-		m.input.SetValue("")
-		m.status = ""
-		return m, nil
-	case "enter":
-		oldTask := m.editTask
-		newCategory := store.NormalizeCategory(m.input.Value())
-		if err := store.SetCategory(m.file, m.editTask, m.input.Value()); err != nil {
-			m.status = errorStatus(err)
-			return m, nil
-		}
-		m.categoryInput = false
-		m.input.Blur()
-		m.input.SetValue("")
-		if !m.indexMode && m.activePane() == generalPane {
-			m.generalCategory = newCategory
-			m.generalCursor = 0
-		}
-		if err := m.refresh(); err != nil {
-			m.status = err.Error()
-			return m, nil
-		}
-		if m.indexMode {
-			m.selectIndexTask(oldTask)
-		} else if m.activePane() == generalPane {
-			if newCategory != "" {
-				root := *m
-				root.generalCategory = ""
-				for i, row := range root.generalRows() {
-					if row.kind == rowCategory && strings.EqualFold(row.name, newCategory) {
-						m.generalRootCursor = i
-						break
-					}
-				}
-			}
-			for i, row := range m.generalRows() {
-				if row.kind == rowTask && row.todo.Text == oldTask.Text && row.todo.Branch == oldTask.Branch && strings.EqualFold(row.todo.Category, newCategory) {
-					m.generalCursor = i
-					break
-				}
-			}
-		}
-		m.status = ""
-		return m, nil
-	}
-	if msg.Code == tea.KeySpace {
-		return m, nil
-	}
-	msg.Text = stripCategorySpaces(msg.Text)
-	var cmd tea.Cmd
-	m.input, cmd = m.input.Update(msg)
-	return m, cmd
-}
-
-func stripCategorySpaces(value string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsSpace(r) {
-			return -1
-		}
-		return r
-	}, value)
 }
 
 func (m *model) toggleSelected() {
@@ -687,18 +575,8 @@ func compareIndexGroup(a, b string) int {
 }
 
 func (m *model) selectIndexTask(selected store.Task) {
-	tasks := m.indexTasks()
-	best, distance := -1, math.MaxInt
-	for i, t := range tasks {
-		if t.Text != selected.Text || t.Branch != selected.Branch {
-			continue
-		}
-		if d := abs(t.Line - selected.Line); d < distance {
-			best, distance = i, d
-		}
-	}
-	if best >= 0 {
-		m.indexCursor = best
+	if i := nearestTask(m.indexTasks(), selected); i >= 0 {
+		m.indexCursor = i
 	}
 }
 
@@ -710,7 +588,7 @@ func (m *model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "q":
 		return m, tea.Quit
 	case "?":
-		m.helpOpen = true
+		m.overlay = helpOverlay{}
 	case "up", "k":
 		m.moveCursor(-1)
 	case "down", "j":

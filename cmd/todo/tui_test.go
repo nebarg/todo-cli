@@ -18,6 +18,26 @@ import (
 // than by scanning.
 func testFiles() filesui.Model { return filesui.New(".", scan.Exclude{}, nil) }
 
+// isOpen reports whether the overlay open over m is a T.
+func isOpen[T overlay](m *model) bool {
+	_, ok := m.overlay.(T)
+	return ok
+}
+
+// opened is the overlay open over m, failing the test unless it is a T.
+func opened[T overlay](t *testing.T, m *model) T {
+	t.Helper()
+	o, ok := m.overlay.(T)
+	if !ok {
+		t.Fatalf("overlay = %#v, want a %T", m.overlay, o)
+	}
+	return o
+}
+
+func form(t *testing.T, m *model) *taskModal                 { return opened[*taskModal](t, m) }
+func confirmation(t *testing.T, m *model) *clearConfirmation { return opened[*clearConfirmation](t, m) }
+func prompt(t *testing.T, m *model) *categoryPrompt          { return opened[*categoryPrompt](t, m) }
+
 func TestChangingCategoryKeepsTaskSelected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
 	if err := os.WriteFile(path, []byte("## General\n\n### @auth\n\n- [ ] Fix login\n"), 0644); err != nil {
@@ -30,18 +50,42 @@ func TestChangingCategoryKeepsTaskSelected(t *testing.T) {
 	m.enterSelectedGroup()
 	opened, _ := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
 	m = opened.(*model)
-	if !m.categoryInput {
+	if !isOpen[*categoryPrompt](m) {
 		t.Fatal("c did not open category editing")
 	}
-	if got := m.input.Prompt; got != "Category: " {
+	if got := prompt(t, m).input.Prompt; got != "Category: " {
 		t.Fatalf("category prompt = %q", got)
 	}
-	m.input.SetValue("backend")
+	prompt(t, m).input.SetValue("backend")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
 	selected, ok := m.selectedTask()
-	if m.categoryInput || !ok || selected.Text != "Fix login" || selected.Category != "backend" {
+	if isOpen[*categoryPrompt](m) || !ok || selected.Text != "Fix login" || selected.Category != "backend" {
 		t.Fatalf("recategorising lost selection: %+v", m.generalRows())
+	}
+}
+
+func TestCategoryPromptShowsAFailedSave(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "TODO.md")
+	if err := os.WriteFile(path, []byte("- [ ] Task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, _ := m.startCategoryInput()
+	m = opened.(*model)
+	prompt(t, m).input.SetValue("docs")
+	if err := os.WriteFile(path, []byte("- [ ] Changed elsewhere\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m = press(m, "enter")
+	if footer := ansi.Strip(m.renderFooter(100)); !isOpen[*categoryPrompt](m) || !strings.Contains(footer, "Task changed on disk; press r to reload") {
+		t.Fatalf("failed save: prompt open %v, footer %q", isOpen[*categoryPrompt](m), footer)
+	}
+	if footer := ansi.Strip(press(m, "x").renderFooter(100)); strings.Contains(footer, "Task changed") || !strings.Contains(footer, "cancel") {
+		t.Fatalf("typing kept the error: %q", footer)
 	}
 }
 
@@ -56,20 +100,20 @@ func TestCategoryInputBlocksSpaces(t *testing.T) {
 	}
 	opened, _ := m.startCategoryInput()
 	m = opened.(*model)
-	m.input.SetValue("a")
+	prompt(t, m).input.SetValue("a")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
 	m = updated.(*model)
-	if got := m.input.Value(); got != "a" {
+	if got := prompt(t, m).input.Value(); got != "a" {
 		t.Fatalf("space key changed category input to %q", got)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: " category"})
 	m = updated.(*model)
-	if got := m.input.Value(); got != "acategory" {
+	if got := prompt(t, m).input.Value(); got != "acategory" {
 		t.Fatalf("multi-character input kept a space: %q", got)
 	}
 	updated, _ = m.Update(tea.PasteMsg{Content: " more words"})
 	m = updated.(*model)
-	if got := m.input.Value(); got != "acategorymorewords" {
+	if got := prompt(t, m).input.Value(); got != "acategorymorewords" {
 		t.Fatalf("pasted input kept spaces: %q", got)
 	}
 }
@@ -85,7 +129,7 @@ func TestEnterEditsAndDoneOrSpaceTogglesTasks(t *testing.T) {
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
-	if m.modal == nil || m.modal.title.Value() != "First task" || m.general[0].Done {
+	if !isOpen[*taskModal](m) || form(t, m).title.Value() != "First task" || m.general[0].Done {
 		t.Fatal("Enter did not open the selected task for editing")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -104,7 +148,7 @@ func TestEnterEditsAndDoneOrSpaceTogglesTasks(t *testing.T) {
 	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
-	if m.modal == nil || m.focus != detailPane {
+	if !isOpen[*taskModal](m) || m.focus != detailPane {
 		t.Fatal("Enter from details did not open the edit form")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -113,7 +157,7 @@ func TestEnterEditsAndDoneOrSpaceTogglesTasks(t *testing.T) {
 	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
-	if m.modal == nil || !m.indexMode {
+	if !isOpen[*taskModal](m) || !m.indexMode {
 		t.Fatal("Enter from All tasks did not open the edit form")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -291,11 +335,11 @@ func TestOnlyCOpensCategoryInput(t *testing.T) {
 		}
 		m.indexMode = index
 		updated, _ := m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
-		if updated.(*model).categoryInput {
+		if isOpen[*categoryPrompt](updated.(*model)) {
 			t.Fatalf("l opened the category input (index=%v)", index)
 		}
 		updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
-		if !updated.(*model).categoryInput {
+		if !isOpen[*categoryPrompt](updated.(*model)) {
 			t.Fatalf("c did not open the category input (index=%v)", index)
 		}
 	}

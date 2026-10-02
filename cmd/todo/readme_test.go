@@ -80,11 +80,11 @@ func TestReadmeTasksOpenFromGeneralAndOnlyToggle(t *testing.T) {
 	}
 	for _, key := range []string{"p", "c", "X"} {
 		pressKey(t, m, key)
-		if m.status != readmeReadOnly || m.categoryInput || m.confirmClear != nil {
+		if m.status != readmeReadOnly || isOpen[*categoryPrompt](m) || isOpen[*clearConfirmation](m) {
 			t.Fatalf("%s on a README task was not refused: %q", key, m.status)
 		}
 	}
-	if cmd := pressKey(t, m, "e"); cmd == nil || m.modal != nil {
+	if cmd := pressKey(t, m, "e"); cmd == nil || isOpen[*taskModal](m) {
 		t.Fatal("e on a README task should open the editor, not the edit form")
 	}
 	pressKey(t, m, "left")
@@ -126,15 +126,33 @@ func TestReadmeGroupClosesWhenItsTasksGo(t *testing.T) {
 	if !m.readmeOpen {
 		t.Fatal("README group did not open")
 	}
-	if cmd := pressKey(t, m, "a"); m.modal == nil || m.modal.targetCategory != "" {
-		t.Fatalf("a inside README.md should add a general task: %+v %v", m.modal, cmd)
+	if cmd := pressKey(t, m, "a"); !isOpen[*taskModal](m) || form(t, m).targetCategory != "" {
+		t.Fatalf("a inside README.md should add a general task: %+v %v", m.overlay, cmd)
 	}
-	m.modal = nil
+	m.overlay = nil
 	if err := os.WriteFile(readme, []byte("# Project\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	pressKey(t, m, "r")
 	if m.readmeOpen || len(m.generalRows()) != 0 {
 		t.Fatalf("README group stayed open without tasks: %+v", m.generalRows())
+	}
+}
+
+func TestAddingFromTheReadmeGroupShowsTheNewTask(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("## Todo:\n\n- Only task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(filepath.Join(dir, "todo.md"), projectContext{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pressKey(t, m, "right")
+	pressKey(t, m, "a")
+	form(t, m).title.SetValue("New general task")
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	if selected, ok := m.selectedTask(); m.readmeOpen || !ok || selected.Text != "New general task" {
+		t.Fatalf("new task not shown: README open %v, selected %+v", m.readmeOpen, selected)
 	}
 }

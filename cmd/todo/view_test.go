@@ -293,7 +293,7 @@ func TestHelpOverlayOpensAndCloses(t *testing.T) {
 	updated, _ := m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
 	m = updated.(*model)
 	view := m.View().Content
-	if !m.helpOpen || !strings.Contains(ansi.Strip(view), "toggle done") || lipgloss.Width(view) != 56 || lipgloss.Height(view) != 16 {
+	if !isOpen[helpOverlay](m) || !strings.Contains(ansi.Strip(view), "toggle done") || lipgloss.Width(view) != 56 || lipgloss.Height(view) != 16 {
 		t.Fatalf("help overlay did not open within the terminal: %s", ansi.Strip(view))
 	}
 	if w, h := lipgloss.Width(renderHelp()), lipgloss.Height(renderHelp()); w > 56 || h > 16 {
@@ -306,12 +306,12 @@ func TestHelpOverlayOpensAndCloses(t *testing.T) {
 	}
 	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	m = updated.(*model)
-	if m.helpOpen || cmd != nil {
+	if isOpen[helpOverlay](m) || cmd != nil {
 		t.Fatal("a key press while help is open should only close it")
 	}
 	m.indexMode = true
 	updated, _ = m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
-	if !updated.(*model).helpOpen {
+	if !isOpen[helpOverlay](updated.(*model)) {
 		t.Fatal("help did not open from All tasks")
 	}
 }

@@ -134,18 +134,32 @@ func (m *model) startClearDone() {
 		m.status = errorStatus(err)
 		return
 	}
-	m.confirmClear = &clearConfirmation{removal: removal, targets: targets, scope: scope, wholeBranch: m.viewingMissingBranch()}
+	m.overlay = &clearConfirmation{removal: removal, targets: targets, scope: scope, wholeBranch: m.viewingMissingBranch()}
 	m.status = ""
 }
 
-// updateClearConfirmation removes the tasks on y; any other key cancels, so a
-// stray key never deletes anything.
-func (m *model) updateClearConfirmation(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	confirmation := *m.confirmClear
-	m.confirmClear = nil
-	if msg.String() != "y" {
-		return m, nil
+// clearConfirmedMsg is a clear the user confirmed.
+type clearConfirmedMsg struct{ confirmation clearConfirmation }
+
+// update confirms the clear on y; any other key cancels, so a stray key
+// never deletes anything.
+func (c *clearConfirmation) update(msg tea.Msg) (overlay, tea.Msg, tea.Cmd) {
+	key, ok := msg.(tea.KeyPressMsg)
+	switch {
+	case !ok:
+		return c, nil, nil
+	case key.String() == "y":
+		return nil, clearConfirmedMsg{*c}, nil
 	}
+	return nil, nil, nil
+}
+
+func (c *clearConfirmation) view(int, int) string { return c.render() }
+
+// applyClear removes a confirmed clear's tasks, keeping the removal so u can
+// undo it.
+func (m *model) applyClear(msg clearConfirmedMsg) (tea.Model, tea.Cmd) {
+	confirmation := msg.confirmation
 	if err := confirmation.removal.Apply(); err != nil {
 		m.status = errorStatus(err)
 		return m, nil

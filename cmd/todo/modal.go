@@ -27,6 +27,7 @@ const (
 type taskModal struct {
 	mode           modalMode
 	selected       store.Task
+	file           string
 	project        projectContext
 	targetBranch   string
 	targetCategory string
@@ -47,7 +48,7 @@ const (
 )
 
 func (m *model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
-	modal := &taskModal{mode: mode, project: m.project}
+	modal := &taskModal{mode: mode, file: m.file, project: m.project}
 	if mode == modalAddGeneral && !m.indexMode && m.activePane() == generalPane {
 		modal.targetCategory = m.generalCategory
 	}
@@ -101,164 +102,166 @@ func (m *model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
 		modal.details.SetValue(modal.selected.Details)
 	}
 	modal.resize(m.width, m.height)
-	m.modal = modal
+	m.overlay = modal
 	m.status = ""
 	return m, modal.title.Focus()
 }
 
-func (m *model) updateTaskModal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	modal := m.modal
-	switch msg.String() {
-	case "esc":
-		modal.title.Blur()
-		modal.scope.Blur()
-		modal.details.Blur()
-		m.modal = nil
-		return m, nil
-	case "ctrl+enter":
-		if err := modal.save(m.file); err != nil {
-			modal.err = errorStatus(err)
-			return m, nil
-		}
-		m.modal = nil
-		if err := m.refresh(); err != nil {
-			m.status = err.Error()
-			return m, nil
-		}
-		// Follow a new task, or one moved to another section, to where it now lives.
-		moved := modal.mode == modalEdit && !m.indexMode && (modal.targetBranch != modal.selected.Branch ||
-			!strings.EqualFold(modal.targetCategory, modal.selected.Category))
-		if (modal.mode == modalAddGeneral || moved) && !modal.branchScope() {
-			m.indexMode = false
-			m.focus = generalPane
-			m.generalCategory = modal.targetCategory
-			if modal.targetCategory != "" {
-				root := *m
-				root.generalCategory = ""
-				for i, row := range root.generalRows() {
-					if row.kind == rowCategory && strings.EqualFold(row.name, modal.targetCategory) {
-						m.generalRootCursor = i
-						break
-					}
-				}
-			}
-			for i, row := range m.generalRows() {
-				if row.kind == rowTask && row.todo.Branch == "" && row.todo.Text == modal.taskTitle() && strings.EqualFold(row.todo.Category, modal.targetCategory) {
-					m.generalCursor = i
-				}
-			}
-		} else if modal.mode == modalAddBranch || moved {
-			m.indexMode = false
-			m.focus = branchPane
-			branchRoot := *m
-			branchRoot.branchFilter = ""
-			for i, row := range branchRoot.branchRows() {
-				if row.name == modal.targetBranch {
-					m.branchRootCursor = i
-					break
-				}
-			}
-			m.branchFilter = modal.targetBranch
-			for i, row := range m.branchRows() {
-				if row.kind == rowTask && row.todo.Text == modal.taskTitle() {
-					m.branchCursor = i
-				}
-			}
-		}
-		m.detailScroll = 0
-		m.status = ""
-		return m, nil
-	case "tab":
-		if modal.branchScope() && modal.field == scopeField {
-			modal.acceptBranch()
-		}
-		return m, modal.focusField((modal.field + 1) % (detailsField + 1))
-	case "shift+tab":
-		return m, modal.focusField((modal.field + detailsField) % (detailsField + 1))
-	case "down":
-		if modal.branchScope() && modal.field == scopeField {
-			if count := len(modal.matchingBranches()); count > 0 {
-				modal.branchCursor = (modal.branchCursor + 1) % count
-			}
-			return m, nil
-		}
-		if modal.field == titleField && modal.title.Line() < strings.Count(modal.title.Value(), "\n") {
-			break
-		}
-		if modal.field < detailsField {
-			return m, modal.focusField(modal.field + 1)
-		}
-	case "enter":
-		if modal.field == scopeField {
-			if modal.branchScope() {
-				modal.acceptBranch()
-			}
-			return m, modal.focusField(detailsField)
-		}
-	case "up":
-		if modal.field == titleField && modal.title.Line() == 0 {
-			return m, nil
-		}
-		if modal.field == scopeField {
-			if modal.branchScope() {
-				if count := len(modal.matchingBranches()); count > 0 {
-					modal.branchCursor = (modal.branchCursor - 1 + count) % count
-				}
-				return m, nil
-			}
-			return m, modal.focusField(0)
-		}
-		if modal.field == detailsField && modal.details.Line() == 0 {
-			return m, modal.focusField(modal.field - 1)
-		}
-	}
-	modal.err = ""
-	var cmd tea.Cmd
-	switch modal.field {
-	case titleField:
-		modal.title, cmd = modal.title.Update(msg)
-	case scopeField:
-		if !modal.branchScope() {
-			if msg.Code == tea.KeySpace {
-				return m, nil
-			}
-			msg.Text = stripCategorySpaces(msg.Text)
-		} else if modal.branchFresh && msg.Text != "" {
-			modal.scope.SetValue("")
-		}
-		modal.scope, cmd = modal.scope.Update(msg)
-		if modal.branchScope() {
-			modal.branchFresh = false
-			modal.resetBranchCursor()
-		}
-	default:
-		modal.details, cmd = modal.details.Update(msg)
-	}
-	return m, cmd
+// taskSavedMsg is a task the form added or edited, as it now is: its title,
+// category and branch, with its line before the edit.
+type taskSavedMsg struct {
+	task  store.Task
+	added bool
+	moved bool // an edit filed it under another category or branch
 }
 
-func (m *model) updateTaskModalPaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
-	modal := m.modal
-	modal.err = ""
-	var cmd tea.Cmd
-	switch modal.field {
-	case titleField:
-		modal.title, cmd = modal.title.Update(msg)
-	case scopeField:
-		if !modal.branchScope() {
-			msg.Content = stripCategorySpaces(msg.Content)
-		} else if modal.branchFresh {
-			modal.scope.SetValue("")
+// taskSaved follows a new task, or one an edit moved to another category or
+// branch, to where it now lives.
+func (m *model) taskSaved(msg taskSavedMsg) (tea.Model, tea.Cmd) {
+	if err := m.refresh(); err != nil {
+		m.status = err.Error()
+		return m, nil
+	}
+	switch {
+	case msg.added || msg.moved && !m.indexMode:
+		m.indexMode = false
+		m.focus = generalPane
+		if msg.task.Branch != "" {
+			m.focus = branchPane
 		}
-		modal.scope, cmd = modal.scope.Update(msg)
-		if modal.branchScope() {
-			modal.branchFresh = false
-			modal.resetBranchCursor()
+		m.reveal(msg.task)
+	case m.indexMode:
+		m.selectIndexTask(msg.task)
+	}
+	m.detailScroll = 0
+	m.status = ""
+	return m, nil
+}
+
+func (f *taskModal) update(msg tea.Msg) (overlay, tea.Msg, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		f.resize(msg.Width, msg.Height)
+	case tea.PasteMsg:
+		return f, nil, f.paste(msg)
+	case tea.KeyPressMsg:
+		return f.key(msg)
+	}
+	return f, nil, nil
+}
+
+func (f *taskModal) view(width, height int) string {
+	return f.render(f.dimensions(width, height))
+}
+
+func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		f.title.Blur()
+		f.scope.Blur()
+		f.details.Blur()
+		return nil, nil, nil
+	case "ctrl+enter":
+		if err := f.save(); err != nil {
+			f.err = errorStatus(err)
+			return f, nil, nil
+		}
+		return nil, f.saved(), nil
+	case "tab":
+		if f.branchScope() && f.field == scopeField {
+			f.acceptBranch()
+		}
+		return f, nil, f.focusField((f.field + 1) % (detailsField + 1))
+	case "shift+tab":
+		return f, nil, f.focusField((f.field + detailsField) % (detailsField + 1))
+	case "down":
+		if f.branchScope() && f.field == scopeField {
+			if count := len(f.matchingBranches()); count > 0 {
+				f.branchCursor = (f.branchCursor + 1) % count
+			}
+			return f, nil, nil
+		}
+		if f.field == titleField && f.title.Line() < strings.Count(f.title.Value(), "\n") {
+			break
+		}
+		if f.field < detailsField {
+			return f, nil, f.focusField(f.field + 1)
+		}
+	case "enter":
+		if f.field == scopeField {
+			if f.branchScope() {
+				f.acceptBranch()
+			}
+			return f, nil, f.focusField(detailsField)
+		}
+	case "up":
+		if f.field == titleField && f.title.Line() == 0 {
+			return f, nil, nil
+		}
+		if f.field == scopeField {
+			if f.branchScope() {
+				if count := len(f.matchingBranches()); count > 0 {
+					f.branchCursor = (f.branchCursor - 1 + count) % count
+				}
+				return f, nil, nil
+			}
+			return f, nil, f.focusField(0)
+		}
+		if f.field == detailsField && f.details.Line() == 0 {
+			return f, nil, f.focusField(f.field - 1)
+		}
+	}
+	return f, nil, f.typeKey(msg)
+}
+
+// typeKey passes a key the form doesn't use itself to the focused field.
+func (f *taskModal) typeKey(msg tea.KeyPressMsg) tea.Cmd {
+	f.err = ""
+	var cmd tea.Cmd
+	switch f.field {
+	case titleField:
+		f.title, cmd = f.title.Update(msg)
+	case scopeField:
+		if !f.branchScope() {
+			if msg.Code == tea.KeySpace {
+				return nil
+			}
+			msg.Text = stripCategorySpaces(msg.Text)
+		} else if f.branchFresh && msg.Text != "" {
+			f.scope.SetValue("")
+		}
+		f.scope, cmd = f.scope.Update(msg)
+		if f.branchScope() {
+			f.branchFresh = false
+			f.resetBranchCursor()
 		}
 	default:
-		modal.details, cmd = modal.details.Update(msg)
+		f.details, cmd = f.details.Update(msg)
 	}
-	return m, cmd
+	return cmd
+}
+
+func (f *taskModal) paste(msg tea.PasteMsg) tea.Cmd {
+	f.err = ""
+	var cmd tea.Cmd
+	switch f.field {
+	case titleField:
+		f.title, cmd = f.title.Update(msg)
+	case scopeField:
+		if !f.branchScope() {
+			msg.Content = stripCategorySpaces(msg.Content)
+		} else if f.branchFresh {
+			f.scope.SetValue("")
+		}
+		f.scope, cmd = f.scope.Update(msg)
+		if f.branchScope() {
+			f.branchFresh = false
+			f.resetBranchCursor()
+		}
+	default:
+		f.details, cmd = f.details.Update(msg)
+	}
+	return cmd
 }
 
 // branchScope is true when the task is filed under a branch, so the scope
@@ -284,7 +287,7 @@ func (f *taskModal) focusField(field int) tea.Cmd {
 	return f.details.Focus()
 }
 
-func (f *taskModal) save(path string) error {
+func (f *taskModal) save() error {
 	if f.branchScope() {
 		f.targetBranch = f.chosenBranch()
 		if f.targetBranch == "" && f.mode == modalEdit && strings.TrimSpace(f.scope.Value()) == f.selected.Branch {
@@ -304,9 +307,16 @@ func (f *taskModal) save(path string) error {
 		f.targetCategory = store.NormalizeCategory(f.scope.Value())
 	}
 	if f.mode == modalEdit {
-		return store.Edit(path, f.selected, f.taskTitle(), f.details.Value(), f.targetCategory, f.targetBranch)
+		return store.Edit(f.file, f.selected, f.taskTitle(), f.details.Value(), f.targetCategory, f.targetBranch)
 	}
-	return store.Add(path, f.taskTitle(), f.details.Value(), store.PriorityNone, f.targetCategory, f.targetBranch)
+	return store.Add(f.file, f.taskTitle(), f.details.Value(), store.PriorityNone, f.targetCategory, f.targetBranch)
+}
+
+// saved describes the task save wrote, for the model to follow.
+func (f *taskModal) saved() taskSavedMsg {
+	task := store.Task{Text: f.taskTitle(), Category: f.targetCategory, Branch: f.targetBranch, Line: f.selected.Line}
+	moved := f.mode == modalEdit && (f.targetBranch != f.selected.Branch || !strings.EqualFold(f.targetCategory, f.selected.Category))
+	return taskSavedMsg{task: task, added: f.mode != modalEdit, moved: moved}
 }
 
 func (f *taskModal) taskTitle() string {
@@ -517,13 +527,18 @@ func (f *taskModal) label(name string, field int) string {
 
 func (f *taskModal) footer(width int) string {
 	if f.err != "" {
-		return lipgloss.NewStyle().Bold(true).Foreground(ui.ColorHigh).Render(ansi.Truncate(f.err, width, "…"))
+		return errorText(f.err, width)
 	}
 	hints := []ui.KeyHint{{Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}, {Key: "tab", Label: "next field"}}
 	if f.branchScope() && f.field == scopeField {
 		hints = []ui.KeyHint{{Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}, {Key: "↑↓", Label: "choose"}, {Key: "tab", Label: "accept"}}
 	}
 	return ui.FitHints(hints, width)
+}
+
+// errorText shows a failed save's error where the key hints would be.
+func errorText(err string, width int) string {
+	return lipgloss.NewStyle().Bold(true).Foreground(ui.ColorHigh).Render(ansi.Truncate(err, width, "…"))
 }
 
 func fieldStyle() lipgloss.Style {

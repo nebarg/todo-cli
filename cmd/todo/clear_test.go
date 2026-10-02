@@ -66,7 +66,7 @@ func TestClearDoneFollowsWhereYouAre(t *testing.T) {
 			m, path := clearModel(t)
 			item.setup(m)
 			m = press(m, "X")
-			if m.confirmClear == nil {
+			if !isOpen[*clearConfirmation](m) {
 				t.Fatalf("X did not ask for confirmation: %q", m.status)
 			}
 			if dialog := ansi.Strip(m.View().Content); !strings.Contains(dialog, item.prompt) {
@@ -87,7 +87,7 @@ func TestClearDoneFollowsWhereYouAre(t *testing.T) {
 					t.Errorf("%q was removed: %s", kept, content)
 				}
 			}
-			if m.confirmClear != nil || !strings.HasPrefix(m.status, "Removed ") {
+			if isOpen[*clearConfirmation](m) || !strings.HasPrefix(m.status, "Removed ") {
 				t.Fatalf("status after clearing = %q", m.status)
 			}
 		})
@@ -98,7 +98,7 @@ func TestClearDoneNamesHeadingsItEmpties(t *testing.T) {
 	m, _ := clearModel(t)
 	m.indexMode = true
 	m = press(m, "X")
-	dialog := ansi.Strip(m.confirmClear.render())
+	dialog := ansi.Strip(confirmation(t, m).render())
 	if !strings.Contains(dialog, "The @docs and "+branchIcon+" feature/x headings will be empty") || !strings.Contains(dialog, "y remove") {
 		t.Fatalf("dialog = %s", dialog)
 	}
@@ -117,7 +117,7 @@ func TestClearDoneOnlyRemovesOnY(t *testing.T) {
 			m = press(m, "X")
 			updated, _ := m.Update(tea.KeyPressMsg{Code: map[string]rune{"esc": tea.KeyEsc, "n": 'n', "enter": tea.KeyEnter, "X": 'X'}[key], Text: map[string]string{"n": "n", "X": "X"}[key]})
 			m = updated.(*model)
-			if m.confirmClear != nil || fileContent(t, path) != clearContent {
+			if isOpen[*clearConfirmation](m) || fileContent(t, path) != clearContent {
 				t.Fatalf("%s did not cancel cleanly", key)
 			}
 		})
@@ -179,12 +179,12 @@ func TestClearHintOnlyWithDoneTasks(t *testing.T) {
 		t.Fatalf("footer offers clearing with nothing done: %q", footer)
 	}
 	m = press(m, "X")
-	if m.confirmClear != nil || m.status != "No done tasks to clear" {
+	if isOpen[*clearConfirmation](m) || m.status != "No done tasks to clear" {
 		t.Fatalf("X with nothing done = %q", m.status)
 	}
 	m.focus = sourcePane
 	m = press(m, "X")
-	if m.confirmClear != nil || m.status != "File TODOs are read only" {
+	if isOpen[*clearConfirmation](m) || m.status != "File TODOs are read only" {
 		t.Fatalf("X on file TODOs = %q", m.status)
 	}
 }
@@ -240,10 +240,10 @@ func TestClearInsideMissingBranchDeletesIt(t *testing.T) {
 		t.Fatalf("missing branch footer lacks remove: %q", footer)
 	}
 	m = press(m, "X")
-	if m.confirmClear == nil {
+	if !isOpen[*clearConfirmation](m) {
 		t.Fatalf("X did not ask for confirmation: %q", m.status)
 	}
-	if dialog := ansi.Strip(m.confirmClear.render()); !strings.Contains(dialog, "Remove the 2 tasks of "+branchIcon+" feature/gone?") || !strings.Contains(dialog, "no longer exists in Git") {
+	if dialog := ansi.Strip(confirmation(t, m).render()); !strings.Contains(dialog, "Remove the 2 tasks of "+branchIcon+" feature/gone?") || !strings.Contains(dialog, "no longer exists in Git") {
 		t.Fatalf("dialog = %s", dialog)
 	}
 	m = press(m, "y")
@@ -262,7 +262,7 @@ func TestClearingBranchesRemovesMissingOnes(t *testing.T) {
 		t.Fatalf("footer = %q", footer)
 	}
 	m = press(m, "X")
-	dialog := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(m.confirmClear.render()), "│", " ")), " ")
+	dialog := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(confirmation(t, m).render()), "│", " ")), " ")
 	for _, want := range []string{"Remove 1 done task and 2 tasks of missing branches from Branches?", branchIcon + " feature/gone no longer exists in Git, so all of its 2 tasks go too."} {
 		if !strings.Contains(dialog, want) {
 			t.Errorf("dialog lacks %q: %s", want, dialog)

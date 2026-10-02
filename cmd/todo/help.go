@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/store"
@@ -34,6 +35,18 @@ var (
 	}}
 	helpApp = []ui.KeyHint{{Key: "X / u", Label: "clear done / undo"}, {Key: "r", Label: "reload"}, {Key: "?", Label: "help"}, {Key: "q", Label: "quit"}}
 )
+
+// helpOverlay lists the keys until any key closes it.
+type helpOverlay struct{}
+
+func (h helpOverlay) update(msg tea.Msg) (overlay, tea.Msg, tea.Cmd) {
+	if _, ok := msg.(tea.KeyPressMsg); ok {
+		return nil, nil, nil
+	}
+	return h, nil, nil
+}
+
+func (helpOverlay) view(int, int) string { return renderHelp() }
 
 func renderHelp() string {
 	keyWidth := 0

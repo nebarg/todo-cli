@@ -144,20 +144,53 @@ func (m *model) selectNavigationTask(selected store.Task) {
 	default:
 		return
 	}
-	// Writes can move the task in the file, so the nearest task with the same
-	// title in the same place is taken to be it.
+	if i := nearestTask(rowTasks(rows), selected); i >= 0 {
+		*cursor = i
+	}
+}
+
+// reveal opens the category or branch t is filed under, in its own tab, and
+// selects it there.
+func (m *model) reveal(t store.Task) {
+	if t.Branch != "" {
+		m.branchFilter = ""
+		m.branchRootCursor = max(0, slices.IndexFunc(m.branchRows(), func(row navigationRow) bool { return row.name == t.Branch }))
+		m.branchFilter = t.Branch
+		m.branchCursor = max(0, nearestTask(rowTasks(m.branchRows()), t))
+		return
+	}
+	m.generalCategory, m.readmeOpen = "", false
+	if t.Category != "" {
+		m.generalRootCursor = max(0, slices.IndexFunc(m.generalRows(), func(row navigationRow) bool {
+			return row.kind == rowCategory && strings.EqualFold(row.name, t.Category)
+		}))
+	}
+	m.generalCategory = t.Category
+	m.generalCursor = max(0, nearestTask(rowTasks(m.generalRows()), t))
+}
+
+// nearestTask finds t in tasks after a write, which can move it in the file:
+// the task with its title, category and branch nearest its old line, or -1.
+func nearestTask(tasks []store.Task, t store.Task) int {
 	best, distance := -1, math.MaxInt
-	for i, row := range rows {
-		if row.kind != rowTask || row.todo.Text != selected.Text || row.todo.Branch != selected.Branch || !strings.EqualFold(row.todo.Category, selected.Category) {
+	for i, candidate := range tasks {
+		if candidate.Text != t.Text || candidate.Branch != t.Branch || !strings.EqualFold(candidate.Category, t.Category) {
 			continue
 		}
-		if d := abs(row.todo.Line - selected.Line); d < distance {
+		if d := abs(candidate.Line - t.Line); d < distance {
 			best, distance = i, d
 		}
 	}
-	if best >= 0 {
-		*cursor = best
+	return best
+}
+
+// rowTasks is each row's task; a group row's is empty, so it matches none.
+func rowTasks(rows []navigationRow) []store.Task {
+	tasks := make([]store.Task, len(rows))
+	for i, row := range rows {
+		tasks[i] = row.todo
 	}
+	return tasks
 }
 
 func abs(n int) int {
