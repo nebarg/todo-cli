@@ -25,6 +25,15 @@ go install github.com/nebarg/todo-cli/cmd/todo-scan@latest
 
 Install either or both. From a checkout, `go build ./cmd/todo ./cmd/todo-scan`.
 
+## Example
+
+[`example`](example) has a task file with a category, priorities and two branches, a README with TODOs, and code with TODO comments. To open it in the dashboard:
+
+```sh
+cd example
+todo -f todo.md
+```
+
 ## Command line
 
 ```

@@ -1,0 +1,8 @@
+:root {
+  --accent: #7c3aed; /* todo@design pick the final accent colour */
+}
+
+/* TODO: a dark theme */
+body {
+  font-family: system-ui, sans-serif;
+}
