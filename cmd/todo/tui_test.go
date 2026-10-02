@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -17,6 +18,49 @@ import (
 // testFiles is a Files tab that tests fill with filesui.ScannedMsg rather
 // than by scanning.
 func testFiles() filesui.Model { return filesui.New(".", scan.Exclude{}, nil) }
+
+// runCmd runs cmd as the program would: m gets each message it leads to,
+// and the commands m returns run in turn. A batch's commands run at once.
+func runCmd(t *testing.T, m *model, cmd tea.Cmd) {
+	t.Helper()
+	if cmd == nil {
+		return
+	}
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		_, next := m.Update(msg)
+		runCmd(t, m, next)
+		return
+	}
+	msgs := make([]tea.Msg, len(batch))
+	var wg sync.WaitGroup
+	for i, cmd := range batch {
+		if cmd != nil {
+			wg.Go(func() { msgs[i] = cmd() })
+		}
+	}
+	wg.Wait()
+	for _, msg := range msgs {
+		runCmd(t, m, func() tea.Msg { return msg })
+	}
+}
+
+// pressAndRun presses key and runs the commands it starts, such as asking
+// Git in the background.
+func pressAndRun(t *testing.T, m *model, key string) *model {
+	t.Helper()
+	runCmd(t, m, pressKey(t, m, key))
+	return m
+}
+
+// answerGit gives m Git's answer to the background check that opening a
+// branch or a branch task form starts, without waiting on the form's cursor
+// blink that runCmd would also run.
+func answerGit(t *testing.T, m *model) {
+	t.Helper()
+	runCmd(t, m, m.checkBranches())
+}
 
 // isOpen reports whether the overlay open over m is a T.
 func isOpen[T overlay](m *model) bool {

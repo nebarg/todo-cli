@@ -94,7 +94,7 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 		t.Fatalf("new general task was not selected or was categorised: %+v", m.rows(generalPane))
 	}
 	m.general.cursor = 0
-	if !m.enterSelectedGroup() {
+	if _, entered := m.enterSelectedGroup(); !entered {
 		t.Fatal("could not open the test category")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
@@ -175,16 +175,16 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 	if _, err := gitOutput(repo, "symbolic-ref", "HEAD", "refs/heads/feature/new"); err != nil {
 		t.Fatal(err)
 	}
-	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	m = updated.(*model)
+	m = pressAndRun(t, m, "a")
 	if !isOpen[*taskModal](m) || form(t, m).target.Branch != "feature/new" || form(t, m).scope.Value() != "feature/new" {
 		t.Fatalf("branch list used a cached or selected branch: %+v", m.overlay)
 	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(*model)
 	m.branch.open = branchGroup("feature/old")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
+	answerGit(t, m)
 	if !isOpen[*taskModal](m) || form(t, m).target.Branch != "feature/old" {
 		t.Fatalf("opened branch did not override current Git branch: %+v", m.overlay)
 	}
@@ -193,6 +193,7 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 	m.openAllTasks()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
 	m = updated.(*model)
+	answerGit(t, m)
 	if !isOpen[*taskModal](m) || form(t, m).target.Branch != "feature/new" {
 		t.Fatalf("All Tasks inherited a hidden branch filter: %+v", m.overlay)
 	}
@@ -232,6 +233,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
+	answerGit(t, m)
 	if !isOpen[*taskModal](m) || form(t, m).mode != modalAddBranch || form(t, m).scope.Value() != "feature/new" {
 		t.Fatalf("branch form did not prefill the current Git branch: %+v", m.overlay)
 	}
@@ -377,7 +379,7 @@ func TestBranchCreatedAfterStartupIsNotMissing(t *testing.T) {
 	if _, err := gitOutput(dir, "branch", "feature/new"); err != nil {
 		t.Fatal(err)
 	}
-	m.startTaskModal(modalAddBranch)
+	runCmd(t, m, m.startTaskModal(modalAddBranch))
 	form(t, m).title.SetValue("Late branch task")
 	form(t, m).scope.SetValue("new")
 	form(t, m).resetBranchCursor()
@@ -411,16 +413,55 @@ func TestEditModalRefreshesBranchState(t *testing.T) {
 	if _, err := gitOutput(dir, "branch", "-D", "feature/x"); err != nil {
 		t.Fatal(err)
 	}
-	m.startTaskModal(modalEdit)
+	// The branch was there when Git last answered, so the form opens, and
+	// closes when Git answers that it has gone.
+	cmd := m.startTaskModal(modalEdit)
+	if !isOpen[*taskModal](m) {
+		t.Fatalf("edit was blocked before Git answered: status %q", m.status)
+	}
+	runCmd(t, m, cmd)
 	if isOpen[*taskModal](m) || m.status != missingBranchStatus {
-		t.Fatalf("edit opened for a branch deleted after startup: status %q", m.status)
+		t.Fatalf("edit stayed open for a branch deleted after startup: status %q", m.status)
 	}
 	if _, err := gitOutput(dir, "branch", "feature/x"); err != nil {
 		t.Fatal(err)
 	}
+	// A blocked edit asks Git again, so the next one opens.
+	runCmd(t, m, m.startTaskModal(modalEdit))
+	if isOpen[*taskModal](m) || m.branchMissing("feature/x") {
+		t.Fatalf("a blocked edit did not ask Git again: status %q", m.status)
+	}
 	m.startTaskModal(modalEdit)
-	if !isOpen[*taskModal](m) || m.branchMissing("feature/x") {
+	if !isOpen[*taskModal](m) {
 		t.Fatalf("edit stayed blocked after the branch was restored: status %q", m.status)
+	}
+}
+
+func TestGitAnswerUpdatesAnOpenBranchForm(t *testing.T) {
+	m := &model{project: projectContext{branch: "main"}, localBranches: []string{"feature/b", "main"}, width: 100, height: 30}
+	m.startTaskModal(modalAddBranch)
+	f := form(t, m)
+	f.scope.SetValue("feature")
+	f.resetBranchCursor()
+	m.setBranches(branchStateMsg{branches: []string{"feature/a", "feature/b", "main"}, current: "main", verified: true})
+	if got := f.chosenBranch(); got != "feature/b" {
+		t.Fatalf("a new branch moved the highlight to %q", got)
+	}
+	m.setBranches(branchStateMsg{branches: []string{"feature/a", "main"}, current: "main", verified: true})
+	if got := f.chosenBranch(); got != "" {
+		t.Fatalf("the highlighted branch went, and %q was chosen in its place", got)
+	}
+	m.setBranches(branchStateMsg{branches: []string{"feature/a", "main"}, current: "feature/a", verified: true})
+	if f.scope.Value() != "feature" {
+		t.Fatalf("a new current branch replaced the branch being typed: %q", f.scope.Value())
+	}
+
+	m.overlay = nil
+	m.startTaskModal(modalAddBranch)
+	f = form(t, m)
+	m.setBranches(branchStateMsg{branches: []string{"feature/a", "main"}, current: "feature/a", verified: true})
+	if f.scope.Value() != "feature/a" || f.chosenBranch() != "feature/a" {
+		t.Fatalf("the form kept the old current branch: %q, chose %q", f.scope.Value(), f.chosenBranch())
 	}
 }
 

@@ -38,8 +38,9 @@ func (project projectContext) currentBranch() string {
 	return branch
 }
 
-// localBranchState lists local branches and the current branch in one pass.
-// verified is false when there is no Git repository to check against.
+// localBranchState lists local branches, sorted, and the current branch in
+// one pass. verified is false when there is no Git repository to check
+// against.
 func (project projectContext) localBranchState() (branches []string, current string, verified bool) {
 	if project.root == "" {
 		return nil, "", false

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/nebarg/todo-cli/internal/store"
 )
 
@@ -185,7 +186,8 @@ func taskRows(tasks []store.Task, keep func(store.Task) bool) []navigationRow {
 }
 
 func (m *model) branchMissing(name string) bool {
-	return name != "" && m.branchesVerified && !m.localBranchNames[name]
+	_, listed := slices.BinarySearch(m.localBranches, name)
+	return name != "" && m.branchesVerified && !listed
 }
 
 func openTasksFirst(rows []navigationRow) {
@@ -292,44 +294,50 @@ func (m *model) selectedNavigationRow() (navigationRow, bool) {
 	return rows[l.cursor], true
 }
 
-func (m *model) enterSelectedGroup() bool {
+// enterSelectedGroup opens the selected category, branch or README.md
+// group, reporting false when the selection isn't one.
+func (m *model) enterSelectedGroup() (tea.Cmd, bool) {
 	if m.focus == detailPane {
-		return false
+		return nil, false
 	}
 	row, ok := m.selectedNavigationRow()
 	if !ok || row.kind == rowTask {
-		return false
+		return nil, false
 	}
+	var cmd tea.Cmd
 	if row.kind == rowBranch {
-		m.enterBranch(row.name)
+		cmd = m.enterBranch(row.name)
 	} else {
 		m.general.enter(group{kind: row.kind, name: row.name})
 	}
 	m.detailScroll = 0
 	m.status = ""
-	return true
+	return cmd, true
 }
 
 // jumpToTab focuses a tab, or leaves its opened category or branch when it
 // already has focus. At the top of Branches it opens the current branch.
-func (m *model) jumpToTab(p pane) {
+func (m *model) jumpToTab(p pane) tea.Cmd {
 	switch {
 	case m.focus != p:
 		m.focus = p
 		m.detailScroll = 0
 		m.files.CloseDetails()
 	case p == branchPane && m.branch.open == (group{}):
-		m.openCurrentBranch()
+		if m.openCurrentBranch() {
+			return m.checkBranches()
+		}
 	default:
 		m.leaveGroup()
 	}
+	return nil
 }
 
-// enterBranch opens a branch from the top of Branches, checking first that
-// Git still has it.
-func (m *model) enterBranch(name string) {
+// enterBranch opens a branch from the top of Branches, and asks Git in the
+// background whether it still has it.
+func (m *model) enterBranch(name string) tea.Cmd {
 	m.branch.enter(branchGroup(name))
-	m.recheckBranch(name)
+	return m.checkBranches()
 }
 
 func (m *model) leaveGroup() {
@@ -340,15 +348,19 @@ func (m *model) leaveGroup() {
 	m.status = ""
 }
 
-// openCurrentBranch opens the current Git branch's tasks, if it has any.
-func (m *model) openCurrentBranch() {
+// openCurrentBranch opens the current Git branch's tasks, if it has any,
+// reporting whether it did.
+func (m *model) openCurrentBranch() bool {
 	if m.project.branch == "" || m.branch.open != (group{}) {
-		return
+		return false
 	}
-	if i := slices.IndexFunc(m.rows(branchPane), branchGroup(m.project.branch).openedBy); i >= 0 {
-		m.branch.cursor = i
-		m.enterBranch(m.project.branch)
-		m.detailScroll = 0
-		m.status = ""
+	i := slices.IndexFunc(m.rows(branchPane), branchGroup(m.project.branch).openedBy)
+	if i < 0 {
+		return false
 	}
+	m.branch.cursor = i
+	m.branch.enter(branchGroup(m.project.branch))
+	m.detailScroll = 0
+	m.status = ""
+	return true
 }

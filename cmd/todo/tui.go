@@ -35,8 +35,8 @@ type model struct {
 	focus            pane
 	detailFrom       pane
 	detailScroll     int
-	localBranchNames map[string]bool
-	branchesVerified bool
+	localBranches    []string // as Git last listed them, sorted
+	branchesVerified bool     // whether Git answered, so a branch not in localBranches is gone
 	files            filesui.Model
 	overlay          overlay // nil when nothing is open over the dashboard
 	lastClear        *store.Removal
@@ -47,7 +47,9 @@ type model struct {
 
 func newModel(file string, project projectContext, files filesui.Model) (*model, error) {
 	m := &model{file: file, project: project, width: 100, height: 30, files: files}
-	if err := m.reload(); err != nil {
+	// Before the dashboard is drawn, Git is asked directly.
+	m.setBranches(project.branchState())
+	if err := m.readTasks(true); err != nil {
 		return nil, err
 	}
 	m.openCurrentBranch()
@@ -82,6 +84,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = err.Error()
 		}
 		return m, m.files.Scan()
+	case branchStateMsg:
+		m.setBranches(msg)
+	case projectStateMsg:
+		m.setProject(msg)
 	case taskSavedMsg:
 		return m.taskSaved(msg)
 	case categorySetMsg:
@@ -151,10 +157,10 @@ func (m *model) taskKey(key string) tea.Cmd {
 		m.undoClear()
 	case "r":
 		m.status = ""
-		if err := m.refreshProject(); err != nil {
+		if err := m.readTasks(true); err != nil {
 			m.status = err.Error()
 		}
-		return m.files.Scan()
+		return tea.Batch(reloadProject(), m.files.Scan())
 	}
 	return nil
 }
@@ -189,9 +195,9 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.detailScroll = 0
 		m.files.CloseDetails()
 	case "1":
-		m.jumpToTab(generalPane)
+		return m.jumpToTab(generalPane), true
 	case "2":
-		m.jumpToTab(branchPane)
+		return m.jumpToTab(branchPane), true
 	case "3":
 		if m.focus == sourcePane {
 			m.files.Top()
@@ -201,12 +207,13 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		return m.files.PreviewCmd(), true
 	case "right":
-		if m.focus != detailPane && !m.enterSelectedGroup() {
-			if _, ok := m.selectedTask(); ok {
-				m.detailFrom = m.focus
-				m.focus = detailPane
-				m.detailScroll = 0
-			}
+		if cmd, entered := m.enterSelectedGroup(); entered {
+			return cmd, true
+		}
+		if _, ok := m.selectedTask(); ok && m.focus != detailPane {
+			m.detailFrom = m.focus
+			m.focus = detailPane
+			m.detailScroll = 0
 		}
 	case "left", "esc":
 		if m.focus == detailPane {
@@ -228,9 +235,10 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			m.moveCursor(1)
 		}
 	case "enter":
-		if !m.enterSelectedGroup() {
-			return m.editSelected(), true
+		if cmd, entered := m.enterSelectedGroup(); entered {
+			return cmd, true
 		}
+		return m.editSelected(), true
 	default:
 		return nil, false
 	}
@@ -368,50 +376,71 @@ func (m *model) cyclePriority() {
 	m.status = ""
 }
 
-// refreshProject re-reads the Git context and the task file. When the
-// Branches tab was showing the current branch and Git has since switched,
-// it follows to the new current branch, as at startup; a branch opened by
-// hand stays open.
-func (m *model) refreshProject() error {
+// branchStateMsg is the local branches and the current branch as Git
+// listed them. verified is false when there was no Git repository to ask.
+type branchStateMsg struct {
+	branches []string
+	current  string
+	verified bool
+}
+
+func (project projectContext) branchState() branchStateMsg {
+	branches, current, verified := project.localBranchState()
+	return branchStateMsg{branches: branches, current: current, verified: verified}
+}
+
+// checkBranches asks Git for the local branches in the background, so the
+// dashboard doesn't wait on it.
+func (m *model) checkBranches() tea.Cmd {
+	project := m.project
+	return func() tea.Msg { return project.branchState() }
+}
+
+// setBranches takes the local branches Git listed, passing them on to an
+// open branch task form. An edit of a task whose branch Git no longer has
+// closes, as the edit would have been refused had Git answered first.
+func (m *model) setBranches(msg branchStateMsg) {
+	m.localBranches, m.branchesVerified = msg.branches, msg.verified
+	f, ok := m.overlay.(*taskModal)
+	if !ok || !f.branchScope() {
+		return
+	}
+	if f.mode == modalEdit && m.blockMissingBranch(f.selected) {
+		m.overlay = nil
+		return
+	}
+	f.setBranches(msg.branches, msg.current)
+}
+
+// projectStateMsg is the repository, current branch and local branches as
+// Git reported them when r reloaded.
+type projectStateMsg struct {
+	project  projectContext
+	branches branchStateMsg
+}
+
+// reloadProject asks Git in the background for the repository, its current
+// branch and its local branches.
+func reloadProject() tea.Cmd {
+	return func() tea.Msg {
+		project := currentProject()
+		return projectStateMsg{project: project, branches: project.branchState()}
+	}
+}
+
+// setProject takes the Git state r asked for. When the Branches tab was
+// showing the current branch and Git has since switched, it follows to the
+// new current branch, as at startup; a branch opened by hand stays open.
+func (m *model) setProject(msg projectStateMsg) {
 	previous := m.project.branch
-	m.project = currentProject()
-	err := m.reload()
+	m.project = msg.project
+	m.setBranches(msg.branches)
 	if m.project.branch != previous && previous != "" && m.branch.open == branchGroup(previous) {
 		m.branch.leave()
 		if m.focus == detailPane && m.detailFrom == branchPane {
 			m.focus = branchPane
 		}
 		m.openCurrentBranch()
-	}
-	return err
-}
-
-// reload is for startup and explicit refreshes. Otherwise Git is only asked
-// for branches when a branch task modal opens, keeping quick edits free of
-// subprocess calls.
-func (m *model) reload() error {
-	m.checkLocalBranches()
-	return m.readTasks(true)
-}
-
-func (m *model) checkLocalBranches() (branches []string, current string) {
-	branches, current, verified := m.project.localBranchState()
-	m.branchesVerified = verified
-	m.localBranchNames = make(map[string]bool, len(branches))
-	for _, branch := range branches {
-		m.localBranchNames[branch] = true
-	}
-	return branches, current
-}
-
-// recheckBranch updates one branch's cached state, so a branch deleted since
-// the last refresh is caught before its tasks are shown.
-func (m *model) recheckBranch(name string) {
-	if !m.branchesVerified {
-		return
-	}
-	if exists, verified := m.project.branchExists(name); verified {
-		m.localBranchNames[name] = exists
 	}
 }
 

@@ -34,9 +34,7 @@ func TestBranchListMarksMissingGitBranches(t *testing.T) {
 	if _, err := gitOutput(dir, "branch", "-D", "feature/gone"); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.reload(); err != nil {
-		t.Fatal(err)
-	}
+	runCmd(t, m, m.checkBranches())
 	rows := m.rows(branchPane)
 	if len(rows) != 2 || !rows[0].missingGitBranch || rows[1].missingGitBranch || rows[0].count != 1 {
 		t.Fatalf("deleted branch was not identified while keeping its tasks: %+v", rows)
@@ -52,9 +50,7 @@ func TestBranchListMarksMissingGitBranches(t *testing.T) {
 	if _, err := gitOutput(dir, "branch", "feature/gone"); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.reload(); err != nil {
-		t.Fatal(err)
-	}
+	runCmd(t, m, m.checkBranches())
 	if m.rows(branchPane)[0].missingGitBranch {
 		t.Fatal("restored Git branch still marked missing")
 	}
@@ -296,8 +292,12 @@ func TestEnteringBranchRechecksIt(t *testing.T) {
 	if _, err := gitOutput(dir, "branch", "-D", "feature/x"); err != nil {
 		t.Fatal(err)
 	}
-	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
+	if strings.Contains(ansi.Strip(m.panelStatus()), missingBranchStatus) {
+		t.Fatal("the branch was shown as missing before Git answered")
+	}
+	runCmd(t, m, cmd)
 	if !strings.Contains(ansi.Strip(m.panelStatus()), missingBranchStatus) {
 		t.Fatal("entering a branch deleted after startup did not show it as missing")
 	}
@@ -311,8 +311,9 @@ func TestEnteringBranchRechecksIt(t *testing.T) {
 	if _, err := gitOutput(dir, "branch", "feature/x"); err != nil {
 		t.Fatal(err)
 	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	updated, cmd = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
+	runCmd(t, m, cmd)
 	if strings.Contains(ansi.Strip(m.panelStatus()), missingBranchStatus) {
 		t.Fatal("restored branch still shown as missing")
 	}
@@ -469,7 +470,7 @@ func TestReloadFollowsASwitchedGitBranch(t *testing.T) {
 		m, dir := setup(t)
 		m = press(m, "right") // details of the old branch's task
 		checkout(t, dir, "feature/x")
-		m = press(m, "r")
+		m = pressAndRun(t, m, "r")
 		if m.project.branch != "feature/x" || m.branch.open.name != "feature/x" || m.focus != branchPane {
 			t.Fatalf("after switching: branch %q, open %q, focus %v", m.project.branch, m.branch.open.name, m.focus)
 		}
@@ -483,7 +484,7 @@ func TestReloadFollowsASwitchedGitBranch(t *testing.T) {
 			t.Fatalf("opened %q", m.branch.open.name)
 		}
 		checkout(t, dir, "feature/empty")
-		m = press(m, "r")
+		m = pressAndRun(t, m, "r")
 		if m.branch.open.name != "feature/x" {
 			t.Fatalf("a branch opened by hand was left: %q", m.branch.open.name)
 		}
@@ -491,7 +492,7 @@ func TestReloadFollowsASwitchedGitBranch(t *testing.T) {
 	t.Run("returns to the list when the new branch has no tasks", func(t *testing.T) {
 		m, dir := setup(t)
 		checkout(t, dir, "feature/empty")
-		m = press(m, "r")
+		m = pressAndRun(t, m, "r")
 		if m.project.branch != "feature/empty" || m.branch.open.name != "" {
 			t.Fatalf("after switching to a branch without tasks: open %q", m.branch.open.name)
 		}

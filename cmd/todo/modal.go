@@ -30,6 +30,7 @@ type taskModal struct {
 	file         string
 	project      projectContext
 	target       store.Section
+	onCurrent    bool // target is the current Git branch, which Git's answer may update
 	branches     []string
 	branchCursor int
 	branchFresh  bool
@@ -46,15 +47,19 @@ const (
 	detailsField
 )
 
+// startTaskModal opens the task form. A branch form starts with the branches
+// Git last listed, and takes a fresh list when Git answers in the background.
 func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 	modal := &taskModal{mode: mode, file: m.file, project: m.project}
+	var check tea.Cmd
 	if mode == modalAddGeneral && m.all == nil && m.activePane() == generalPane && m.general.open.kind == rowCategory {
 		modal.target.Category = m.general.open.name
 	}
 	if mode == modalAddBranch {
-		modal.branches, modal.target.Branch = m.checkLocalBranches()
+		modal.branches, modal.target.Branch, check = m.localBranches, m.project.branch, m.checkBranches()
+		modal.onCurrent = true
 		if m.all == nil && m.activePane() == branchPane && m.branch.open != (group{}) {
-			modal.target.Branch = m.branch.open.name
+			modal.target.Branch, modal.onCurrent = m.branch.open.name, false
 		}
 		if !slices.Contains(modal.branches, modal.target.Branch) {
 			modal.branchCursor = -1
@@ -67,10 +72,10 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 			return nil
 		}
 		if selected.Branch != "" {
-			modal.branches, _ = m.checkLocalBranches()
+			modal.branches, check = m.localBranches, m.checkBranches()
 		}
 		if m.blockMissingBranch(selected) {
-			return nil
+			return check
 		}
 		modal.selected = selected
 		modal.target = selected.Section
@@ -103,7 +108,7 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 	modal.resize(m.width, m.height)
 	m.overlay = modal
 	m.status = ""
-	return modal.title.Focus()
+	return tea.Batch(modal.title.Focus(), check)
 }
 
 // taskSavedMsg is a task the form added or edited, as it now is: its title,
@@ -344,6 +349,23 @@ func (f *taskModal) matchingBranches() []string {
 		slices.SortStableFunc(matches, func(a, b string) int { return cmp.Compare(rank(a), rank(b)) })
 	}
 	return matches
+}
+
+// setBranches takes a fresh list of local branches and the current branch,
+// keeping the highlighted suggestion while Git still has it. A form still
+// showing the current branch it opened with moves to the new current branch.
+func (f *taskModal) setBranches(branches []string, current string) {
+	highlighted := ""
+	if matches := f.matchingBranches(); f.branchCursor >= 0 && f.branchCursor < len(matches) {
+		highlighted = matches[f.branchCursor]
+	}
+	if f.onCurrent && f.scope.Value() == f.target.Branch {
+		f.target.Branch = current
+		f.scope.SetValue(current)
+		highlighted = current
+	}
+	f.branches = branches
+	f.branchCursor = slices.Index(f.matchingBranches(), highlighted)
 }
 
 func (f *taskModal) resetBranchCursor() {
