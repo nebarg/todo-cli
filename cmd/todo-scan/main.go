@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"slices"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/ui"
 	"github.com/spf13/pflag"
@@ -141,7 +140,11 @@ func main() {
 	if o.list || o.check {
 		os.Exit(report(os.Stdout, os.Stderr, o))
 	}
-	if _, err := tea.NewProgram(newModel(o.dir, o.exclude, scan.LevelFilter(o.levels, o.level))).Run(); err != nil {
+	err = ui.Run(newModel(o.dir, o.exclude, scan.LevelFilter(o.levels, o.level)), os.Stdout)
+	if errors.Is(err, ui.ErrNoTerminal) {
+		err = errors.New("the browser needs a terminal; use --list or --check")
+	}
+	if err != nil {
 		fail(err)
 	}
 }

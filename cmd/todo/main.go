@@ -9,10 +9,10 @@ import (
 	"slices"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/nebarg/todo-cli/internal/filesui"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
+	"github.com/nebarg/todo-cli/internal/ui"
 	"github.com/spf13/pflag"
 )
 
@@ -173,7 +173,11 @@ func main() {
 			fail(err)
 		}
 		m.files = filesui.New(cwd, exclude, nil)
-		if _, err := tea.NewProgram(m).Run(); err != nil {
+		err = ui.Run(m, os.Stdout)
+		if errors.Is(err, ui.ErrNoTerminal) {
+			err = usageError("the dashboard needs a terminal; use --scan, or give a task to add")
+		}
+		if err != nil {
 			fail(err)
 		}
 	}
