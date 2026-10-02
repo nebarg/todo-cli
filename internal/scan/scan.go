@@ -133,7 +133,7 @@ func sortedMatches(matches []Match, limit int) []Match {
 }
 
 var (
-	commentMarker = regexp.MustCompile(`(?i)(^|[^[:alnum:]_-])(@?todo([0-9]*@[[:alnum:]_-]+|[0-9]+)?)($|[^[:alnum:]_-])`)
+	commentMarker = regexp.MustCompile(`(?i)(^|[^[:alnum:]_-])((?:@ ?)?todo([0-9]*@[[:alnum:]_-]+|[0-9]+)?)($|[^[:alnum:]_-])`)
 	markerEnd     = regexp.MustCompile(`^(?:\([^)]*\))?[\s:!\-–—]*`)
 )
 
@@ -153,20 +153,41 @@ func commentTodo(line string) (todoComment, bool) {
 
 // todoInComment finds a to-do marker in a comment's text. It counts when it
 // opens the comment, carries a todo-system level or category, or is followed
-// by ':' or '(', so prose that merely mentions a todo is skipped.
+// by ':' or '(', so prose that merely mentions a todo is skipped. "@ todo"
+// counts as "@todo".
 func todoInComment(comment string) (todoComment, bool) {
 	if !containsTodo(comment) {
 		return todoComment{}, false
 	}
 	body := strings.TrimLeft(comment, "/*#;%!-<> \t")
+	if c, ok := markerIn(body); ok {
+		return c, true
+	}
+	// Commented-out code can end with a comment of its own, as in
+	// "// x = 1; // TODO: drop x", so an opener after a space starts a
+	// comment too.
+	for i := 1; i < len(body); i++ {
+		if body[i-1] != ' ' && body[i-1] != '\t' {
+			continue
+		}
+		if strings.HasPrefix(body[i:], "//") || strings.HasPrefix(body[i:], "/*") || body[i] == '#' {
+			if c, ok := markerIn(strings.TrimLeft(body[i:], "/*#;%!-<> \t")); ok {
+				return c, true
+			}
+		}
+	}
+	return todoComment{}, false
+}
+
+// markerIn finds the first marker in a comment's body that counts.
+func markerIn(body string) (todoComment, bool) {
 	for _, loc := range commentMarker.FindAllStringSubmatchIndex(body, -1) {
 		markerStart, end, tagStart := loc[4], loc[5], loc[6]
 		next := body[end:]
-		if markerStart != 0 && tagStart < 0 && !strings.HasPrefix(next, ":") && !strings.HasPrefix(next, "(") {
-			continue
-		}
 		var c todoComment
 		if tagStart >= 0 {
+			// A level todo-system doesn't accept, such as todo11, is left
+			// as a plain marker.
 			tag := body[tagStart:loc[7]]
 			if _, category, ok := strings.Cut(tag, "@"); ok {
 				c.category = category
@@ -174,14 +195,17 @@ func todoInComment(comment string) (todoComment, bool) {
 				c.level = tag
 			}
 		}
+		tagged := c.category != "" || c.level != ""
+		if markerStart != 0 && !tagged && !strings.HasPrefix(next, ":") && !strings.HasPrefix(next, "(") {
+			continue
+		}
 		c.note = noteAfterMarker(next)
 		return c, true
 	}
 	return todoComment{}, false
 }
 
-// validLevel accepts todo-system's levels, one digit or only zeros; like
-// todo11, anything else is left as a generic to-do.
+// validLevel accepts todo-system's levels, one digit or only zeros.
 func validLevel(level string) bool {
 	return len(level) == 1 || strings.Trim(level, "0") == ""
 }

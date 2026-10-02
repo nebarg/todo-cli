@@ -171,7 +171,7 @@ The dashboard reads the TODO list in the `README.md` next to the task file, whic
 
 ## TODOs in source files
 
-`todo --scan [directory]` lists case-insensitive `TODO` and `@todo` comments with their file and line. A marker counts when it starts the comment, as in `// TODO fix`, or is followed by `:` or `(` anywhere in it, so `* @return todo` doesn't match. [todo-system markers](#todo-system-syntax) count anywhere in a comment.
+`todo --scan [directory]` lists case-insensitive `TODO` and `@todo` comments with their file and line. A marker counts when it starts the comment, as in `// TODO fix`, or is followed by `:` or `(` anywhere in it, so `* @return todo` doesn't match. In commented-out code, a comment after the code counts as starting there, as in `// x = 1; // TODO drop x`. `@ todo` is read as `@todo`. [todo-system markers](#todo-system-syntax) count anywhere in a comment.
 
 The dashboard's Files tab and [`todo-scan`](#todo-scan) show the same results, up to 1,000 matches, with the comment text first and a shortened path beside it. The status bar shows the full path of the highlighted TODO. `→` opens a detail page with the TODO's text and as much of the surrounding code as fits, and `e` opens the file in your editor.
 
@@ -245,7 +245,7 @@ The scanner supports [todo-system](https://github.com/archtechx/todo-system)'s m
 - Levels are listed first, most urgent at the top, with the level beside the text. Zero levels are red, and other levels yellow.
 - Four or more zeros are labelled `0x4` to `0x9`, then `0x9+`. They sort by the real count.
 - As in todo-system, a TODO has a category or a level, not both: `todo1@boundary` is just in `boundary`.
-- todo-system ignores levels it doesn't accept, such as `todo12`. Here they're listed as generic TODOs.
+- Levels todo-system doesn't accept, such as `todo11`, have no level. They count as generic TODOs where a plain `TODO` would: at the start of a comment, or before `:` or `(`.
 - `todo --scan` lists levels first too, then the rest by file.
 
 ## Development
