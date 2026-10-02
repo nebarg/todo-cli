@@ -21,15 +21,6 @@ func (e Exclude) skipsDir(rel string) bool {
 	return strings.HasPrefix(name, ".") || slices.Contains(e.Names, name) || slices.Contains(e.Paths, rel)
 }
 
-func (e Exclude) skipsFileIn(rel string) bool {
-	for dir := path.Dir(filepath.ToSlash(rel)); dir != "."; dir = path.Dir(dir) {
-		if e.skipsDir(dir) {
-			return true
-		}
-	}
-	return false
-}
-
 // ripgrepGlobs are the exclusions as ripgrep globs; a trailing slash matches
 // only directories, and a leading one anchors a path to the scanned directory.
 func (e Exclude) ripgrepGlobs() []string {

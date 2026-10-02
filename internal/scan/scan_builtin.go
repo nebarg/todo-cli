@@ -2,26 +2,28 @@ package scan
 
 import (
 	"bytes"
+	"cmp"
 	"context"
+	"errors"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 )
 
 // scanBuiltIn keeps file TODOs usable when ripgrep is not installed.
 func scanBuiltIn(ctx context.Context, dir string, exclude Exclude) ([]Match, error) {
-	files, err := sourceFiles(ctx, dir, exclude)
-	if err != nil {
-		return nil, err
-	}
-	return scanFiles(ctx, dir, files)
+	return scanFiles(ctx, dir, func(add func(string)) error {
+		return walkFiles(ctx, dir, exclude, add)
+	})
 }
 
-// scanFiles reads files, relative to dir, in parallel for their to-dos.
-func scanFiles(ctx context.Context, dir string, files []string) ([]Match, error) {
+// scanFiles reads each file that list adds, relative to dir, for its
+// to-dos. Files are read in parallel while list is still adding them.
+func scanFiles(ctx context.Context, dir string, list func(add func(path string)) error) ([]Match, error) {
 	jobs := make(chan string, 128)
 	found := make(chan []Match, 128)
 	var wg sync.WaitGroup
@@ -37,98 +39,124 @@ func scanFiles(ctx context.Context, dir string, files []string) ([]Match, error)
 			}
 		})
 	}
-	go func() {
+	var listErr error
+	wg.Go(func() {
 		defer close(jobs)
-		for _, path := range files {
+		listErr = list(func(path string) {
 			select {
 			case jobs <- path:
 			case <-ctx.Done():
-				return
 			}
-		}
-	}()
+		})
+	})
 	go func() { wg.Wait(); close(found) }()
 
 	var matches []Match
 	for fileMatches := range found {
 		matches = append(matches, fileMatches...)
 	}
-	if err := ctx.Err(); err != nil {
+	if err := cmp.Or(ctx.Err(), listErr); err != nil {
 		return nil, err
 	}
 	return sortedMatches(matches), nil
 }
 
-func sourceFiles(ctx context.Context, dir string, exclude Exclude) ([]string, error) {
-	if files, ok := gitFiles(ctx, dir, exclude); ok {
-		return files, nil
+// walkFiles adds each file under dir to read, relative to dir. It skips
+// excluded directories, Markdown, and whatever a repository's gitignores,
+// .git/info/exclude or the user's global gitignore ignore.
+func walkFiles(ctx context.Context, dir string, exclude Exclude, add func(string)) error {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return err
 	}
-	return walkFiles(ctx, dir, exclude)
+	w := walker{ctx: ctx, dir: dir, exclude: exclude, add: add}
+	if content, err := os.ReadFile(globalIgnoreFile()); err == nil {
+		w.global = parseIgnore(string(content), 0)
+	}
+	return w.walk(".", w.enclosingScope())
 }
 
-// gitFiles lists the files under dir that Git doesn't ignore. ok is false
-// outside a repository, and when dir is itself ignored, as Git would then
-// list nothing in a directory the user asked to scan.
-func gitFiles(ctx context.Context, dir string, exclude Exclude) (files []string, ok bool) {
-	// check-ignore exits 0 only when dir is ignored.
-	if exec.CommandContext(ctx, "git", "-C", dir, "check-ignore", "-q", ".").Run() == nil {
-		return nil, false
+// walker finds the files to read under dir.
+type walker struct {
+	ctx     context.Context
+	dir     string
+	exclude Exclude
+	global  []ignoreRule // the user's global gitignore, which applies in every repository
+	add     func(path string)
+}
+
+// walk adds the files in rel, a directory, and below. scope is the
+// directory's place in its repository, before its own entries are seen.
+func (w *walker) walk(rel string, scope ignoreScope) error {
+	if err := w.ctx.Err(); err != nil {
+		return err
 	}
-	output, err := exec.CommandContext(ctx, "git", "-C", dir, "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", ".").Output()
+	path := filepath.Join(w.dir, rel)
+	entries, err := os.ReadDir(path)
 	if err != nil {
-		return nil, false
+		if rel == "." {
+			return err
+		}
+		return nil // An unreadable directory is skipped, as unreadable files are.
 	}
-	for raw := range bytes.SplitSeq(output, []byte{0}) {
-		if len(raw) == 0 {
+	if hasEntry(entries, ".git") {
+		scope = w.repoScope(path)
+	}
+	if scope.inRepo && hasEntry(entries, ".gitignore") {
+		scope.rules = withIgnoreFile(scope.rules, filepath.Join(path, ".gitignore"), len(scope.segments))
+	}
+	segments := slices.Concat(scope.segments, []string{""})
+	for _, entry := range entries {
+		name := entry.Name()
+		segments[len(segments)-1] = name
+		switch child := filepath.Join(rel, name); {
+		case entry.IsDir():
+			if w.exclude.skipsDir(child) || scope.ignores(segments, true) {
+				continue
+			}
+			if err := w.walk(child, ignoreScope{inRepo: scope.inRepo, segments: segments, rules: scope.rules}); err != nil {
+				return err
+			}
+		case entry.Type().IsRegular() && !isMarkdown(name) && !scope.ignores(segments, false):
+			w.add(child)
+		}
+	}
+	return nil
+}
+
+// repoScope starts the scope of a repository at its root.
+func (w *walker) repoScope(root string) ignoreScope {
+	return ignoreScope{inRepo: true, rules: withIgnoreFile(w.global, filepath.Join(root, ".git", "info", "exclude"), 0)}
+}
+
+// enclosingScope finds the repository the scanned directory is in, with the
+// rules of the gitignores above it. The directory itself is scanned even if
+// they ignore it.
+func (w *walker) enclosingScope() ignoreScope {
+	var segments []string // the scanned directory's path from parent
+	for child, parent := w.dir, filepath.Dir(w.dir); parent != child; child, parent = parent, filepath.Dir(parent) {
+		segments = slices.Insert(segments, 0, filepath.Base(child))
+		if _, err := os.Lstat(filepath.Join(parent, ".git")); err != nil {
 			continue
 		}
-		path := filepath.Clean(string(raw))
-		if !isMarkdown(path) && !exclude.skipsFileIn(path) {
-			files = append(files, path)
+		scope := w.repoScope(parent)
+		for depth := range len(segments) {
+			gitignore := filepath.Join(parent, filepath.Join(segments[:depth]...), ".gitignore")
+			scope.rules = withIgnoreFile(scope.rules, gitignore, depth)
 		}
+		scope.segments = segments
+		return scope
 	}
-	return files, true
+	return ignoreScope{}
 }
 
-func walkFiles(ctx context.Context, dir string, exclude Exclude) ([]string, error) {
-	var files []string
-	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if walkErr != nil {
-			// A directory that can't be read is skipped, as unreadable files
-			// are; only the scanned directory itself must be readable.
-			if path != dir && entry != nil && entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return walkErr
-		}
-		rel, err := filepath.Rel(dir, path)
-		if err != nil {
-			return err
-		}
-		if rel == "." {
-			return nil
-		}
-		if entry.IsDir() {
-			if exclude.skipsDir(rel) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return nil
-		}
-		if !entry.Type().IsRegular() {
-			return nil
-		}
-		if !isMarkdown(rel) {
-			files = append(files, rel)
-		}
-		return nil
+// hasEntry reports whether a directory's entries, sorted as os.ReadDir
+// sorts them, include name.
+func hasEntry(entries []os.DirEntry, name string) bool {
+	_, found := slices.BinarySearchFunc(entries, name, func(e os.DirEntry, name string) int {
+		return strings.Compare(e.Name(), name)
 	})
-	return files, err
+	return found
 }
 
 func isMarkdown(path string) bool {
@@ -144,9 +172,41 @@ func scanFile(dir, relative string) []Match {
 	if err != nil || !info.Mode().IsRegular() {
 		return nil
 	}
-	content, err := os.ReadFile(path)
-	if err != nil || bytes.IndexByte(content[:min(len(content), 8192)], 0) >= 0 {
+	file, err := os.Open(path)
+	if err != nil {
 		return nil
 	}
-	return fileTodos(filepath.ToSlash(relative), string(content))
+	defer func() { _ = file.Close() }() // Read-only, so a close error cannot lose data.
+	content, ok := readText(file, info.Size())
+	if !ok {
+		return nil
+	}
+	return fileTodos(filepath.ToSlash(relative), content)
+}
+
+// binaryCheckLen is how much of a file is checked for a NUL byte, which
+// marks it as binary.
+const binaryCheckLen = 8192
+
+// readText reads a file of about size bytes from r, unless its first
+// binaryCheckLen bytes hold a NUL byte. A binary file is read no further.
+func readText(r io.Reader, size int64) (string, bool) {
+	head := make([]byte, binaryCheckLen)
+	n, err := io.ReadFull(r, head)
+	head = head[:n]
+	if bytes.IndexByte(head, 0) >= 0 {
+		return "", false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return string(head), true
+	}
+	if err != nil {
+		return "", false
+	}
+	content := bytes.NewBuffer(make([]byte, 0, max(int(size), n)+bytes.MinRead))
+	content.Write(head)
+	if _, err := content.ReadFrom(r); err != nil {
+		return "", false
+	}
+	return content.String(), true
 }

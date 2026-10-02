@@ -105,13 +105,14 @@ func scanWithRipgrep(ctx context.Context, dir string, exclude Exclude) ([]Match,
 	case err != nil:
 		return nil, fmt.Errorf("ripgrep: %s", strings.TrimSpace(stderr.String()))
 	}
-	var files []string
-	for path := range strings.SplitSeq(string(output), "\x00") {
-		if path != "" {
-			files = append(files, filepath.Clean(path))
+	return scanFiles(ctx, dir, func(add func(string)) error {
+		for path := range strings.SplitSeq(string(output), "\x00") {
+			if path != "" {
+				add(filepath.Clean(path))
+			}
 		}
-	}
-	return scanFiles(ctx, dir, files)
+		return nil
+	})
 }
 
 // sortedMatches orders matches by level, then file and line, so parallel

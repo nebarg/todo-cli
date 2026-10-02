@@ -1,10 +1,12 @@
 package scan
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,6 +35,7 @@ func TestScanSource(t *testing.T) {
 		"pkg/gen/gen.go":        "// TODO: generated\n",
 		"odd[1]/x.go":           "// TODO: glob characters\n",
 		"sys.php":               "// todo@boundary Split this\n// todo00 First\n// todo1@boundary Split more\n",
+		"long.go":               strings.Repeat("x := 1\n", 2000) + "// TODO: past the binary check\n",
 	}
 	cases := []struct {
 		name    string
@@ -40,15 +43,15 @@ func TestScanSource(t *testing.T) {
 		want    []string
 	}{
 		{"defaults read hidden files, but skip dependencies, dot directories and Markdown", defaultExclude,
-			[]string{"sys.php:2", ".hidden.go:1", "code.go:1", "code.go:3", "dist/out.js:1", "odd[1]/x.go:1", "pkg/dist/out.js:1", "pkg/gen/gen.go:1", "sys.php:1", "sys.php:3", "web/.eslintrc.js:1"}},
+			[]string{"sys.php:2", ".hidden.go:1", "code.go:1", "code.go:3", "dist/out.js:1", "long.go:2001", "odd[1]/x.go:1", "pkg/dist/out.js:1", "pkg/gen/gen.go:1", "sys.php:1", "sys.php:3", "web/.eslintrc.js:1"}},
 		{"custom excludes replace the defaults", Exclude{Names: []string{"gen", "odd[1]"}, Paths: []string{"pkg/dist"}},
-			[]string{"sys.php:2", ".hidden.go:1", "code.go:1", "code.go:3", "dist/out.js:1", "node_modules/dep.js:1", "sys.php:1", "sys.php:3", "vendor/lib.go:1", "web/.eslintrc.js:1", "web/node_modules/d.js:1"}},
+			[]string{"sys.php:2", ".hidden.go:1", "code.go:1", "code.go:3", "dist/out.js:1", "long.go:2001", "node_modules/dep.js:1", "sys.php:1", "sys.php:3", "vendor/lib.go:1", "web/.eslintrc.js:1", "web/node_modules/d.js:1"}},
 	}
 	for _, scanner := range scanners(t) {
 		t.Run(scanner.name, func(t *testing.T) {
 			dir := t.TempDir()
 			writeFiles(t, dir, files)
-			if scanner.git {
+			if scanner.repo {
 				gitInit(t, dir)
 			}
 			scanner.use(t)
@@ -82,13 +85,16 @@ func TestScanSkipsUnreadableDirectories(t *testing.T) {
 			if _, err := os.ReadDir(locked); err == nil {
 				t.Skip("directory permissions aren't enforced for this user")
 			}
-			if scanner.git {
+			if scanner.repo {
 				gitInit(t, dir)
 			}
 			scanner.use(t)
 			matches, err := Source(t.Context(), dir, Exclude{})
 			if err != nil || len(matches) != 1 || matches[0].Path != "ok/a.go" {
 				t.Fatalf("matches = %+v, %v", matches, err)
+			}
+			if matches, err := Source(t.Context(), locked, Exclude{}); err == nil {
+				t.Fatalf("scanning an unreadable directory = %+v, no error", matches)
 			}
 			if scanner.ripgrep {
 				// Source falls back to the built-in scanner when ripgrep fails.
@@ -116,12 +122,72 @@ func TestScanReadsADirectoryItsRepositoryIgnores(t *testing.T) {
 	}
 }
 
+func TestScanFollowsEachRepositorysGitignore(t *testing.T) {
+	for _, scanner := range scanners(t) {
+		t.Run(scanner.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFiles(t, dir, map[string]string{
+				"loose.go":           "// TODO: outside any repository\n",
+				"app/.gitignore":     "/build/\n",
+				"app/main.go":        "// TODO: in a repository\n",
+				"app/build/out.go":   "// TODO: ignored by app\n",
+				"app/lib/.gitignore": "*.gen.go\n",
+				"app/lib/lib.go":     "// TODO: in a repository inside it\n",
+				"app/lib/x.gen.go":   "// TODO: ignored by lib\n",
+				"app/.cache/c.go":    "// TODO: in a dot directory\n",
+			})
+			gitInit(t, filepath.Join(dir, "app"))
+			gitInit(t, filepath.Join(dir, "app", "lib"))
+			scanner.use(t)
+			for _, scan := range []struct{ dir, prefix string }{{dir, "app/"}, {filepath.Join(dir, "app"), ""}} {
+				matches, err := Source(t.Context(), scan.dir, Exclude{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var got []string
+				for _, m := range matches {
+					got = append(got, m.Path)
+				}
+				want := []string{scan.prefix + "lib/lib.go", scan.prefix + "main.go"}
+				if scan.prefix != "" {
+					want = append(want, "loose.go")
+				}
+				if !slices.Equal(got, want) {
+					t.Errorf("scanning %s = %v, want %v", scan.dir, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestReadTextStopsAtABinaryStart(t *testing.T) {
+	binary := append(make([]byte, binaryCheckLen-1), 'x')
+	if _, ok := readText(io.MultiReader(bytes.NewReader(binary), readFails{t}), 1<<30); ok {
+		t.Fatal("a file starting with NUL bytes was read as text")
+	}
+	long := strings.Repeat("a", binaryCheckLen) + "\x00 later"
+	if text, ok := readText(strings.NewReader(long), int64(len(long))); !ok || text != long {
+		t.Fatalf("a NUL byte past the check made the file binary: %v", ok)
+	}
+	if text, ok := readText(strings.NewReader("short"), 5); !ok || text != "short" {
+		t.Fatalf("short file = %q, %v", text, ok)
+	}
+}
+
+// readFails fails the test when read.
+type readFails struct{ t *testing.T }
+
+func (r readFails) Read([]byte) (int, error) {
+	r.t.Error("read past the binary check")
+	return 0, io.EOF
+}
+
 func TestScanStopsWhenCancelled(t *testing.T) {
 	for _, scanner := range scanners(t) {
 		t.Run(scanner.name, func(t *testing.T) {
 			dir := t.TempDir()
 			writeFiles(t, dir, map[string]string{"a.go": "// TODO: never read\n"})
-			if scanner.git {
+			if scanner.repo {
 				gitInit(t, dir)
 			}
 			scanner.use(t)
@@ -157,7 +223,7 @@ func gitInit(t *testing.T, dir string) {
 type scanner struct {
 	name    string
 	path    string
-	git     bool
+	repo    bool // whether a test's directory is made a repository
 	ripgrep bool
 }
 
@@ -165,22 +231,21 @@ type scanner struct {
 // configuration out of the test.
 func (s scanner) use(t *testing.T) {
 	t.Setenv("PATH", s.path)
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull) // A global gitignore would hide test files.
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	keepGitConfigOut(t)
 }
 
-// scanners runs a test with the built-in scanner, with and without Git to
-// list files, and with ripgrep when it is installed.
+// keepGitConfigOut stops the user's global gitignore from hiding test files.
+func keepGitConfigOut(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+}
+
+// scanners runs a test with the built-in scanner, inside and outside a
+// repository, and with ripgrep when it is installed.
 func scanners(t *testing.T) []scanner {
-	gitOnly := t.TempDir()
-	git, err := exec.LookPath("git")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(git, filepath.Join(gitOnly, "git")); err != nil {
-		t.Fatal(err)
-	}
-	list := []scanner{{name: "built-in", path: t.TempDir()}, {name: "built-in with git", path: gitOnly, git: true}}
+	noTools := t.TempDir()
+	list := []scanner{{name: "built-in", path: noTools}, {name: "built-in in a repository", path: noTools, repo: true}}
 	if rg, err := exec.LookPath("rg"); err == nil {
 		list = append(list, scanner{name: "ripgrep", path: filepath.Dir(rg), ripgrep: true})
 	} else {
