@@ -26,31 +26,23 @@ const (
 )
 
 type model struct {
-	file              string
-	project           projectContext
-	allTasks          []store.Task
-	all               *allTasksView // nil unless the All tasks view is open
-	general           []store.Task
-	readme            []store.Task
-	readmeOpen        bool
-	branches          []store.Task
-	focus             pane
-	detailFrom        pane
-	detailScroll      int
-	generalCursor     int
-	generalRootCursor int
-	generalCategory   string
-	branchCursor      int
-	branchRootCursor  int
-	branchFilter      string
-	localBranchNames  map[string]bool
-	branchesVerified  bool
-	files             filesui.Model
-	overlay           overlay // nil when nothing is open over the dashboard
-	lastClear         *store.Removal
-	status            string
-	width             int
-	height            int
+	file             string
+	project          projectContext
+	tasks            taskSet
+	all              *allTasksView // nil unless the All tasks view is open
+	general          groupList
+	branch           groupList
+	focus            pane
+	detailFrom       pane
+	detailScroll     int
+	localBranchNames map[string]bool
+	branchesVerified bool
+	files            filesui.Model
+	overlay          overlay // nil when nothing is open over the dashboard
+	lastClear        *store.Removal
+	status           string
+	width            int
+	height           int
 }
 
 func newModel(file string, project projectContext, files filesui.Model) (*model, error) {
@@ -255,19 +247,16 @@ func (m *model) editSelected() tea.Cmd {
 }
 
 func (m *model) moveCursor(delta int) {
-	cursor, length := &m.generalCursor, len(m.generalRows())
-	switch {
-	case m.all != nil:
-		cursor, length = &m.all.cursor, len(m.allTasks)
-	case m.focus == branchPane:
-		cursor, length = &m.branchCursor, len(m.branchRows())
+	if m.all != nil {
+		m.all.cursor = max(0, min(m.all.cursor+delta, len(m.tasks.all)-1))
+	} else if l := m.list(m.focus); l != nil {
+		l.cursor = max(0, min(l.cursor+delta, len(m.rows(m.focus))-1))
 	}
-	*cursor = max(0, min(*cursor+delta, length-1))
 }
 
 func (m *model) selectedTask() (store.Task, bool) {
 	if m.all != nil {
-		tasks := m.all.sorted(m.allTasks)
+		tasks := m.all.sorted(m.tasks.all)
 		if m.all.cursor >= 0 && m.all.cursor < len(tasks) {
 			return tasks[m.all.cursor], true
 		}
@@ -290,7 +279,7 @@ func (m *model) activePane() pane {
 // readmeSelected is true while the README.md group is open, where every
 // row is a README task.
 func (m *model) readmeSelected() bool {
-	return m.readmeOpen && m.all == nil && m.activePane() == generalPane
+	return m.general.open.kind == rowReadme && m.all == nil && m.activePane() == generalPane
 }
 
 // readmeReadOnly is the status for anything but done and reopen on a README
@@ -387,8 +376,8 @@ func (m *model) refreshProject() error {
 	previous := m.project.branch
 	m.project = currentProject()
 	err := m.reload()
-	if m.project.branch != previous && previous != "" && m.branchFilter == previous {
-		m.branchFilter, m.branchCursor = "", m.branchRootCursor
+	if m.project.branch != previous && previous != "" && m.branch.open == branchGroup(previous) {
+		m.branch.leave()
 		if m.focus == detailPane && m.detailFrom == branchPane {
 			m.focus = branchPane
 		}
@@ -435,39 +424,31 @@ func (m *model) refresh() error {
 func (m *model) readTasks(sortByPriority bool) error {
 	m.lastClear = nil
 	previous, hadSelection := m.selectedTask()
-	previousTasks := m.allTasks
 	tasks, err := store.Load(m.file)
 	if err != nil {
 		return err
 	}
 	if sortByPriority {
-		m.allTasks = sortedTasksByPriority(tasks)
+		m.tasks.setAll(sortedTasksByPriority(tasks))
 		if m.all != nil {
 			m.all.byPriority = false
 		}
 	} else {
-		m.allTasks = preserveTaskOrder(previousTasks, tasks)
+		m.tasks.setAll(preserveTaskOrder(m.tasks.all, tasks))
 	}
-	m.partitionTasks()
-	if m.readme, err = loadReadme(m.readmeFile()); err != nil {
+	if m.tasks.readme, err = loadReadme(m.readmeFile()); err != nil {
 		return err
 	}
-	if m.readmeOpen && len(m.readme) == 0 {
-		m.readmeOpen = false
-		m.generalCursor = m.generalRootCursor
+	// A group whose tasks have all gone closes.
+	for _, p := range []pane{generalPane, branchPane} {
+		l := m.list(p)
+		if len(m.rows(p)) == 0 {
+			l.leave()
+		}
+		l.cursor = min(l.cursor, max(0, len(m.rows(p))-1))
 	}
-	if m.generalCategory != "" && !slices.ContainsFunc(m.general, func(t store.Task) bool { return taskInCategory(t, m.generalCategory) }) {
-		m.generalCategory = ""
-		m.generalCursor = m.generalRootCursor
-	}
-	if m.branchFilter != "" && !slices.ContainsFunc(m.branches, func(t store.Task) bool { return t.Branch == m.branchFilter }) {
-		m.branchFilter = ""
-		m.branchCursor = m.branchRootCursor
-	}
-	m.generalCursor = min(m.generalCursor, max(0, len(m.generalRows())-1))
-	m.branchCursor = min(m.branchCursor, max(0, len(m.branchRows())-1))
 	if m.all != nil {
-		m.all.cursor = min(m.all.cursor, max(0, len(m.allTasks)-1))
+		m.all.cursor = min(m.all.cursor, max(0, len(m.tasks.all)-1))
 		if hadSelection {
 			m.selectInAllTasks(previous)
 		}
@@ -548,14 +529,21 @@ func loadReadme(path string) ([]store.Task, error) {
 	return tasks, err
 }
 
-func (m *model) partitionTasks() {
-	m.general = nil
-	m.branches = nil
-	for _, t := range m.allTasks {
+// taskSet is the tasks the dashboard shows, as last read.
+type taskSet struct {
+	all      []store.Task // todo.md's tasks, in the dashboard's order
+	general  []store.Task // all's tasks without a branch
+	branches []store.Task // all's tasks with one
+	readme   []store.Task // README.md's tasks, most urgent first
+}
+
+func (s *taskSet) setAll(tasks []store.Task) {
+	s.all, s.general, s.branches = tasks, nil, nil
+	for _, t := range tasks {
 		if t.Branch == "" {
-			m.general = append(m.general, t)
+			s.general = append(s.general, t)
 		} else {
-			m.branches = append(m.branches, t)
+			s.branches = append(s.branches, t)
 		}
 	}
 }

@@ -63,34 +63,22 @@ func (c clearTargets) summary() string {
 // them: an opened category or branch, the current tab, or every task.
 func (m *model) clearScope() ([]store.Task, string) {
 	if m.all != nil {
-		return m.allTasks, "all tasks"
+		return m.tasks.all, "all tasks"
 	}
 	switch m.activePane() {
 	case generalPane:
-		if m.readmeOpen {
+		switch m.general.open.kind {
+		case rowReadme:
 			return nil, readmeGroup
+		case rowCategory:
+			return rowTasks(m.rows(generalPane)), "@" + m.general.open.name
 		}
-		if m.generalCategory == "" {
-			return m.general, "General"
-		}
-		var tasks []store.Task
-		for _, t := range m.general {
-			if taskInCategory(t, m.generalCategory) {
-				tasks = append(tasks, t)
-			}
-		}
-		return tasks, "@" + m.generalCategory
+		return m.tasks.general, "General"
 	case branchPane:
-		if m.branchFilter == "" {
-			return m.branches, "Branches"
+		if m.branch.open == (group{}) {
+			return m.tasks.branches, "Branches"
 		}
-		var tasks []store.Task
-		for _, t := range m.branches {
-			if t.Branch == m.branchFilter {
-				tasks = append(tasks, t)
-			}
-		}
-		return tasks, branchIcon + " " + m.branchFilter
+		return rowTasks(m.rows(branchPane)), branchIcon + " " + m.branch.open.name
 	}
 	return nil, ""
 }

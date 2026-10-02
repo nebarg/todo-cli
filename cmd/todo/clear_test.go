@@ -58,7 +58,7 @@ func TestClearDoneFollowsWhereYouAre(t *testing.T) {
 		kept   []string
 	}{
 		{"General", func(m *model) {}, "Remove 3 done tasks from General?", []string{"Loose done", "Doc done", "Auth done", "# docs"}, []string{"Branch done", "# auth"}},
-		{"category", func(m *model) { m.generalCategory = "auth" }, "Remove 1 done task from @auth?", []string{"Auth done"}, []string{"Loose done", "Doc done"}},
+		{"category", func(m *model) { m.general.open = categoryGroup("auth") }, "Remove 1 done task from @auth?", []string{"Auth done"}, []string{"Loose done", "Doc done"}},
 		{"Branches", func(m *model) { m.focus = branchPane }, "Remove 1 done task from Branches?", []string{"Branch done", "# Branches"}, []string{"Loose done"}},
 		{"all tasks", func(m *model) { m.openAllTasks() }, "Remove 4 done tasks from all tasks?", []string{"Loose done", "Doc done", "Auth done", "Branch done"}, []string{"Loose open", "Auth open"}},
 	} {
@@ -235,7 +235,7 @@ func missingBranchModel(t *testing.T) (*model, string) {
 
 func TestClearInsideMissingBranchDeletesIt(t *testing.T) {
 	m, path := missingBranchModel(t)
-	m.branchFilter = "feature/gone"
+	m.branch.open = branchGroup("feature/gone")
 	if footer := ansi.Strip(m.renderFooter(200)); !strings.Contains(footer, "X remove its tasks") {
 		t.Fatalf("missing branch footer lacks remove: %q", footer)
 	}
@@ -248,8 +248,8 @@ func TestClearInsideMissingBranchDeletesIt(t *testing.T) {
 	}
 	m = press(m, "y")
 	want := "- [x] Loose done\n\n# Branches\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n"
-	if got := fileContent(t, path); got != want || m.status != "Removed the tasks of feature/gone" || m.branchFilter != "" {
-		t.Fatalf("file = %q, status %q, filter %q", got, m.status, m.branchFilter)
+	if got := fileContent(t, path); got != want || m.status != "Removed the tasks of feature/gone" || m.branch.open.name != "" {
+		t.Fatalf("file = %q, status %q, filter %q", got, m.status, m.branch.open.name)
 	}
 	if press(m, "u"); fileContent(t, path) != missingContent {
 		t.Fatal("undo did not bring the branch back")
@@ -298,7 +298,7 @@ func TestClearDoneAndMissingTogether(t *testing.T) {
 func TestIndexMarksMissingBranches(t *testing.T) {
 	m, _ := missingBranchModel(t)
 	m.openAllTasks()
-	view := m.all.view(m.allTasks, m.branchMissing, 100, 20)
+	view := m.all.view(m.tasks.all, m.branchMissing, 100, 20)
 	gone := lipgloss.NewStyle().Foreground(ui.ColorHigh).Render(ui.Column("⚠ feature/gone", 24))
 	if !strings.Contains(view, gone) || !strings.Contains(ansi.Strip(view), branchIcon+" feature/live") {
 		t.Fatalf("index does not mark the missing branch:\n%s", view)

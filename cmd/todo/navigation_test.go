@@ -28,7 +28,7 @@ func TestBranchListMarksMissingGitBranches(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.focus = branchPane
-	if rows := m.branchRows(); len(rows) != 2 || rows[0].missingGitBranch || rows[1].missingGitBranch {
+	if rows := m.rows(branchPane); len(rows) != 2 || rows[0].missingGitBranch || rows[1].missingGitBranch {
 		t.Fatalf("existing branches were marked missing: %+v", rows)
 	}
 	if _, err := gitOutput(dir, "branch", "-D", "feature/gone"); err != nil {
@@ -37,7 +37,7 @@ func TestBranchListMarksMissingGitBranches(t *testing.T) {
 	if err := m.reload(); err != nil {
 		t.Fatal(err)
 	}
-	rows := m.branchRows()
+	rows := m.rows(branchPane)
 	if len(rows) != 2 || !rows[0].missingGitBranch || rows[1].missingGitBranch || rows[0].count != 1 {
 		t.Fatalf("deleted branch was not identified while keeping its tasks: %+v", rows)
 	}
@@ -55,7 +55,7 @@ func TestBranchListMarksMissingGitBranches(t *testing.T) {
 	if err := m.reload(); err != nil {
 		t.Fatal(err)
 	}
-	if m.branchRows()[0].missingGitBranch {
+	if m.rows(branchPane)[0].missingGitBranch {
 		t.Fatal("restored Git branch still marked missing")
 	}
 }
@@ -117,7 +117,7 @@ func TestBranchesOutsideGitAreNotMarkedMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rows := m.branchRows(); len(rows) != 1 || rows[0].missingGitBranch {
+	if rows := m.rows(branchPane); len(rows) != 1 || rows[0].missingGitBranch {
 		t.Fatalf("branch without a Git repository was marked missing: %+v", rows)
 	}
 }
@@ -132,7 +132,7 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	general := m.generalRows()
+	general := m.rows(generalPane)
 	if len(general) != 3 || general[0].kind != rowCategory || general[0].name != "auth" || general[0].count != 1 || general[1].kind != rowCategory || general[1].name != "tests" || general[2].todo.Text != "Uncategorised" {
 		t.Fatalf("general rows = %+v", general)
 	}
@@ -145,10 +145,10 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
-	if m.generalCategory != "auth" || !slices.Equal(m.breadcrumb(generalPane), []string{"General", "@auth"}) || len(m.generalRows()) != 1 || m.generalRows()[0].todo.Text != "Login task" {
-		t.Fatalf("category did not filter general tasks: %+v", m.generalRows())
+	if m.general.open.name != "auth" || !slices.Equal(m.breadcrumb(generalPane), []string{"General", "@auth"}) || len(m.rows(generalPane)) != 1 || m.rows(generalPane)[0].todo.Text != "Login task" {
+		t.Fatalf("category did not filter general tasks: %+v", m.rows(generalPane))
 	}
-	if opened := ansi.Strip(m.renderNavigationPane(m.generalRows(), 0, generalPane, 50, 12)); strings.Contains(opened, "  Login task") || !strings.Contains(opened, "Login task") {
+	if opened := ansi.Strip(m.renderNavigationPane(m.rows(generalPane), 0, generalPane, 50, 12)); strings.Contains(opened, "  Login task") || !strings.Contains(opened, "Login task") {
 		t.Fatalf("category contents were indented: %s", opened)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
@@ -158,40 +158,40 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
 	m = updated.(*model)
-	if m.focus != generalPane || m.generalCategory != "auth" {
+	if m.focus != generalPane || m.general.open.name != "auth" {
 		t.Fatal("left arrow from details skipped the filtered task list")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
 	m = updated.(*model)
-	if m.generalCategory != "" || m.generalCursor != 0 {
+	if m.general.open.name != "" || m.general.cursor != 0 {
 		t.Fatal("left arrow did not return to General categories")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: '2', Text: "2"})
 	m = updated.(*model)
-	if m.branchFilter != "fix/api" || len(m.branchRows()) != 1 || m.branchRows()[0].todo.Text != "Branch API" {
-		t.Fatalf("current branch did not open on startup: %+v", m.branchRows())
+	if m.branch.open.name != "fix/api" || len(m.rows(branchPane)) != 1 || m.rows(branchPane)[0].todo.Text != "Branch API" {
+		t.Fatalf("current branch did not open on startup: %+v", m.rows(branchPane))
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
 	m = updated.(*model)
-	branches := m.branchRows()
-	if m.branchFilter != "" || len(branches) != 2 || branches[m.branchCursor].name != "fix/api" {
-		t.Fatalf("left arrow did not return to the current branch row: cursor %d rows %+v", m.branchCursor, branches)
+	branches := m.rows(branchPane)
+	if m.branch.open.name != "" || len(branches) != 2 || branches[m.branch.cursor].name != "fix/api" {
+		t.Fatalf("left arrow did not return to the current branch row: cursor %d rows %+v", m.branch.cursor, branches)
 	}
-	m.branchFilter = "feature/login"
-	m.branchCursor = 0
-	branchList := ansi.Strip(m.renderNavigationPane(m.branchRows(), 0, branchPane, 50, 12))
+	m.branch.open = branchGroup("feature/login")
+	m.branch.cursor = 0
+	branchList := ansi.Strip(m.renderNavigationPane(m.rows(branchPane), 0, branchPane, 50, 12))
 	if strings.Contains(branchList, "[ ]") || strings.Contains(branchList, "@auth") || !strings.Contains(branchList, "Branch login") {
 		t.Fatalf("branch tasks were not shown directly: %s", branchList)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
 	m = updated.(*model)
-	if m.branchFilter != "" || m.branchCursor != 1 {
+	if m.branch.open.name != "" || m.branch.cursor != 1 {
 		t.Fatal("left arrow did not return to branches")
 	}
 }
 
 func TestArrowOpensDetailsAndEscapeReturnsToList(t *testing.T) {
-	m := &model{general: []store.Task{{Text: "First task"}}, width: 100, height: 30}
+	m := &model{tasks: taskSet{general: []store.Task{{Text: "First task"}}}, width: 100, height: 30}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	m = updated.(*model)
 	if m.focus != detailPane || m.detailFrom != generalPane {
@@ -248,27 +248,27 @@ func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 	} {
 		t.Run(string(item.sort), func(t *testing.T) {
 			view := allTasksView{sort: item.sort}
-			if got := indexTitles(view.sorted(m.allTasks)); got != item.want {
+			if got := indexTitles(view.sorted(m.tasks.all)); got != item.want {
 				t.Errorf("%s order = %q, want %q", item.sort, got, item.want)
 			}
 		})
 	}
-	if rows := m.generalRows(); rows[1].todo.Text != "General open" || rows[2].todo.Text != "General done" {
+	if rows := m.rows(generalPane); rows[1].todo.Text != "General open" || rows[2].todo.Text != "General done" {
 		t.Fatalf("general tasks are out of order: %+v", rows)
 	}
-	m.generalCategory = "auth"
-	if rows := m.generalRows(); rows[0].todo.Text != "Auth open" || rows[1].todo.Text != "Auth done" {
+	m.general.open = categoryGroup("auth")
+	if rows := m.rows(generalPane); rows[0].todo.Text != "Auth open" || rows[1].todo.Text != "Auth done" {
 		t.Fatalf("category tasks are out of order: %+v", rows)
 	}
 	m.focus = branchPane
-	m.branchFilter = "feature/x"
-	if rows := m.branchRows(); rows[0].todo.Text != "Branch open first" || rows[1].todo.Text != "Branch open second" || rows[2].todo.Text != "Branch done" {
+	m.branch.open = branchGroup("feature/x")
+	if rows := m.rows(branchPane); rows[0].todo.Text != "Branch open first" || rows[1].todo.Text != "Branch open second" || rows[2].todo.Text != "Branch done" {
 		t.Fatalf("branch tasks are out of order: %+v", rows)
 	}
-	m.branchCursor = 0
+	m.branch.cursor = 0
 	m.toggleSelected()
-	if selected, ok := m.selectedTask(); !ok || selected.Text != "Branch open first" || !selected.Done || m.branchCursor != 2 {
-		t.Fatalf("completed branch task did not stay selected at the end: %+v", m.branchRows())
+	if selected, ok := m.selectedTask(); !ok || selected.Text != "Branch open first" || !selected.Done || m.branch.cursor != 2 {
+		t.Fatalf("completed branch task did not stay selected at the end: %+v", m.rows(branchPane))
 	}
 }
 
@@ -337,23 +337,23 @@ func TestPressingATabAgainReturnsToItsTopLevel(t *testing.T) {
 	m = press(m, "2")
 	m = press(m, "enter")
 	m = press(m, "1")
-	if m.focus != generalPane || m.generalCategory != "auth" {
-		t.Fatalf("switching to General left @auth: focus %v, category %q", m.focus, m.generalCategory)
+	if m.focus != generalPane || m.general.open.name != "auth" {
+		t.Fatalf("switching to General left @auth: focus %v, category %q", m.focus, m.general.open.name)
 	}
 	m = press(m, "1")
-	if m.generalCategory != "" || m.branchFilter != "feature/login" {
-		t.Fatalf("1 again: category %q, branch %q", m.generalCategory, m.branchFilter)
+	if m.general.open.name != "" || m.branch.open.name != "feature/login" {
+		t.Fatalf("1 again: category %q, branch %q", m.general.open.name, m.branch.open.name)
 	}
 	m = press(m, "1")
-	if m.focus != generalPane || m.generalCategory != "" {
+	if m.focus != generalPane || m.general.open.name != "" {
 		t.Fatal("1 at the top of General changed the view")
 	}
 	m = press(m, "2")
-	if m.focus != branchPane || m.branchFilter != "feature/login" {
-		t.Fatalf("switching to Branches left the branch: %q", m.branchFilter)
+	if m.focus != branchPane || m.branch.open.name != "feature/login" {
+		t.Fatalf("switching to Branches left the branch: %q", m.branch.open.name)
 	}
 	m = press(m, "2")
-	if m.branchFilter != "" {
+	if m.branch.open.name != "" {
 		t.Fatal("2 again did not return to the branch list")
 	}
 }
@@ -368,8 +368,8 @@ func TestTwoTogglesBetweenBranchListAndCurrentBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.focus != generalPane || m.branchFilter != "main" {
-		t.Fatalf("startup: focus %v, branch %q", m.focus, m.branchFilter)
+	if m.focus != generalPane || m.branch.open.name != "main" {
+		t.Fatalf("startup: focus %v, branch %q", m.focus, m.branch.open.name)
 	}
 	steps := []struct{ key, branch string }{
 		{"2", "main"},
@@ -386,11 +386,11 @@ func TestTwoTogglesBetweenBranchListAndCurrentBranch(t *testing.T) {
 	}
 	for i, step := range steps {
 		m = press(m, step.key)
-		if m.branchFilter != step.branch {
-			t.Fatalf("step %d (%s): branch %q, want %q", i, step.key, m.branchFilter, step.branch)
+		if m.branch.open.name != step.branch {
+			t.Fatalf("step %d (%s): branch %q, want %q", i, step.key, m.branch.open.name, step.branch)
 		}
 	}
-	if rows := m.branchRows(); rows[m.branchCursor].name != "feature/other" {
+	if rows := m.rows(branchPane); rows[m.branch.cursor].name != "feature/other" {
 		t.Fatal("leaving a branch lost its row")
 	}
 
@@ -398,8 +398,8 @@ func TestTwoTogglesBetweenBranchListAndCurrentBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m = press(press(m, "2"), "2"); m.branchFilter != "" || m.focus != branchPane {
-		t.Fatalf("branch without tasks opened %q", m.branchFilter)
+	if m = press(press(m, "2"), "2"); m.branch.open.name != "" || m.focus != branchPane {
+		t.Fatalf("branch without tasks opened %q", m.branch.open.name)
 	}
 }
 
@@ -470,30 +470,30 @@ func TestReloadFollowsASwitchedGitBranch(t *testing.T) {
 		m = press(m, "right") // details of the old branch's task
 		checkout(t, dir, "feature/x")
 		m = press(m, "r")
-		if m.project.branch != "feature/x" || m.branchFilter != "feature/x" || m.focus != branchPane {
-			t.Fatalf("after switching: branch %q, open %q, focus %v", m.project.branch, m.branchFilter, m.focus)
+		if m.project.branch != "feature/x" || m.branch.open.name != "feature/x" || m.focus != branchPane {
+			t.Fatalf("after switching: branch %q, open %q, focus %v", m.project.branch, m.branch.open.name, m.focus)
 		}
 	})
 	t.Run("keeps a branch opened by hand", func(t *testing.T) {
 		m, dir := setup(t)
 		m = press(m, "2") // back to the branch list
-		m.branchCursor = 0
+		m.branch.cursor = 0
 		m = press(m, "right")
-		if m.branchFilter != "feature/x" {
-			t.Fatalf("opened %q", m.branchFilter)
+		if m.branch.open.name != "feature/x" {
+			t.Fatalf("opened %q", m.branch.open.name)
 		}
 		checkout(t, dir, "feature/empty")
 		m = press(m, "r")
-		if m.branchFilter != "feature/x" {
-			t.Fatalf("a branch opened by hand was left: %q", m.branchFilter)
+		if m.branch.open.name != "feature/x" {
+			t.Fatalf("a branch opened by hand was left: %q", m.branch.open.name)
 		}
 	})
 	t.Run("returns to the list when the new branch has no tasks", func(t *testing.T) {
 		m, dir := setup(t)
 		checkout(t, dir, "feature/empty")
 		m = press(m, "r")
-		if m.project.branch != "feature/empty" || m.branchFilter != "" {
-			t.Fatalf("after switching to a branch without tasks: open %q", m.branchFilter)
+		if m.project.branch != "feature/empty" || m.branch.open.name != "" {
+			t.Fatalf("after switching to a branch without tasks: open %q", m.branch.open.name)
 		}
 	})
 }

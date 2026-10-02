@@ -30,6 +30,82 @@ type navigationRow struct {
 	todo             store.Task
 }
 
+// group is a category, a branch or the README.md group, opened from the top
+// of a list. The zero group is the top level.
+type group struct {
+	kind navigationKind // rowCategory, rowBranch or rowReadme
+	name string
+}
+
+func categoryGroup(name string) group {
+	if name == "" {
+		return group{}
+	}
+	return group{kind: rowCategory, name: name}
+}
+
+func branchGroup(name string) group {
+	if name == "" {
+		return group{}
+	}
+	return group{kind: rowBranch, name: name}
+}
+
+// openedBy reports whether row opens g from the top of its list. Category
+// names ignore case; branch names don't.
+func (g group) openedBy(row navigationRow) bool {
+	return row.kind == g.kind && (row.name == g.name || g.kind == rowCategory && strings.EqualFold(row.name, g.name))
+}
+
+// groupList is where a tab is in its list: at the top, among its groups and
+// loose tasks, or in the group opened from there.
+type groupList struct {
+	open       group
+	cursor     int
+	rootCursor int // the cursor at the top, to return to
+}
+
+// enter opens g, remembering where the cursor was at the top.
+func (l *groupList) enter(g group) {
+	l.rootCursor, l.open, l.cursor = l.cursor, g, 0
+}
+
+// leave goes back to the top, reporting false when the list was already there.
+func (l *groupList) leave() bool {
+	if l.open == (group{}) {
+		return false
+	}
+	l.open, l.cursor = group{}, l.rootCursor
+	return true
+}
+
+// list is the General or Branches tab's list, or nil for another pane.
+func (m *model) list(p pane) *groupList {
+	switch p {
+	case generalPane:
+		return &m.general
+	case branchPane:
+		return &m.branch
+	}
+	return nil
+}
+
+// rows is what the General or Branches tab lists where it is.
+func (m *model) rows(p pane) []navigationRow {
+	if l := m.list(p); l != nil {
+		return m.rowsIn(p, l.open)
+	}
+	return nil
+}
+
+// rowsIn is what the General or Branches tab lists with open opened.
+func (m *model) rowsIn(p pane, open group) []navigationRow {
+	if p == branchPane {
+		return branchRows(m.tasks.branches, open, m.branchMissing)
+	}
+	return generalRows(m.tasks.general, m.tasks.readme, open)
+}
+
 func completedCount(tasks []store.Task) int {
 	count := 0
 	for _, t := range tasks {
@@ -40,77 +116,71 @@ func completedCount(tasks []store.Task) int {
 	return count
 }
 
-func (m *model) generalRows() []navigationRow {
-	var rows []navigationRow
-	if m.readmeOpen {
-		for _, t := range m.readme {
-			rows = append(rows, navigationRow{kind: rowTask, todo: t})
-		}
-		openTasksFirst(rows)
-		return rows
-	}
-	if m.generalCategory == "" {
-		counts := make(map[string]int)
-		completed := make(map[string]int)
-		display := make(map[string]string)
-		for _, t := range m.general {
-			if t.Category != "" {
-				key := strings.ToLower(t.Category)
-				counts[key]++
-				if t.Done {
-					completed[key]++
-				}
-				if display[key] == "" {
-					display[key] = t.Category
-				}
-			}
-		}
-		for _, key := range sortedNames(counts) {
-			rows = append(rows, navigationRow{kind: rowCategory, name: display[key], count: counts[key], completed: completed[key]})
-		}
-		if len(m.readme) > 0 {
-			rows = append(rows, navigationRow{kind: rowReadme, name: readmeGroup, count: len(m.readme), completed: completedCount(m.readme)})
-		}
-		taskStart := len(rows)
-		for _, t := range m.general {
-			if t.Category == "" {
-				rows = append(rows, navigationRow{kind: rowTask, todo: t})
-			}
-		}
-		openTasksFirst(rows[taskStart:])
-		return rows
-	}
-	for _, t := range m.general {
-		if taskInCategory(t, m.generalCategory) {
-			rows = append(rows, navigationRow{kind: rowTask, todo: t})
-		}
-	}
-	openTasksFirst(rows)
-	return rows
-}
-
-func (m *model) branchRows() []navigationRow {
-	var rows []navigationRow
-	if m.branchFilter != "" {
-		for _, t := range m.branches {
-			if t.Branch == m.branchFilter {
-				rows = append(rows, navigationRow{kind: rowTask, todo: t})
-			}
-		}
-		openTasksFirst(rows)
-		return rows
+// generalRows lists General: at the top, its categories, the README.md group
+// and its tasks without a category; or the tasks of the group open.
+func generalRows(general, readme []store.Task, open group) []navigationRow {
+	switch open.kind {
+	case rowReadme:
+		return taskRows(readme, func(store.Task) bool { return true })
+	case rowCategory:
+		return taskRows(general, func(t store.Task) bool { return taskInCategory(t, open.name) })
 	}
 	counts := make(map[string]int)
 	completed := make(map[string]int)
-	for _, t := range m.branches {
+	display := make(map[string]string)
+	for _, t := range general {
+		if t.Category == "" {
+			continue
+		}
+		key := strings.ToLower(t.Category)
+		counts[key]++
+		if t.Done {
+			completed[key]++
+		}
+		if display[key] == "" {
+			display[key] = t.Category
+		}
+	}
+	var rows []navigationRow
+	for _, key := range sortedNames(counts) {
+		rows = append(rows, navigationRow{kind: rowCategory, name: display[key], count: counts[key], completed: completed[key]})
+	}
+	if len(readme) > 0 {
+		rows = append(rows, navigationRow{kind: rowReadme, name: readmeGroup, count: len(readme), completed: completedCount(readme)})
+	}
+	return append(rows, taskRows(general, func(t store.Task) bool { return t.Category == "" })...)
+}
+
+// branchRows lists Branches: a row for each branch at the top, flagging
+// those missing reports gone; or the tasks of the branch open.
+func branchRows(branches []store.Task, open group, missing func(branch string) bool) []navigationRow {
+	if open != (group{}) {
+		return taskRows(branches, func(t store.Task) bool { return t.Branch == open.name })
+	}
+	counts := make(map[string]int)
+	completed := make(map[string]int)
+	for _, t := range branches {
 		counts[t.Branch]++
 		if t.Done {
 			completed[t.Branch]++
 		}
 	}
+	var rows []navigationRow
 	for _, name := range sortedNames(counts) {
-		rows = append(rows, navigationRow{kind: rowBranch, name: name, count: counts[name], completed: completed[name], missingGitBranch: m.branchMissing(name)})
+		rows = append(rows, navigationRow{kind: rowBranch, name: name, count: counts[name], completed: completed[name], missingGitBranch: missing(name)})
 	}
+	return rows
+}
+
+// taskRows is a row for each task keep accepts, open tasks first.
+func taskRows(tasks []store.Task, keep func(store.Task) bool) []navigationRow {
+	var rows []navigationRow
+	for _, t := range tasks {
+		if keep(t) {
+			rows = append(rows, navigationRow{kind: rowTask, todo: t})
+		}
+	}
+	openTasksFirst(rows)
 	return rows
 }
 
@@ -134,39 +204,27 @@ func compareDone(a, b store.Task) int {
 }
 
 func (m *model) selectNavigationTask(selected store.Task) {
-	var rows []navigationRow
-	var cursor *int
-	switch m.activePane() {
-	case generalPane:
-		rows, cursor = m.generalRows(), &m.generalCursor
-	case branchPane:
-		rows, cursor = m.branchRows(), &m.branchCursor
-	default:
-		return
-	}
-	if i := nearestTask(rowTasks(rows), selected); i >= 0 {
-		*cursor = i
+	p := m.activePane()
+	if l := m.list(p); l != nil {
+		if i := nearestTask(rowTasks(m.rows(p)), selected); i >= 0 {
+			l.cursor = i
+		}
 	}
 }
 
 // reveal opens the category or branch t is filed under, in its own tab, and
 // selects it there.
 func (m *model) reveal(t store.Task) {
+	p, g := generalPane, categoryGroup(t.Category)
 	if t.Branch != "" {
-		m.branchFilter = ""
-		m.branchRootCursor = max(0, slices.IndexFunc(m.branchRows(), func(row navigationRow) bool { return row.name == t.Branch }))
-		m.branchFilter = t.Branch
-		m.branchCursor = max(0, nearestTask(rowTasks(m.branchRows()), t))
-		return
+		p, g = branchPane, branchGroup(t.Branch)
 	}
-	m.generalCategory, m.readmeOpen = "", false
-	if t.Category != "" {
-		m.generalRootCursor = max(0, slices.IndexFunc(m.generalRows(), func(row navigationRow) bool {
-			return row.kind == rowCategory && strings.EqualFold(row.name, t.Category)
-		}))
+	l := m.list(p)
+	if g != (group{}) {
+		l.rootCursor = max(0, slices.IndexFunc(m.rowsIn(p, group{}), g.openedBy))
 	}
-	m.generalCategory = t.Category
-	m.generalCursor = max(0, nearestTask(rowTasks(m.generalRows()), t))
+	l.open = g
+	l.cursor = max(0, nearestTask(rowTasks(m.rowsIn(p, g)), t))
 }
 
 // nearestTask finds t in tasks after a write, which can move it in the file:
@@ -222,20 +280,16 @@ func taskInCategory(t store.Task, category string) bool {
 }
 
 func (m *model) selectedNavigationRow() (navigationRow, bool) {
-	var rows []navigationRow
-	var cursor int
-	switch m.activePane() {
-	case generalPane:
-		rows, cursor = m.generalRows(), m.generalCursor
-	case branchPane:
-		rows, cursor = m.branchRows(), m.branchCursor
-	default:
+	p := m.activePane()
+	l := m.list(p)
+	if l == nil {
 		return navigationRow{}, false
 	}
-	if cursor < 0 || cursor >= len(rows) {
+	rows := m.rows(p)
+	if l.cursor < 0 || l.cursor >= len(rows) {
 		return navigationRow{}, false
 	}
-	return rows[cursor], true
+	return rows[l.cursor], true
 }
 
 func (m *model) enterSelectedGroup() bool {
@@ -243,22 +297,13 @@ func (m *model) enterSelectedGroup() bool {
 		return false
 	}
 	row, ok := m.selectedNavigationRow()
-	if !ok {
+	if !ok || row.kind == rowTask {
 		return false
 	}
-	switch row.kind {
-	case rowCategory:
-		m.generalRootCursor = m.generalCursor
-		m.generalCategory = row.name
-		m.generalCursor = 0
-	case rowBranch:
-		m.openBranch(m.branchCursor, row.name)
-	case rowReadme:
-		m.generalRootCursor = m.generalCursor
-		m.readmeOpen = true
-		m.generalCursor = 0
-	default:
-		return false
+	if row.kind == rowBranch {
+		m.enterBranch(row.name)
+	} else {
+		m.general.enter(group{kind: row.kind, name: row.name})
 	}
 	m.detailScroll = 0
 	m.status = ""
@@ -273,35 +318,22 @@ func (m *model) jumpToTab(p pane) {
 		m.focus = p
 		m.detailScroll = 0
 		m.files.CloseDetails()
-	case p == branchPane && m.branchFilter == "":
+	case p == branchPane && m.branch.open == (group{}):
 		m.openCurrentBranch()
 	default:
 		m.leaveGroup()
 	}
 }
 
-func (m *model) openBranch(rootCursor int, name string) {
-	m.branchRootCursor = rootCursor
-	m.branchFilter = name
-	m.branchCursor = 0
+// enterBranch opens a branch from the top of Branches, checking first that
+// Git still has it.
+func (m *model) enterBranch(name string) {
+	m.branch.enter(branchGroup(name))
 	m.recheckBranch(name)
 }
 
 func (m *model) leaveGroup() {
-	switch m.focus {
-	case generalPane:
-		if m.generalCategory == "" && !m.readmeOpen {
-			return
-		}
-		m.generalCategory, m.readmeOpen = "", false
-		m.generalCursor = m.generalRootCursor
-	case branchPane:
-		if m.branchFilter == "" {
-			return
-		}
-		m.branchFilter = ""
-		m.branchCursor = m.branchRootCursor
-	default:
+	if l := m.list(m.focus); l == nil || !l.leave() {
 		return
 	}
 	m.detailScroll = 0
@@ -310,15 +342,13 @@ func (m *model) leaveGroup() {
 
 // openCurrentBranch opens the current Git branch's tasks, if it has any.
 func (m *model) openCurrentBranch() {
-	if m.project.branch == "" || m.branchFilter != "" {
+	if m.project.branch == "" || m.branch.open != (group{}) {
 		return
 	}
-	for i, row := range m.branchRows() {
-		if row.name == m.project.branch {
-			m.openBranch(i, row.name)
-			m.detailScroll = 0
-			m.status = ""
-			return
-		}
+	if i := slices.IndexFunc(m.rows(branchPane), branchGroup(m.project.branch).openedBy); i >= 0 {
+		m.branch.cursor = i
+		m.enterBranch(m.project.branch)
+		m.detailScroll = 0
+		m.status = ""
 	}
 }

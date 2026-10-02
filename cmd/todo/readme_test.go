@@ -51,19 +51,19 @@ func TestReadmeTasksOpenFromGeneralAndOnlyToggle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rows := m.generalRows()
+	rows := m.rows(generalPane)
 	if len(rows) != 3 || rows[0].name != "auth" || rows[1].kind != rowReadme || rows[1].count != 4 || rows[1].completed != 1 || rows[2].todo.Text != "General task" {
 		t.Fatalf("README group is not listed after categories: %+v", rows)
 	}
 	if tabs := ansi.Strip(m.renderTabs()); !strings.Contains(tabs, "General 1/6") {
 		t.Fatalf("General tab count leaves out README tasks: %q", tabs)
 	}
-	m.generalCursor = 1
+	m.general.cursor = 1
 	pressKey(t, m, "right")
-	if got := indexTitles(m.readme); got != "Urgent,Later,Finished,Write docs" {
+	if got := indexTitles(m.tasks.readme); got != "Urgent,Later,Finished,Write docs" {
 		t.Fatalf("README tasks are not in level order: %q", got)
 	}
-	view := ansi.Strip(m.renderNavigationPane(m.generalRows(), m.generalCursor, generalPane, 60, 20))
+	view := ansi.Strip(m.renderNavigationPane(m.rows(generalPane), m.general.cursor, generalPane, 60, 20))
 	for _, want := range []string{`General › README\.md  1/4`, `\n│ 00 Urgent`, `\n│ 1  Later`, `\n│ ·  Write docs`, `\n│ ✓  Finished`} {
 		if !regexp.MustCompile(want).MatchString(view) {
 			t.Fatalf("README list is missing %q:\n%s", want, view)
@@ -90,7 +90,7 @@ func TestReadmeTasksOpenFromGeneralAndOnlyToggle(t *testing.T) {
 	pressKey(t, m, "left")
 
 	// Done, reopen, then done again, each adding the checkbox a plain item lacks.
-	m.generalCursor = 2
+	m.general.cursor = 2
 	for _, key := range []string{"d", "k", "d", "k", "k", "d"} {
 		pressKey(t, m, key)
 	}
@@ -106,8 +106,8 @@ func TestReadmeTasksOpenFromGeneralAndOnlyToggle(t *testing.T) {
 	}
 
 	pressKey(t, m, "1")
-	if m.readmeOpen || m.generalCursor != 1 {
-		t.Fatalf("1 did not return to the README row: open %v, cursor %d", m.readmeOpen, m.generalCursor)
+	if m.general.open.kind == rowReadme || m.general.cursor != 1 {
+		t.Fatalf("1 did not return to the README row: open %v, cursor %d", m.general.open.kind == rowReadme, m.general.cursor)
 	}
 }
 
@@ -123,7 +123,7 @@ func TestReadmeGroupClosesWhenItsTasksGo(t *testing.T) {
 		t.Fatal(err)
 	}
 	pressKey(t, m, "right")
-	if !m.readmeOpen {
+	if m.general.open.kind != rowReadme {
 		t.Fatal("README group did not open")
 	}
 	if cmd := pressKey(t, m, "a"); !isOpen[*taskModal](m) || form(t, m).targetCategory != "" {
@@ -134,8 +134,8 @@ func TestReadmeGroupClosesWhenItsTasksGo(t *testing.T) {
 		t.Fatal(err)
 	}
 	pressKey(t, m, "r")
-	if m.readmeOpen || len(m.generalRows()) != 0 {
-		t.Fatalf("README group stayed open without tasks: %+v", m.generalRows())
+	if m.general.open.kind == rowReadme || len(m.rows(generalPane)) != 0 {
+		t.Fatalf("README group stayed open without tasks: %+v", m.rows(generalPane))
 	}
 }
 
@@ -152,7 +152,28 @@ func TestAddingFromTheReadmeGroupShowsTheNewTask(t *testing.T) {
 	pressKey(t, m, "a")
 	form(t, m).title.SetValue("New general task")
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	if selected, ok := m.selectedTask(); m.readmeOpen || !ok || selected.Text != "New general task" {
-		t.Fatalf("new task not shown: README open %v, selected %+v", m.readmeOpen, selected)
+	if selected, ok := m.selectedTask(); m.general.open.kind == rowReadme || !ok || selected.Text != "New general task" {
+		t.Fatalf("new task not shown: README open %v, selected %+v", m.general.open.kind == rowReadme, selected)
+	}
+}
+
+func TestBranchTaskStatusIgnoresTheReadmeGroupInGeneral(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("## Todo\n\n- Readme task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "todo.md")
+	if err := os.WriteFile(path, []byte("# Branches\n\n## main\n\n- [ ] Branch task !high\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, projectContext{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pressKey(t, m, "right")
+	pressKey(t, m, "2")
+	pressKey(t, m, "right")
+	if status := ansi.Strip(m.panelStatus()); !strings.Contains(status, "High priority") || strings.Contains(status, readmeGroup) {
+		t.Fatalf("branch task status = %q", status)
 	}
 }

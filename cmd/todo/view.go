@@ -33,17 +33,17 @@ func (m *model) View() tea.View {
 	bodyHeight := height - 2
 	var body string
 	if m.all != nil {
-		body = m.all.view(m.allTasks, m.branchMissing, width, bodyHeight)
+		body = m.all.view(m.tasks.all, m.branchMissing, width, bodyHeight)
 	} else {
 		switch m.focus {
 		case branchPane:
-			body = m.renderNavigationPane(m.branchRows(), m.branchCursor, branchPane, width, bodyHeight)
+			body = m.renderNavigationPane(m.rows(branchPane), m.branch.cursor, branchPane, width, bodyHeight)
 		case sourcePane:
 			body = m.files.View(width, bodyHeight)
 		case detailPane:
 			body = m.renderDetailPane(width, bodyHeight)
 		default:
-			body = m.renderNavigationPane(m.generalRows(), m.generalCursor, generalPane, width, bodyHeight)
+			body = m.renderNavigationPane(m.rows(generalPane), m.general.cursor, generalPane, width, bodyHeight)
 		}
 	}
 	content := header + "\n" + body + "\n" + footer
@@ -112,8 +112,8 @@ func (m *model) renderTabs() string {
 		count string
 		pane  pane
 	}{
-		{"1", "General", fmt.Sprintf("%d/%d", completedCount(m.general)+completedCount(m.readme), len(m.general)+len(m.readme)), generalPane},
-		{"2", "Branches", fmt.Sprintf("%d/%d", completedCount(m.branches), len(m.branches)), branchPane},
+		{"1", "General", fmt.Sprintf("%d/%d", completedCount(m.tasks.general)+completedCount(m.tasks.readme), len(m.tasks.general)+len(m.tasks.readme)), generalPane},
+		{"2", "Branches", fmt.Sprintf("%d/%d", completedCount(m.tasks.branches), len(m.tasks.branches)), branchPane},
 		{"3", "Files", m.filesCount(), sourcePane},
 	}
 	var tabs strings.Builder
@@ -207,25 +207,25 @@ func (m *model) contextHints() []ui.KeyHint {
 // viewingMissingBranch is true inside a branch whose Git branch is gone, where
 // its tasks are read only.
 func (m *model) viewingMissingBranch() bool {
-	return m.activePane() == branchPane && m.branchMissing(m.branchFilter)
+	return m.activePane() == branchPane && m.branchMissing(m.branch.open.name)
 }
 
 // breadcrumb names where a pane is; a single entry means its top level.
 func (m *model) breadcrumb(kind pane) []string {
 	switch kind {
 	case branchPane:
-		if m.branchFilter != "" {
-			return []string{"Branches", branchIcon + " " + m.branchFilter}
+		if m.branch.open != (group{}) {
+			return []string{"Branches", branchIcon + " " + m.branch.open.name}
 		}
 		return []string{"Branches"}
 	case detailPane:
 		return append(m.breadcrumb(m.detailFrom), "Details")
 	}
-	switch {
-	case m.readmeOpen:
+	switch m.general.open.kind {
+	case rowReadme:
 		return []string{"General", readmeGroup}
-	case m.generalCategory != "":
-		return []string{"General", "@" + m.generalCategory}
+	case rowCategory:
+		return []string{"General", "@" + m.general.open.name}
 	}
 	return []string{"General"}
 }
@@ -240,7 +240,7 @@ func (m *model) panelStatus() string {
 	switch {
 	case !ok:
 		return ""
-	case row.kind == rowTask && m.readmeOpen:
+	case row.kind == rowTask && m.readmeSelected():
 		return readmeTaskStatus(row.todo)
 	case row.kind == rowTask:
 		return taskStatus(row.todo)

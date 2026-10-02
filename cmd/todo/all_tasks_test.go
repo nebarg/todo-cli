@@ -31,7 +31,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	if m.all == nil || m.all.sort != "priority" {
 		t.Fatalf("index opened with sort %q", m.all.sort)
 	}
-	if got := indexTitles(m.all.sorted(m.allTasks)); got != "Medium task,Low task,Plain task,High task" {
+	if got := indexTitles(m.all.sorted(m.tasks.all)); got != "Medium task,Low task,Plain task,High task" {
 		t.Fatalf("priority order = %q", got)
 	}
 	for _, size := range [][2]int{{120, 35}, {78, 16}, {60, 20}, {56, 19}} {
@@ -55,7 +55,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 			}
 		})
 	}
-	rendered := m.all.view(m.allTasks, m.branchMissing, 120, 20)
+	rendered := m.all.view(m.tasks.all, m.branchMissing, 120, 20)
 	plain := ansi.Strip(rendered)
 	lines := strings.Split(plain, "\n")
 	if len(lines) < 4 || strings.Trim(lines[2], " │") != "" || strings.Index(lines[3], "TASK: DETAILS") > strings.Index(lines[3], "CATEGORY / BRANCH") {
@@ -71,7 +71,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	m = updated.(*model)
-	if got := indexTitles(m.all.sorted(m.allTasks)); m.all.sort != "branch" || got != "High task,Low task,Medium task,Plain task" {
+	if got := indexTitles(m.all.sorted(m.tasks.all)); m.all.sort != "branch" || got != "High task,Low task,Medium task,Plain task" {
 		t.Fatalf("branch order = %q", got)
 	}
 	if selected, _ := m.selectedTask(); selected.Text != "Medium task" {
@@ -79,15 +79,15 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	m = updated.(*model)
-	if m.all.sort != "category" || !strings.Contains(ansi.Strip(m.all.view(m.allTasks, m.branchMissing, 120, 20)), "CATEGORY / BRANCH") {
+	if m.all.sort != "category" || !strings.Contains(ansi.Strip(m.all.view(m.tasks.all, m.branchMissing, 120, 20)), "CATEGORY / BRANCH") {
 		t.Fatal("category sort or column heading is missing")
 	}
-	if got := indexTitles(m.all.sorted(m.allTasks)); got != "Medium task,High task,Low task,Plain task" {
+	if got := indexTitles(m.all.sorted(m.tasks.all)); got != "Medium task,High task,Low task,Plain task" {
 		t.Fatalf("category order = %q", got)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	m = updated.(*model)
-	if m.all.sort != "priority" || indexTitles(m.all.sorted(m.allTasks)) != "Medium task,Low task,Plain task,High task" {
+	if m.all.sort != "priority" || indexTitles(m.all.sorted(m.tasks.all)) != "Medium task,Low task,Plain task,High task" {
 		t.Fatal("sort did not cycle back to priority")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -122,7 +122,7 @@ func TestIndexEditShowsTaskLocation(t *testing.T) {
 		{"Branch task", "Branches › " + branchIcon + " feature/ui › Edit task"},
 	} {
 		t.Run(item.task, func(t *testing.T) {
-			for i, task := range m.all.sorted(m.allTasks) {
+			for i, task := range m.all.sorted(m.tasks.all) {
 				if task.Text == item.task {
 					m.all.cursor = i
 					break

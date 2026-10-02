@@ -122,7 +122,7 @@ func compareGroup(a, b string) int {
 }
 
 func (m *model) selectInAllTasks(selected store.Task) {
-	if i := nearestTask(m.all.sorted(m.allTasks), selected); i >= 0 {
+	if i := nearestTask(m.all.sorted(m.tasks.all), selected); i >= 0 {
 		m.all.cursor = i
 	}
 }

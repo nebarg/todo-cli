@@ -49,13 +49,13 @@ const (
 
 func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 	modal := &taskModal{mode: mode, file: m.file, project: m.project}
-	if mode == modalAddGeneral && m.all == nil && m.activePane() == generalPane {
-		modal.targetCategory = m.generalCategory
+	if mode == modalAddGeneral && m.all == nil && m.activePane() == generalPane && m.general.open.kind == rowCategory {
+		modal.targetCategory = m.general.open.name
 	}
 	if mode == modalAddBranch {
 		modal.branches, modal.targetBranch = m.checkLocalBranches()
-		if m.all == nil && m.activePane() == branchPane && m.branchFilter != "" {
-			modal.targetBranch = m.branchFilter
+		if m.all == nil && m.activePane() == branchPane && m.branch.open != (group{}) {
+			modal.targetBranch = m.branch.open.name
 		}
 		if !slices.Contains(modal.branches, modal.targetBranch) {
 			modal.branchCursor = -1

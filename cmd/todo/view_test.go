@@ -95,7 +95,7 @@ func TestTaskDetailsShownOnDetailPage(t *testing.T) {
 	if ui.TaskTitleStyle.GetForeground() != ui.ColorStrong {
 		t.Fatal("task title is not styled with the white text color")
 	}
-	m := &model{general: []store.Task{{Text: "Fix login redirect", Details: "When a session expires, return to the previous page.\n\n- Add a regression test"}}}
+	m := &model{tasks: taskSet{general: []store.Task{{Text: "Fix login redirect", Details: "When a session expires, return to the previous page.\n\n- Add a regression test"}}}}
 	got := strings.Join(m.taskDetails(60), "\n")
 	for _, want := range []string{"Fix login redirect", "When a session expires", "- Add a regression test"} {
 		if !strings.Contains(got, want) {
@@ -197,21 +197,21 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 	if tabs := ansi.Strip(m.renderHeader(100)); !strings.Contains(tabs, " 1 General 2/4 ") || !strings.Contains(tabs, " 2 Branches 1/2 ") || !strings.Contains(tabs, " 3 Files 0 ") {
 		t.Fatalf("tab counts = %q", tabs)
 	}
-	general := ansi.Strip(m.renderNavigationPane(m.generalRows(), 0, generalPane, 60, 20))
+	general := ansi.Strip(m.renderNavigationPane(m.rows(generalPane), 0, generalPane, 60, 20))
 	if strings.Contains(general, "General") || !regexp.MustCompile(`▸ Docs +1/2 │`).MatchString(general) {
 		t.Fatalf("general list = %s", general)
 	}
-	m.branchFilter = ""
-	branches := ansi.Strip(m.renderNavigationPane(m.branchRows(), 0, branchPane, 60, 20))
+	m.branch.open = branchGroup("")
+	branches := ansi.Strip(m.renderNavigationPane(m.rows(branchPane), 0, branchPane, 60, 20))
 	if strings.Contains(branches, "Branches") || !regexp.MustCompile(`▸ main  current +1/2 │`).MatchString(branches) {
 		t.Fatalf("branch list = %s", branches)
 	}
-	m.generalCategory = "Docs"
-	if view := ansi.Strip(m.renderNavigationPane(m.generalRows(), 0, generalPane, 60, 20)); !strings.Contains(view, "General › @Docs  1/2") {
+	m.general.open = categoryGroup("Docs")
+	if view := ansi.Strip(m.renderNavigationPane(m.rows(generalPane), 0, generalPane, 60, 20)); !strings.Contains(view, "General › @Docs  1/2") {
 		t.Fatalf("category breadcrumb = %s", view)
 	}
-	m.branchFilter = "main"
-	if branch := ansi.Strip(m.renderNavigationPane(m.branchRows(), 0, branchPane, 60, 20)); !strings.Contains(branch, "Branches › "+branchIcon+" main  1/2") {
+	m.branch.open = branchGroup("main")
+	if branch := ansi.Strip(m.renderNavigationPane(m.rows(branchPane), 0, branchPane, 60, 20)); !strings.Contains(branch, "Branches › "+branchIcon+" main  1/2") {
 		t.Fatalf("branch breadcrumb = %s", branch)
 	}
 	m.focus, m.detailFrom = detailPane, branchPane
@@ -219,7 +219,7 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 		t.Fatalf("detail breadcrumb = %s", detail)
 	}
 	m.openAllTasks()
-	if index := ansi.Strip(m.all.view(m.allTasks, m.branchMissing, 100, 20)); !regexp.MustCompile(`All tasks  3/6 +sorted by`).MatchString(index) {
+	if index := ansi.Strip(m.all.view(m.tasks.all, m.branchMissing, 100, 20)); !regexp.MustCompile(`All tasks  3/6 +sorted by`).MatchString(index) {
 		t.Fatalf("all tasks heading = %s", index)
 	}
 }
@@ -245,8 +245,8 @@ func TestHeaderShowsRepositoryAndBranch(t *testing.T) {
 }
 
 func TestLooseTasksAreSeparatedFromCategories(t *testing.T) {
-	m := &model{general: []store.Task{{Text: "Loose"}, {Text: "Filed", Category: "Docs"}}}
-	rows := m.generalRows()
+	m := &model{tasks: taskSet{general: []store.Task{{Text: "Loose"}, {Text: "Filed", Category: "Docs"}}}}
+	rows := m.rows(generalPane)
 	if got := firstTaskAfterGroups(rows); got != 1 {
 		t.Fatalf("divider row = %d", got)
 	}
@@ -254,13 +254,13 @@ func TestLooseTasksAreSeparatedFromCategories(t *testing.T) {
 	if !strings.Contains(lines[1], "▸ Docs") || strings.Trim(lines[2], " │") != "" || !strings.Contains(lines[3], "○ Loose") {
 		t.Fatalf("loose tasks are not separated from categories: %q", lines)
 	}
-	if got := firstTaskAfterGroups(m.branchRows()); got != -1 {
+	if got := firstTaskAfterGroups(m.rows(branchPane)); got != -1 {
 		t.Fatalf("unmixed list has a divider at %d", got)
 	}
 }
 
 func TestFooterFitsHintsAndPinsHelp(t *testing.T) {
-	m := &model{general: []store.Task{{Text: "Loose"}}}
+	m := &model{tasks: taskSet{general: []store.Task{{Text: "Loose"}}}}
 	for _, width := range []int{56, 80, 160} {
 		footer := m.renderFooter(width)
 		plain := ansi.Strip(footer)
@@ -281,7 +281,7 @@ func TestFooterFitsHintsAndPinsHelp(t *testing.T) {
 	if footer := ansi.Strip(m.renderFooter(80)); !strings.HasPrefix(footer, "Saved   d done") || !strings.HasSuffix(footer, "q quit") {
 		t.Errorf("status footer = %q", footer)
 	}
-	m.general = []store.Task{{Text: "Filed", Category: "Docs"}}
+	m.tasks.general = []store.Task{{Text: "Filed", Category: "Docs"}}
 	m.status = ""
 	if footer := ansi.Strip(m.renderFooter(120)); !strings.HasPrefix(footer, "→ open") || strings.Contains(footer, "d done") {
 		t.Errorf("category row footer offers task actions: %q", footer)
@@ -349,8 +349,8 @@ func TestPriorityReadsFromShapeAsWellAsColour(t *testing.T) {
 
 func TestStatusBarDescribesTheHighlightedRow(t *testing.T) {
 	m := &model{
-		general: []store.Task{{Text: "Loose", Priority: store.PriorityMedium}, {Text: "Filed", Category: "Docs", Done: true}, {Text: "Open filed", Category: "Docs"}},
-		width:   80, height: 20,
+		tasks: taskSet{general: []store.Task{{Text: "Loose", Priority: store.PriorityMedium}, {Text: "Filed", Category: "Docs", Done: true}, {Text: "Open filed", Category: "Docs"}}},
+		width: 80, height: 20,
 	}
 	m.files.Update(filesui.ScannedMsg{Matches: []scan.Match{{Path: "main.go", Line: 1, Text: "// TODO"}}})
 	bottom := func() string {
@@ -360,7 +360,7 @@ func TestStatusBarDescribesTheHighlightedRow(t *testing.T) {
 	if got := bottom(); got != "1 of 2 done" {
 		t.Fatalf("category row status = %q", got)
 	}
-	m.generalCursor = 1
+	m.general.cursor = 1
 	if got := bottom(); got != "Open  ·  ● Medium priority" {
 		t.Fatalf("task row status = %q", got)
 	}
@@ -368,7 +368,7 @@ func TestStatusBarDescribesTheHighlightedRow(t *testing.T) {
 	if got := bottom(); got != "Open  ·  ● Medium priority" {
 		t.Fatalf("detail page status = %q", got)
 	}
-	m.focus, m.generalCategory, m.generalCursor = generalPane, "Docs", 1
+	m.focus, m.general.open, m.general.cursor = generalPane, categoryGroup("Docs"), 1
 	if got := bottom(); got != "✓ Done  ·  No priority" {
 		t.Fatalf("done task status = %q", got)
 	}
