@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,6 +41,9 @@ func TestGitOutputReportsGitError(t *testing.T) {
 	_, err := gitOutput(t.TempDir(), "rev-parse", "--show-toplevel")
 	if err == nil || !strings.Contains(err.Error(), "git rev-parse:") || !strings.Contains(strings.ToLower(err.Error()), "not a git repository") {
 		t.Fatalf("git error lost its message: %v", err)
+	}
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); !ok || exitErr.ExitCode() != 128 {
+		t.Fatalf("git error lost its exit status: %v", err)
 	}
 }
 

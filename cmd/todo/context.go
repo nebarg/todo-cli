@@ -103,7 +103,7 @@ func gitOutput(dir string, args ...string) (string, error) {
 	out, err := cmd.Output()
 	if err != nil {
 		if message := strings.TrimSpace(stderr.String()); message != "" {
-			return "", fmt.Errorf("git %s: %s", args[0], message)
+			return "", fmt.Errorf("git %s: %s: %w", args[0], message, err)
 		}
 		return "", fmt.Errorf("git %s: %w", args[0], err)
 	}

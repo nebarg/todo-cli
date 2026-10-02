@@ -1,3 +1,8 @@
+// Command todo keeps tasks in a Markdown file, todo.md at the repository root
+// by default. Without arguments it opens a terminal dashboard of the general
+// tasks, the tasks of each Git branch, and the TODO comments in source files.
+// Given task text, it adds a task; --clear-done and --clear-missing remove
+// tasks.
 package main
 
 import (
@@ -70,9 +75,8 @@ func (e usageError) Error() string { return string(e) }
 // words are a task, so a task can start with any word.
 func chooseCommand(o options, args []string) (command, error) {
 	taskFlags := o.priority != "" || o.category != "" || o.branch != ""
-	clear := o.clearDone || o.clearMissing
 	switch {
-	case clear:
+	case o.clearDone || o.clearMissing:
 		if len(args) > 0 || taskFlags || len(o.excludes) > 0 {
 			return 0, usageError("usage: todo [-f file] [--clear-done] [--clear-missing]")
 		}

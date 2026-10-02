@@ -130,6 +130,9 @@ func TestUndoClearRestoresTheFile(t *testing.T) {
 	if hints := m.footerHints(); len(hints) == 0 || hints[0] != (ui.KeyHint{Key: "u", Label: "undo clear"}) {
 		t.Fatalf("footer does not offer undo first: %v", hints)
 	}
+	if help := ansi.Strip(renderHelp()); !strings.Contains(help, "X / u clear done / undo") {
+		t.Fatalf("help does not list undo: %s", help)
+	}
 	m = press(m, "u")
 	if fileContent(t, path) != clearContent || m.status != "Restored 3 tasks" {
 		t.Fatalf("undo left %q with status %q", fileContent(t, path), m.status)

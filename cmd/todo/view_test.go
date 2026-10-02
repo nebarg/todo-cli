@@ -296,8 +296,8 @@ func TestHelpOverlayOpensAndCloses(t *testing.T) {
 	if !m.helpOpen || !strings.Contains(ansi.Strip(view), "toggle done") || lipgloss.Width(view) != 56 || lipgloss.Height(view) != 16 {
 		t.Fatalf("help overlay did not open within the terminal: %s", ansi.Strip(view))
 	}
-	if got := lipgloss.Height(renderHelp()); got > 16 {
-		t.Fatalf("help is %d rows, taller than the smallest supported terminal", got)
+	if w, h := lipgloss.Width(renderHelp()), lipgloss.Height(renderHelp()); w > 56 || h > 16 {
+		t.Fatalf("help is %dx%d, larger than the smallest supported terminal", w, h)
 	}
 	for line := range strings.SplitSeq(renderHelp(), "\n") {
 		if strings.Contains(line, "\x1b[m ") {
