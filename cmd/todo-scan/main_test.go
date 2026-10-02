@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nebarg/todo-cli/internal/buildinfo"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/spf13/pflag"
 )
@@ -41,6 +42,7 @@ func TestParseArgs(t *testing.T) {
 		{"--list --level 0+,1", options{dir: cwd, exclude: defaults, list: true, level: []string{"0+", "1"}}},
 		{"--levels web", options{dir: sub, given: "web", exclude: defaults, levels: true}},
 		{"--level 1", options{dir: cwd, exclude: defaults, level: []string{"1"}}},
+		{"--version --level x missing", options{level: []string{"x"}, version: true}},
 	} {
 		t.Run(c.argv, func(t *testing.T) {
 			got, err := parseArgs(cwd, strings.Fields(c.argv), io.Discard)
@@ -146,11 +148,15 @@ func TestRun(t *testing.T) {
 		}
 	}
 	t.Chdir(dir)
+	version := "todo-scan " + buildinfo.Version() + "\n"
 	for _, c := range []struct {
 		args        string
 		out, errOut string
 		status      int
 	}{
+		{"--version", version, "", exitClean},
+		{"--version missing", version, "", exitClean},
+		{"--version --list --level 12", version, "", exitClean},
 		{"--list", "a.go:1: // todo0 first\nsub/b.go:1: // TODO: later\n", "", exitClean},
 		{"--list sub", "sub/b.go:1: // TODO: later\n", "", exitClean},
 		{"--list --check --levels", "a.go:1: // todo0 first\n", "1 levelled TODO\n", exitFound},

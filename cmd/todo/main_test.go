@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nebarg/todo-cli/internal/buildinfo"
 	"github.com/nebarg/todo-cli/internal/project"
 	"github.com/nebarg/todo-cli/internal/project/projecttest"
 )
@@ -166,6 +167,23 @@ func TestRun(t *testing.T) {
 	var out, errOut strings.Builder
 	if status := run([]string{"--help"}, &out, &errOut); status != 0 || !strings.HasPrefix(out.String(), "Usage:") || errOut.Len() > 0 {
 		t.Fatalf("--help = %d, %q, %q", status, out.String(), errOut.String())
+	}
+}
+
+func TestRunVersion(t *testing.T) {
+	t.Chdir(t.TempDir()) // outside any Git repository
+	path := filepath.Join(t.TempDir(), "todo.md")
+	for _, args := range []string{"--version", "--version Fix the bug", "-f " + path + " -p h --version Fix the bug", "--version --clear-done"} {
+		t.Run(args, func(t *testing.T) {
+			var out, errOut strings.Builder
+			status := run(strings.Fields(args), &out, &errOut)
+			if want := "todo " + buildinfo.Version() + "\n"; out.String() != want || errOut.Len() > 0 || status != 0 {
+				t.Fatalf("got %q, %q, %d\nwant %q, \"\", 0", out.String(), errOut.String(), status, want)
+			}
+		})
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("--version wrote the task file: %v", err)
 	}
 }
 

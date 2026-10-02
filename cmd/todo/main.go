@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/nebarg/todo-cli/internal/buildinfo"
 	"github.com/nebarg/todo-cli/internal/dashboard"
 	"github.com/nebarg/todo-cli/internal/filesui"
 	"github.com/nebarg/todo-cli/internal/project"
@@ -27,6 +28,7 @@ import (
 type options struct {
 	file, priority, category, branch string
 	clearDone, clearMissing          bool
+	version                          bool
 	excludes                         []string
 }
 
@@ -55,6 +57,7 @@ func newFlags(o *options) *pflag.FlagSet {
 	flags.StringVarP(&o.file, "file", "f", "", "task file `path` (default todo.md at the repository root)")
 	flags.BoolVar(&o.clearDone, "clear-done", false, "remove done tasks")
 	flags.BoolVar(&o.clearMissing, "clear-missing", false, "remove every task of branches no longer in Git, open ones included")
+	flags.BoolVar(&o.version, "version", false, "print the version")
 	flags.StringArrayVarP(&o.excludes, "exclude", "e", nil, "skip a `dir` in the Files tab: a name at any depth, or a path from here; repeat for more (default node_modules and vendor)")
 	return flags
 }
@@ -125,6 +128,10 @@ func runCommand(argv []string, out io.Writer) error {
 			return nil
 		}
 		return usageError(err.Error() + "\nRun todo --help for usage.")
+	}
+	if o.version {
+		_, err := fmt.Fprintf(out, "todo %s\n", buildinfo.Version())
+		return err
 	}
 	args := flags.Args()
 	cmd, err := chooseCommand(o, args)

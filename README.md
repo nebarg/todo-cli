@@ -41,6 +41,7 @@ todo -b . -p h Fix the bug on this branch
 | `-e`, `--exclude dir` | Skip a directory in the dashboard's Files tab. See [Skipping directories](#skipping-directories) |
 | `--clear-done` | Remove every done task, and list what went |
 | `--clear-missing` | Remove every task, open or done, of branches whose local Git branch no longer exists, with their headings. Git branches aren't changed. Needs Git |
+| `--version` | Print the version |
 | `-h`, `--help` | Show usage |
 
 A task goes in the general list, a category or a branch. Branch tasks can't have a category. Categories are one word, and `Branches` is reserved. A branch must exist locally.
@@ -222,6 +223,8 @@ todo-scan --check --level 0+,1
 ```
 
 Errors, such as a missing directory or an unknown flag, exit with 2.
+
+`--version` prints the version.
 
 A CI step that fails while any levelled TODOs remain:
 

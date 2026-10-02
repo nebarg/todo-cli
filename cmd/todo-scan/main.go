@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/nebarg/todo-cli/internal/buildinfo"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/ui"
 	"github.com/spf13/pflag"
@@ -42,11 +43,13 @@ type options struct {
 	check   bool
 	levels  bool
 	level   []string
+	version bool
 }
 
 // parseArgs reads the command line: the directory to scan, as given and made
 // absolute, what to skip in it, and whether to print rather than browse.
-// --help prints the usage on out.
+// --help prints the usage on out. With --version, it stops once the flags
+// are read, leaving the rest of the command line unchecked.
 func parseArgs(cwd string, argv []string, out io.Writer) (options, error) {
 	var o options
 	var excludes []string
@@ -55,6 +58,7 @@ func parseArgs(cwd string, argv []string, out io.Writer) (options, error) {
 	flags.BoolVar(&o.list, "list", false, "print the TODOs as path:line: text, most urgent first")
 	flags.BoolVar(&o.check, "check", false, "print how many TODOs there are, and exit 1 if there are any")
 	flags.BoolVar(&o.levels, "levels", false, "only todo-system's levelled TODOs, todo0 to todo9")
+	flags.BoolVar(&o.version, "version", false, "print the version")
 	flags.StringSliceVar(&o.level, "level", nil, "only TODOs at this `level`, such as 0 for todo0, 00 for todo00, or 0+ for any number of zeros; repeat for more")
 	flags.Usage = func() {
 		_, _ = fmt.Fprint(out, usageText+flags.FlagUsages())
@@ -64,6 +68,9 @@ func parseArgs(cwd string, argv []string, out io.Writer) (options, error) {
 			return o, err
 		}
 		return o, fmt.Errorf("%w\nRun todo-scan --help for usage", err)
+	}
+	if o.version {
+		return o, nil
 	}
 	if flags.Changed("level") && len(o.level) == 0 {
 		return o, errors.New("--level needs a level, such as 0 or 1")
@@ -146,6 +153,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 	if err != nil {
 		return fail(stderr, err)
+	}
+	if o.version {
+		_, _ = fmt.Fprintf(stdout, "todo-scan %s\n", buildinfo.Version())
+		return exitClean
 	}
 	if o.list || o.check {
 		return report(ctx, stdout, stderr, o)
