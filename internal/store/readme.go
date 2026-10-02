@@ -22,9 +22,10 @@ func LoadReadme(path string) ([]Task, error) {
 	if err != nil {
 		return nil, err
 	}
+	_, text := splitBOM(data)
 	var tasks []Task
 	inTodos, inCode := false, false
-	for i, raw := range strings.Split(string(data), "\n") {
+	for i, raw := range strings.Split(text, "\n") {
 		if strings.HasPrefix(raw, "```") {
 			inCode = !inCode
 			continue

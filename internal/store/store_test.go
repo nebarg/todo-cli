@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -636,6 +637,61 @@ func TestPriorityTokenKeepsWindowsLineEndings(t *testing.T) {
 	}
 	if got := readFile(t, path); got != "- [ ] Task !low\r\n- [ ] Other\r\n" {
 		t.Fatalf("file = %q", got)
+	}
+}
+
+// TestByteOrderMarkIsSetAside makes each write to a file with a byte order
+// mark and to the same file without one. The mark mustn't change what is
+// read, and stays at the start of the file.
+func TestByteOrderMarkIsSetAside(t *testing.T) {
+	writes := []struct {
+		name  string
+		write func(path string, tasks []Task) error
+	}{
+		{"add to the first heading", func(path string, _ []Task) error { return Add(path, "New", "", PriorityNone, "work", "") }},
+		{"toggle", func(path string, tasks []Task) error { return Toggle(path, tasks[0]) }},
+		{"edit", func(path string, tasks []Task) error {
+			return Edit(path, tasks[0], "Renamed !low", "Details", "work", "")
+		}},
+		{"set priority", func(path string, tasks []Task) error { return SetPriority(path, tasks[1], PriorityHigh) }},
+		{"set category", func(path string, tasks []Task) error { return SetCategory(path, tasks[0], "other") }},
+		{"clear done", func(path string, tasks []Task) error {
+			r, err := PlanRemove(path, doneTasks(tasks))
+			if err != nil {
+				return err
+			}
+			return r.Apply()
+		}},
+		{"clear done and undo", func(path string, tasks []Task) error {
+			r, err := PlanRemove(path, doneTasks(tasks))
+			if err != nil {
+				return err
+			}
+			if err := r.Apply(); err != nil {
+				return err
+			}
+			return r.Undo()
+		}},
+	}
+	for _, content := range []string{"# work\n\n- [ ] First\n- [x] Done\n", "- [ ] First\n- [x] Done\n"} {
+		for _, w := range writes {
+			t.Run(w.name, func(t *testing.T) {
+				plainPath, plainTasks := writeAndLoad(t, content)
+				bomPath, bomTasks := writeAndLoad(t, byteOrderMark+content)
+				if !reflect.DeepEqual(bomTasks, plainTasks) {
+					t.Fatalf("with a byte order mark, read\n%+v\nwant\n%+v", bomTasks, plainTasks)
+				}
+				if err := w.write(plainPath, plainTasks); err != nil {
+					t.Fatal(err)
+				}
+				if err := w.write(bomPath, bomTasks); err != nil {
+					t.Fatal(err)
+				}
+				if got, want := readFile(t, bomPath), byteOrderMark+readFile(t, plainPath); got != want {
+					t.Fatalf("file = %q, want %q", got, want)
+				}
+			})
+		}
 	}
 }
 

@@ -122,6 +122,23 @@ func TestToggleReadmeOnlyChangesTheCheckbox(t *testing.T) {
 	}
 }
 
+func TestReadmeByteOrderMarkDoesNotHideTheHeading(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "README.md")
+	if err := os.WriteFile(path, []byte(byteOrderMark+"## TODO\n\n- Write docs\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := LoadReadme(path)
+	if err != nil || len(tasks) != 1 || tasks[0].Text != "Write docs" {
+		t.Fatalf("tasks = %+v, %v", tasks, err)
+	}
+	if err := ToggleReadme(path, tasks[0]); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := readFile(t, path), byteOrderMark+"## TODO\n\n- [x] Write docs\n"; got != want {
+		t.Fatalf("README = %q, want %q", got, want)
+	}
+}
+
 func TestToggleReadmeRefusesAChangedLine(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "README.md")
 	if err := os.WriteFile(path, []byte("## TODO\n\n- first\n"), 0644); err != nil {

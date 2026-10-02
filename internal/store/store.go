@@ -48,7 +48,21 @@ func Load(path string) ([]Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseTasks(strings.Split(string(data), "\n")), nil
+	_, text := splitBOM(data)
+	return parseTasks(strings.Split(text, "\n")), nil
+}
+
+// byteOrderMark starts some UTF-8 files, such as those Windows editors may
+// save. It is set aside while a file is read, so it doesn't hide the first
+// line, and written back with the file.
+const byteOrderMark = "\ufeff"
+
+// splitBOM separates a file's byte order mark, if it has one, from its text.
+func splitBOM(data []byte) (bom, text string) {
+	if text, ok := strings.CutPrefix(string(data), byteOrderMark); ok {
+		return byteOrderMark, text
+	}
+	return "", string(data)
 }
 
 func parseTasks(lines []string) []Task {
@@ -150,8 +164,9 @@ func Add(path, title, details string, p Priority, category, branch string) error
 		block = append(block, "")
 		block = append(block, body...)
 	}
-	updated := sortSection(insertTaskBlock(string(data), block, branch, category), category, branch)
-	return replaceFile(path, []byte(updated), mode)
+	bom, text := splitBOM(data)
+	updated := sortSection(insertTaskBlock(text, block, branch, category), category, branch)
+	return replaceFile(path, []byte(bom+updated), mode)
 }
 
 func formattedDetails(details string) []string {
@@ -273,11 +288,12 @@ func rewriteTask(path string, selected Task, change func(lines []string) string)
 	if err != nil {
 		return err
 	}
-	lines := strings.Split(string(data), "\n")
+	bom, text := splitBOM(data)
+	lines := strings.Split(text, "\n")
 	if !taskUnchanged(lines, selected) {
 		return ErrTaskChanged
 	}
-	return replaceFile(path, []byte(change(lines)), info.Mode().Perm())
+	return replaceFile(path, []byte(bom+change(lines)), info.Mode().Perm())
 }
 
 func taskUnchanged(lines []string, selected Task) bool {
