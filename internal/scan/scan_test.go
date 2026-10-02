@@ -229,6 +229,24 @@ func TestSortedMatchesByFileAndLine(t *testing.T) {
 	}
 }
 
+func TestScanSkipsFilesOverTheSizeLimit(t *testing.T) {
+	dir := t.TempDir()
+	for name, size := range map[string]int{"limit.go": maxFileSize, "over.go": maxFileSize + 1} {
+		todo := "// TODO: " + name + "\n"
+		content := todo + strings.Repeat("\n", size-len(todo))
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	matches, err := Source(t.Context(), dir, Exclude{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 || matches[0].Path != "limit.go" {
+		t.Fatalf("matches = %+v, want only limit.go's", matches)
+	}
+}
+
 func TestScanIsDeterministic(t *testing.T) {
 	dir := t.TempDir()
 	for i := range 40 {

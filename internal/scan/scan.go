@@ -38,9 +38,9 @@ func newMatch(path string, line int, text string, c todoComment) Match {
 
 // Source finds to-do marker comments under dir, reading each file to tell
 // its comments from its code. Results are sorted most urgent first,
-// then by path and line. Ignored and Markdown files are skipped, as are
-// directories in exclude and those starting with a dot; hidden files are
-// read. Cancelling ctx stops the scan.
+// then by path and line. Ignored and Markdown files and those over 1 MB are
+// skipped, as are directories in exclude and those starting with a dot;
+// hidden files are read. Cancelling ctx stops the scan.
 func Source(ctx context.Context, dir string, exclude Exclude) ([]Match, error) {
 	info, err := os.Stat(dir)
 	if err != nil {

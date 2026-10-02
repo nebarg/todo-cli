@@ -163,12 +163,16 @@ func isMarkdown(path string) bool {
 	return extension == ".md" || extension == ".markdown"
 }
 
+// maxFileSize is the largest file read for to-dos. Larger files are data,
+// bundles or generated code, which are read whole, so they are skipped.
+const maxFileSize = 1 << 20
+
 // scanFile finds the to-dos in one file, skipping anything that isn't a
-// regular text file.
+// regular text file of at most maxFileSize bytes.
 func scanFile(dir, relative string) []Match {
 	path := filepath.Join(dir, relative)
 	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() {
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxFileSize {
 		return nil
 	}
 	file, err := os.Open(path)
