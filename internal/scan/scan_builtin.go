@@ -12,8 +12,8 @@ import (
 )
 
 // scanBuiltIn keeps file TODOs usable when ripgrep is not installed.
-func scanBuiltIn(ctx context.Context, dir string, allFiles bool, exclude Exclude) ([]Match, error) {
-	files, err := sourceFiles(ctx, dir, allFiles, exclude)
+func scanBuiltIn(ctx context.Context, dir string, exclude Exclude) ([]Match, error) {
+	files, err := sourceFiles(ctx, dir, exclude)
 	if err != nil {
 		return nil, err
 	}
@@ -59,22 +59,20 @@ func scanFiles(ctx context.Context, dir string, files []string) ([]Match, error)
 	return sortedMatches(matches), nil
 }
 
-func sourceFiles(ctx context.Context, dir string, allFiles bool, exclude Exclude) ([]string, error) {
-	if !allFiles {
-		cmd := exec.CommandContext(ctx, "git", "-C", dir, "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", ".")
-		if output, err := cmd.Output(); err == nil {
-			var files []string
-			for raw := range bytes.SplitSeq(output, []byte{0}) {
-				if len(raw) == 0 {
-					continue
-				}
-				path := filepath.Clean(string(raw))
-				if shouldScanPath(path, false) && !exclude.skipsFileIn(path) {
-					files = append(files, path)
-				}
+func sourceFiles(ctx context.Context, dir string, exclude Exclude) ([]string, error) {
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", ".")
+	if output, err := cmd.Output(); err == nil {
+		var files []string
+		for raw := range bytes.SplitSeq(output, []byte{0}) {
+			if len(raw) == 0 {
+				continue
 			}
-			return files, nil
+			path := filepath.Clean(string(raw))
+			if !isMarkdown(path) && !exclude.skipsFileIn(path) {
+				files = append(files, path)
+			}
 		}
+		return files, nil
 	}
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
@@ -100,7 +98,7 @@ func sourceFiles(ctx context.Context, dir string, allFiles bool, exclude Exclude
 		if !entry.Type().IsRegular() {
 			return nil
 		}
-		if shouldScanPath(rel, allFiles) {
+		if !isMarkdown(rel) {
 			files = append(files, rel)
 		}
 		return nil
@@ -108,17 +106,9 @@ func sourceFiles(ctx context.Context, dir string, allFiles bool, exclude Exclude
 	return files, err
 }
 
-func shouldScanPath(path string, allFiles bool) bool {
-	if allFiles {
-		return true
-	}
-	for part := range strings.SplitSeq(filepath.ToSlash(path), "/") {
-		if strings.HasPrefix(part, ".") {
-			return false
-		}
-	}
+func isMarkdown(path string) bool {
 	extension := strings.ToLower(filepath.Ext(path))
-	return extension != ".md" && extension != ".markdown"
+	return extension == ".md" || extension == ".markdown"
 }
 
 // scanFile finds the to-dos in one file, skipping anything that isn't a

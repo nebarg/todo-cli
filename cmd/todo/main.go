@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -19,7 +18,6 @@ import (
 // options are the command-line flags.
 type options struct {
 	file, priority, category, branch string
-	scan, allFiles                   bool
 	clearDone, clearMissing          bool
 	excludes                         []string
 }
@@ -29,11 +27,10 @@ type options struct {
 const currentBranch = "."
 
 const usageText = `Usage:
-  todo [flags]                     open the dashboard
-  todo [flags] [@category] task    add a task
-  todo [flags] --scan [directory]  list TODO comments in source files
-  todo [flags] --clear-done        remove done tasks
-  todo [flags] --clear-missing     remove tasks of branches no longer in Git
+  todo [flags]                   open the dashboard
+  todo [flags] [@category] task  add a task
+  todo [flags] --clear-done      remove done tasks
+  todo [flags] --clear-missing   remove tasks of branches no longer in Git
 
 Flags come first; everything after them is the task.
 
@@ -48,11 +45,9 @@ func newFlags(o *options) *pflag.FlagSet {
 	flags.StringVarP(&o.category, "category", "c", "", "category `name` for a new task")
 	flags.StringVarP(&o.branch, "branch", "b", "", "local Git branch `name` for a new task, or . for the current branch")
 	flags.StringVarP(&o.file, "file", "f", "", "task file `path` (default todo.md at the repository root)")
-	flags.BoolVar(&o.scan, "scan", false, "list TODO comments in source files under a directory (default here)")
 	flags.BoolVar(&o.clearDone, "clear-done", false, "remove done tasks")
 	flags.BoolVar(&o.clearMissing, "clear-missing", false, "remove every task of branches no longer in Git, open ones included")
-	flags.StringArrayVarP(&o.excludes, "exclude", "e", nil, "skip a `dir` when scanning: a name at any depth, or a path from here; repeat for more (default node_modules and vendor)")
-	flags.BoolVar(&o.allFiles, "all-files", false, "with --scan, include Markdown, hidden and ignored files")
+	flags.StringArrayVarP(&o.excludes, "exclude", "e", nil, "skip a `dir` in the Files tab: a name at any depth, or a path from here; repeat for more (default node_modules and vendor)")
 	return flags
 }
 
@@ -61,7 +56,6 @@ type command int
 const (
 	commandDashboard command = iota
 	commandAdd
-	commandScan
 	commandClear
 )
 
@@ -72,21 +66,12 @@ type usageError string
 func (e usageError) Error() string { return string(e) }
 
 // chooseCommand picks what to run from the flags and the words after them,
-// rejecting flags that don't apply. Without --scan or a --clear flag, any
+// rejecting flags that don't apply. Without a --clear flag, any
 // words are a task, so a task can start with any word.
 func chooseCommand(o options, args []string) (command, error) {
 	taskFlags := o.priority != "" || o.category != "" || o.branch != ""
 	clear := o.clearDone || o.clearMissing
 	switch {
-	case o.scan && clear:
-		return 0, usageError("use either --scan or --clear-done and --clear-missing")
-	case o.scan:
-		if len(args) > 1 || taskFlags {
-			return 0, usageError("usage: todo [--all-files] [-e dir]... --scan [directory]")
-		}
-		return commandScan, nil
-	case o.allFiles:
-		return 0, usageError("--all-files is only for --scan")
 	case clear:
 		if len(args) > 0 || taskFlags || len(o.excludes) > 0 {
 			return 0, usageError("usage: todo [-f file] [--clear-done] [--clear-missing]")
@@ -94,7 +79,7 @@ func chooseCommand(o options, args []string) (command, error) {
 		return commandClear, nil
 	case len(args) > 0:
 		if len(o.excludes) > 0 {
-			return 0, usageError("--exclude is only for --scan and the dashboard")
+			return 0, usageError("--exclude is only for the dashboard")
 		}
 		return commandAdd, nil
 	case taskFlags:
@@ -131,24 +116,6 @@ func main() {
 	}
 
 	switch cmd {
-	case commandScan:
-		dir := cwd
-		if len(args) == 1 {
-			if dir, err = filepath.Abs(args[0]); err != nil {
-				fail(err)
-			}
-		}
-		exclude, err := scan.ParseExclude(cwd, dir, o.excludes)
-		if err != nil {
-			fail(err)
-		}
-		matches, err := scan.Source(dir, o.allFiles, exclude)
-		if err != nil {
-			fail(err)
-		}
-		for _, match := range matches {
-			fmt.Printf("%s:%d: %s\n", match.Path, match.Line, match.Text)
-		}
 	case commandClear:
 		var missing func(string) bool
 		if o.clearMissing {
@@ -175,7 +142,7 @@ func main() {
 		m.files = filesui.New(cwd, exclude, nil)
 		err = ui.Run(m, os.Stdout)
 		if errors.Is(err, ui.ErrNoTerminal) {
-			err = usageError("the dashboard needs a terminal; use --scan, or give a task to add")
+			err = usageError("the dashboard needs a terminal; give a task to add, or use todo-scan --list")
 		}
 		if err != nil {
 			fail(err)

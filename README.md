@@ -18,11 +18,10 @@ Install either or both. From a checkout, `go build ./cmd/todo ./cmd/todo-scan`.
 ## Command line
 
 ```
-todo [flags]                     open the dashboard
-todo [flags] [@category] task    add a task
-todo [flags] --scan [directory]  list TODO comments in source files
-todo [flags] --clear-done        remove done tasks
-todo [flags] --clear-missing     remove tasks of branches no longer in Git
+todo [flags]                   open the dashboard
+todo [flags] [@category] task  add a task
+todo [flags] --clear-done      remove done tasks
+todo [flags] --clear-missing   remove tasks of branches no longer in Git
 ```
 
 Flags come first; everything after them is the task. To start a task with a dash, put `--` before it: `todo -- -v flag is broken`.
@@ -39,9 +38,7 @@ todo -b . -p h Fix the bug on this branch
 | `-c`, `--category name` | Category of the new task. A leading `@name` word does the same; use one or the other |
 | `-b`, `--branch name` | Local Git branch of the new task. `.` means the current branch |
 | `-f`, `--file path` | Use another task file instead of `todo.md` |
-| `-e`, `--exclude dir` | Skip a directory in `--scan` and the dashboard's Files tab. See [Skipping directories](#skipping-directories) |
-| `--all-files` | With `--scan`, include Markdown, hidden and ignored files |
-| `--scan [directory]` | List TODO comments under the directory, or here. See [TODOs in source files](#todos-in-source-files) |
+| `-e`, `--exclude dir` | Skip a directory in the dashboard's Files tab. See [Skipping directories](#skipping-directories) |
 | `--clear-done` | Remove every done task, and list what went |
 | `--clear-missing` | Remove every task, open or done, of branches whose local Git branch no longer exists, with their headings. Git branches aren't changed. Needs Git |
 | `-h`, `--help` | Show usage |
@@ -171,23 +168,23 @@ The dashboard reads the TODO list in the `README.md` next to the task file, whic
 
 ## TODOs in source files
 
-`todo --scan [directory]` lists case-insensitive `TODO` and `@todo` comments with their file and line. A marker counts when it starts the comment, as in `// TODO fix`, or is followed by `:` or `(` anywhere in it, so `* @return todo` doesn't match. In commented-out code, a comment after the code counts as starting there, as in `// x = 1; // TODO drop x`. `@ todo` is read as `@todo`. [todo-system markers](#todo-system-syntax) count anywhere in a comment.
+The dashboard's Files tab and [`todo-scan`](#todo-scan) list case-insensitive `TODO` and `@todo` comments with their file and line. A marker counts when it starts the comment, as in `// TODO fix`, or is followed by `:` or `(` anywhere in it, so `* @return todo` doesn't match. In commented-out code, a comment after the code counts as starting there, as in `// x = 1; // TODO drop x`. `@ todo` is read as `@todo`. [todo-system markers](#todo-system-syntax) count anywhere in a comment.
 
-The dashboard's Files tab and [`todo-scan`](#todo-scan) show the same results, with the comment text first and a shortened path beside it. The status bar shows the full path of the highlighted TODO. `→` opens a detail page with the TODO's text and as much of the surrounding code as fits, and `e` opens the file in your editor.
+Both show the comment text first and a shortened path beside it. The status bar shows the full path of the highlighted TODO. `→` opens a detail page with the TODO's text and as much of the surrounding code as fits, and `e` opens the file in your editor.
 
 - The dashboard scans the working directory and below, and `todo-scan` the directory you give it. Both use ripgrep (`rg`) if it's installed.
-- It skips gitignored, hidden, binary and Markdown files. `todo --all-files --scan` includes them, apart from binaries, and still only counts comments.
+- It skips gitignored, binary and Markdown files, and directories starting with `.`. Hidden files, such as `.eslintrc.js`, are read.
 - Only comments count. Each file is read with the comment syntax for its extension, so code and strings such as `class Todo {`, `"TODO"`, CSS's `#todo` and C's `#define TODO` don't match. Comments spanning several lines are followed to their end.
 - A file with PHP in it is read as PHP whatever its extension, and HTML and template files also count `//` and `/* */` comments in their scripts and styles. Files of an unknown type are read a line at a time, guessing where each line's comment starts.
-- Directories starting with `.` are always skipped, as are `node_modules` and `vendor` by default.
+- `node_modules` and `vendor` are skipped by default.
 
 ### Skipping directories
 
-To skip other directories, use `-e` / `--exclude`, once per directory. It works for `--scan` and the dashboard:
+To skip other directories, use `-e` / `--exclude`, once per directory. It works for the dashboard and `todo-scan`:
 
 ```sh
-todo -e node_modules -e vendor -e dist --scan
-todo -e ./web/generated
+todo -e node_modules -e vendor -e dist
+todo-scan -e ./web/generated
 ```
 
 - A bare name, such as `dist`, skips every directory with that name.
@@ -247,7 +244,6 @@ The scanner supports [todo-system](https://github.com/archtechx/todo-system)'s m
 - Four or more zeros are labelled `0x4` to `0x9`, then `0x9+`. They sort by the real count.
 - As in todo-system, a TODO has a category or a level, not both: `todo1@boundary` is just in `boundary`.
 - Levels todo-system doesn't accept, such as `todo11`, have no level. They count as generic TODOs where a plain `TODO` would: at the start of a comment, or before `:` or `(`.
-- `todo --scan` lists levels first too, then the rest by file.
 
 ## Development
 

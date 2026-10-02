@@ -44,20 +44,13 @@ func TestChooseCommand(t *testing.T) {
 		{"-b . -p h This is my task", commandAdd, ""},
 		{"--branch=feature/x --priority high Fix", commandAdd, ""},
 		{"-p h Fix it -c later", commandAdd, ""},
-		{"--scan", commandScan, ""},
-		{"--all-files -e dist --scan src", commandScan, ""},
 		{"--clear-done", commandClear, ""},
 		{"-f tasks.md --clear-done", commandClear, ""},
 		{"--clear-missing", commandClear, ""},
 		{"--clear-done --clear-missing", commandClear, ""},
-		{"--scan src extra", 0, "usage: todo [--all-files]"},
-		{"-p h --scan", 0, "usage: todo [--all-files]"},
-		{"--scan --clear-done", 0, "use either --scan or"},
-		{"--scan --clear-missing", 0, "use either --scan or"},
 		{"--clear-done now", 0, "usage: todo [-f file] [--clear-done]"},
 		{"-e dist --clear-missing", 0, "usage: todo [-f file] [--clear-done]"},
-		{"--all-files", 0, "--all-files is only for --scan"},
-		{"-e dist Fix it", 0, "--exclude is only for --scan"},
+		{"-e dist Fix it", 0, "--exclude is only for the dashboard"},
 		{"-b .", 0, "-p, -c and -b need task text"},
 	} {
 		t.Run(item.argv, func(t *testing.T) {
@@ -120,5 +113,14 @@ func TestAddTaskOnBranches(t *testing.T) {
 	}
 	if want := "# Branches\n\n## main\n\n- [ ] Current task !high\n\n## feature/x\n\n- [ ] Other task\n"; string(data) != want {
 		t.Fatalf("todo.md = %q, want %q", data, want)
+	}
+}
+
+func TestScanFlagsAreGone(t *testing.T) {
+	for _, flag := range []string{"--scan", "--all-files"} {
+		var o options
+		if err := newFlags(&o).Parse([]string{flag}); err == nil {
+			t.Errorf("%s was accepted", flag)
+		}
 	}
 }

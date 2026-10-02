@@ -19,6 +19,7 @@ func TestScanSource(t *testing.T) {
 		"TODO.md":               "- [ ] TODO: stored task\n",
 		"notes.md":              "Plain text TODO: not a comment\n<!-- TODO: in a comment -->\n",
 		".hidden.go":            "// TODO: hidden file\n",
+		"web/.eslintrc.js":      "// TODO: nested hidden file\n",
 		"binary.dat":            "TODO\x00x",
 		".cache/cached.go":      "// TODO: dot directory\n",
 		"src/.venv/lib.go":      "// TODO: nested dot directory\n",
@@ -32,17 +33,14 @@ func TestScanSource(t *testing.T) {
 		"sys.php":               "// todo@boundary Split this\n// todo00 First\n// todo1@boundary Split more\n",
 	}
 	cases := []struct {
-		name     string
-		allFiles bool
-		exclude  Exclude
-		want     []string
+		name    string
+		exclude Exclude
+		want    []string
 	}{
-		{"defaults skip dependencies, dot directories and Markdown", false, defaultExclude,
-			[]string{"sys.php:2", "code.go:1", "code.go:3", "dist/out.js:1", "odd[1]/x.go:1", "pkg/dist/out.js:1", "pkg/gen/gen.go:1", "sys.php:1", "sys.php:3"}},
-		{"all files adds hidden files and Markdown comments, but still only comments", true, defaultExclude,
-			[]string{"sys.php:2", ".hidden.go:1", "code.go:1", "code.go:3", "dist/out.js:1", "notes.md:2", "odd[1]/x.go:1", "pkg/dist/out.js:1", "pkg/gen/gen.go:1", "sys.php:1", "sys.php:3"}},
-		{"custom excludes replace the defaults", false, Exclude{Names: []string{"gen", "odd[1]"}, Paths: []string{"pkg/dist"}},
-			[]string{"sys.php:2", "code.go:1", "code.go:3", "dist/out.js:1", "node_modules/dep.js:1", "sys.php:1", "sys.php:3", "vendor/lib.go:1", "web/node_modules/d.js:1"}},
+		{"defaults read hidden files, but skip dependencies, dot directories and Markdown", defaultExclude,
+			[]string{"sys.php:2", ".hidden.go:1", "code.go:1", "code.go:3", "dist/out.js:1", "odd[1]/x.go:1", "pkg/dist/out.js:1", "pkg/gen/gen.go:1", "sys.php:1", "sys.php:3", "web/.eslintrc.js:1"}},
+		{"custom excludes replace the defaults", Exclude{Names: []string{"gen", "odd[1]"}, Paths: []string{"pkg/dist"}},
+			[]string{"sys.php:2", ".hidden.go:1", "code.go:1", "code.go:3", "dist/out.js:1", "node_modules/dep.js:1", "sys.php:1", "sys.php:3", "vendor/lib.go:1", "web/.eslintrc.js:1", "web/node_modules/d.js:1"}},
 	}
 	for _, scanner := range scanners(t) {
 		t.Run(scanner.name, func(t *testing.T) {
@@ -64,7 +62,7 @@ func TestScanSource(t *testing.T) {
 			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull) // A global gitignore would hide test files.
 			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 			for _, c := range cases {
-				matches, err := Source(dir, c.allFiles, c.exclude)
+				matches, err := Source(dir, c.exclude)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -126,7 +124,7 @@ func TestBuiltInScanIsDeterministic(t *testing.T) {
 		}
 	}
 	for range 5 {
-		matches, err := Source(dir, false, Exclude{})
+		matches, err := Source(dir, Exclude{})
 		if err != nil {
 			t.Fatal(err)
 		}

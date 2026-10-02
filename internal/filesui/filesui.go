@@ -65,7 +65,7 @@ func (m *Model) Scan() tea.Cmd {
 	m.loading = true
 	dir, exclude, keep := m.dir, m.exclude, m.keep
 	return func() tea.Msg {
-		matches, err := scan.Source(dir, false, exclude)
+		matches, err := scan.Source(dir, exclude)
 		if keep != nil {
 			matches = slices.DeleteFunc(matches, func(match scan.Match) bool { return !keep(match) })
 		}

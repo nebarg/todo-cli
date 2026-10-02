@@ -59,10 +59,10 @@ func LevelRank(level string) int {
 // Source finds to-do marker comments under dir. ripgrep, when it is
 // installed, quickly lists the files that might hold one; each is then read
 // to tell its comments from its code. Results are sorted most urgent first,
-// then by path and line. allFiles also searches Markdown, hidden and
-// ignored files. Directories in exclude, and those starting with a dot, are
-// always skipped.
-func Source(dir string, allFiles bool, exclude Exclude) ([]Match, error) {
+// then by path and line. Ignored and Markdown files are skipped, as are
+// directories in exclude and those starting with a dot; hidden files are
+// read.
+func Source(dir string, exclude Exclude) ([]Match, error) {
 	info, err := os.Stat(dir)
 	if err != nil {
 		return nil, err
@@ -73,7 +73,7 @@ func Source(dir string, allFiles bool, exclude Exclude) ([]Match, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if _, err := exec.LookPath("rg"); err == nil {
-		matches, scanErr := scanWithRipgrep(ctx, dir, allFiles, exclude)
+		matches, scanErr := scanWithRipgrep(ctx, dir, exclude)
 		if scanErr == nil {
 			return matches, nil
 		}
@@ -81,17 +81,12 @@ func Source(dir string, allFiles bool, exclude Exclude) ([]Match, error) {
 			return nil, ctx.Err()
 		}
 	}
-	return scanBuiltIn(ctx, dir, allFiles, exclude)
+	return scanBuiltIn(ctx, dir, exclude)
 }
 
-func scanWithRipgrep(ctx context.Context, dir string, allFiles bool, exclude Exclude) ([]Match, error) {
-	args := append([]string{"--files-with-matches", "--null"}, exclude.ripgrepGlobs()...)
-	if allFiles {
-		args = append(args, "--hidden", "--no-ignore")
-	} else {
-		// The default code view honors ignore rules and leaves out Markdown.
-		args = append(args, "--glob", "!*.md", "--glob", "!*.markdown")
-	}
+func scanWithRipgrep(ctx context.Context, dir string, exclude Exclude) ([]Match, error) {
+	// --hidden reads hidden files; the exclusions still skip dot directories.
+	args := append([]string{"--files-with-matches", "--null", "--hidden", "--glob", "!*.md", "--glob", "!*.markdown"}, exclude.ripgrepGlobs()...)
 	// ripgrep only narrows the files down. Its pattern is as loose as
 	// containsTodo, so both scanners read exactly the same files.
 	args = append(args, "--ignore-case", "--fixed-strings", "todo", ".")
