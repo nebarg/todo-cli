@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -203,5 +204,51 @@ func TestDeleteLeavesAFileChangedSinceAlone(t *testing.T) {
 	m = press(m, "y")
 	if got := fileContent(t, path); got != elsewhere || !strings.Contains(m.status, "changed") || m.lastRemoval != nil {
 		t.Fatalf("file = %q, status %q", got, m.status)
+	}
+}
+
+// taskOrder is the text and line of each row in the focused list.
+func taskOrder(m *model) []string {
+	var order []string
+	for _, row := range m.rows(m.focus) {
+		order = append(order, fmt.Sprintf("%s:%d", row.todo.Text, row.todo.Line))
+	}
+	return order
+}
+
+func TestDeletingOneOfIdenticalTasksLeavesTheOtherInPlace(t *testing.T) {
+	const content = "- [ ] scan\n\n- [ ] list\n\n- [ ] scan\n\n- [ ] need\n"
+	for _, item := range []struct {
+		name string
+		row  int
+		file string
+		rows []string
+	}{
+		{"upper", 0, "- [ ] list\n\n- [ ] scan\n\n- [ ] need\n", []string{"list:0", "scan:2", "need:4"}},
+		{"lower", 2, "- [ ] scan\n\n- [ ] list\n\n- [ ] need\n", []string{"scan:0", "list:2", "need:4"}},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "todo.md")
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			m, err := newModel(path, project.Context{}, testFiles())
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := taskOrder(m)
+			m.general.cursor = item.row
+			m = press(press(m, "backspace"), "y")
+			if got := fileContent(t, path); got != item.file {
+				t.Fatalf("file = %q, want %q", got, item.file)
+			}
+			if got := taskOrder(m); !slices.Equal(got, item.rows) {
+				t.Fatalf("rows after the delete = %v, want %v", got, item.rows)
+			}
+			m = press(m, "u")
+			if got := taskOrder(m); !slices.Equal(got, before) {
+				t.Fatalf("rows after the undo = %v, want %v as before", got, before)
+			}
+		})
 	}
 }

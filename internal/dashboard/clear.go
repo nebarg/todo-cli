@@ -122,6 +122,13 @@ func confirmOnY(o overlay, msg tea.Msg, confirmed removalConfirmedMsg) (overlay,
 	return nil, nil, nil
 }
 
+// removalUndo is a clear or delete u can undo, with the order the tasks
+// were shown in before it, which the undo puts back.
+type removalUndo struct {
+	removal store.Removal
+	order   []store.Task
+}
+
 // applyRemoval removes a confirmed clear's or delete's tasks, keeping the
 // removal so u can undo it.
 func (m *model) applyRemoval(msg removalConfirmedMsg) (tea.Model, tea.Cmd) {
@@ -132,13 +139,25 @@ func (m *model) applyRemoval(msg removalConfirmedMsg) (tea.Model, tea.Cmd) {
 	if m.focus == detailPane {
 		m.focus = m.detailFrom
 	}
-	if err := m.refresh(); err != nil {
+	order := m.tasks.all
+	// Rows keep their place by matching each task to one with the same text
+	// nearest its old line. Without the removed tasks, an identical task left
+	// can't take one's place.
+	if err := m.refreshFrom(withoutTasks(order, msg.removal.Tasks)); err != nil {
 		m.status = err.Error()
 		return m, nil
 	}
-	m.lastRemoval = &msg.removal
+	m.lastRemoval = &removalUndo{removal: msg.removal, order: order}
 	m.status = msg.status
 	return m, nil
+}
+
+// withoutTasks is tasks less those in removed, both from the same read of
+// the file, where a line holds one task.
+func withoutTasks(tasks, removed []store.Task) []store.Task {
+	return slices.DeleteFunc(slices.Clone(tasks), func(t store.Task) bool {
+		return slices.ContainsFunc(removed, func(r store.Task) bool { return r.Line == t.Line })
+	})
 }
 
 func (m *model) undoRemoval() {
@@ -146,9 +165,9 @@ func (m *model) undoRemoval() {
 		m.status = "Nothing to undo"
 		return
 	}
-	removal := *m.lastRemoval
+	undo := *m.lastRemoval
 	m.lastRemoval = nil
-	if err := removal.Undo(); err != nil {
+	if err := undo.removal.Undo(); err != nil {
 		if errors.Is(err, store.ErrFileChanged) {
 			m.status = "The file has changed since, so it cannot be undone"
 		} else {
@@ -156,11 +175,12 @@ func (m *model) undoRemoval() {
 		}
 		return
 	}
-	if err := m.refresh(); err != nil {
+	// The file is as it was before the removal, so its order fits exactly.
+	if err := m.refreshFrom(undo.order); err != nil {
 		m.status = err.Error()
 		return
 	}
-	m.status = "Restored " + taskCount(len(removal.Tasks))
+	m.status = "Restored " + taskCount(len(undo.removal.Tasks))
 }
 
 func taskCount(n int) string { return ui.Plural(n, "task", "tasks") }

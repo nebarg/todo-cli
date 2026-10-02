@@ -43,8 +43,8 @@ type model struct {
 	localBranches    []string // as Git last listed them, sorted
 	branchesVerified bool     // whether Git answered, so a branch not in localBranches is gone
 	files            filesui.Model
-	overlay          overlay        // nil when nothing is open over the dashboard
-	lastRemoval      *store.Removal // the last clear or delete, for u to undo
+	overlay          overlay      // nil when nothing is open over the dashboard
+	lastRemoval      *removalUndo // the last clear or delete, for u to undo
 	status           string
 	width            int
 	height           int
@@ -492,6 +492,13 @@ func (m *model) setTheme(theme ui.Theme) {
 
 func (m *model) refresh() error {
 	return m.readTasks(false)
+}
+
+// refreshFrom rereads the file as refresh does, keeping the rows in the
+// order of previous rather than of the tasks shown.
+func (m *model) refreshFrom(previous []store.Task) error {
+	m.tasks.setAll(previous)
+	return m.refresh()
 }
 
 // readTasks also drops any pending undo of a clear or delete: whatever
