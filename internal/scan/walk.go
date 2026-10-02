@@ -14,16 +14,9 @@ import (
 	"sync"
 )
 
-// scanBuiltIn keeps file TODOs usable when ripgrep is not installed.
-func scanBuiltIn(ctx context.Context, dir string, exclude Exclude) ([]Match, error) {
-	return scanFiles(ctx, dir, func(add func(string)) error {
-		return walkFiles(ctx, dir, exclude, add)
-	})
-}
-
-// scanFiles reads each file that list adds, relative to dir, for its
-// to-dos. Files are read in parallel while list is still adding them.
-func scanFiles(ctx context.Context, dir string, list func(add func(path string)) error) ([]Match, error) {
+// scanFiles reads each file walkFiles finds under dir for its to-dos. Files
+// are read in parallel while the walk is still finding them.
+func scanFiles(ctx context.Context, dir string, exclude Exclude) ([]Match, error) {
 	jobs := make(chan string, 128)
 	found := make(chan []Match, 128)
 	var wg sync.WaitGroup
@@ -39,10 +32,10 @@ func scanFiles(ctx context.Context, dir string, list func(add func(path string))
 			}
 		})
 	}
-	var listErr error
+	var walkErr error
 	wg.Go(func() {
 		defer close(jobs)
-		listErr = list(func(path string) {
+		walkErr = walkFiles(ctx, dir, exclude, func(path string) {
 			select {
 			case jobs <- path:
 			case <-ctx.Done():
@@ -55,7 +48,7 @@ func scanFiles(ctx context.Context, dir string, list func(add func(path string))
 	for fileMatches := range found {
 		matches = append(matches, fileMatches...)
 	}
-	if err := cmp.Or(ctx.Err(), listErr); err != nil {
+	if err := cmp.Or(ctx.Err(), walkErr); err != nil {
 		return nil, err
 	}
 	return sortedMatches(matches), nil

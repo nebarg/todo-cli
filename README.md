@@ -172,7 +172,7 @@ The dashboard's Files tab and [`todo-scan`](#todo-scan) list case-insensitive `T
 
 Both show the comment text first and a shortened path beside it. The status bar shows the full path of the highlighted TODO. `→` opens a detail page with the TODO's text and as much of the surrounding code as fits, and `e` opens the file in your editor.
 
-- The dashboard scans the working directory and below, and `todo-scan` the directory you give it. Both use ripgrep (`rg`) if it's installed.
+- The dashboard scans the working directory and below, and `todo-scan` the directory you give it.
 - It skips gitignored, binary and Markdown files, and directories starting with `.`. Hidden files, such as `.eslintrc.js`, are read.
 - Only comments count. Each file is read with the comment syntax for its extension, so code and strings such as `class Todo {`, `"TODO"`, CSS's `#todo` and C's `#define TODO` don't match. Comments spanning several lines are followed to their end.
 - A file with PHP in it is read as PHP whatever its extension, and HTML and template files also count `//` and `/* */` comments in their scripts and styles. Files of an unknown type are read a line at a time, guessing where each line's comment starts.

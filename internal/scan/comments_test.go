@@ -126,7 +126,7 @@ func TestFileTodosKeepLevelsAndCategories(t *testing.T) {
 }
 
 // BenchmarkFileTodos reads a large PHP class with a few to-dos, the common
-// case for a file ripgrep flags.
+// case for a file containsTodo lets through.
 func BenchmarkFileTodos(b *testing.B) {
 	var file strings.Builder
 	file.WriteString("<?php\nclass Orders {\n")

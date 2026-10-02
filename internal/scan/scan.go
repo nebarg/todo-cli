@@ -4,12 +4,9 @@ package scan
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -55,9 +52,8 @@ func LevelRank(level string) int {
 	return n
 }
 
-// Source finds to-do marker comments under dir. ripgrep, when it is
-// installed, quickly lists the files that might hold one; each is then read
-// to tell its comments from its code. Results are sorted most urgent first,
+// Source finds to-do marker comments under dir, reading each file to tell
+// its comments from its code. Results are sorted most urgent first,
 // then by path and line. Ignored and Markdown files are skipped, as are
 // directories in exclude and those starting with a dot; hidden files are
 // read. Cancelling ctx stops the scan.
@@ -69,50 +65,7 @@ func Source(ctx context.Context, dir string, exclude Exclude) ([]Match, error) {
 	if !info.IsDir() {
 		return nil, fmt.Errorf("not a directory: %s", dir)
 	}
-	if _, err := exec.LookPath("rg"); err == nil {
-		matches, scanErr := scanWithRipgrep(ctx, dir, exclude)
-		if scanErr == nil {
-			return matches, nil
-		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-	}
-	return scanBuiltIn(ctx, dir, exclude)
-}
-
-func scanWithRipgrep(ctx context.Context, dir string, exclude Exclude) ([]Match, error) {
-	// --hidden reads hidden files; the exclusions still skip dot directories.
-	args := append([]string{"--files-with-matches", "--null", "--hidden", "--glob", "!*.md", "--glob", "!*.markdown"}, exclude.ripgrepGlobs()...)
-	// ripgrep only narrows the files down. Its pattern is as loose as
-	// containsTodo, so both scanners read exactly the same files.
-	args = append(args, "--ignore-case", "--fixed-strings", "todo", ".")
-	cmd := exec.CommandContext(ctx, "rg", args...)
-	cmd.Dir = dir
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	output, err := cmd.Output()
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-	exitErr, exited := errors.AsType[*exec.ExitError](err)
-	switch {
-	case exited && exitErr.ExitCode() == 1:
-		return nil, nil // No file mentions a TODO.
-	case exited && exitErr.ExitCode() == 2 && len(output) > 0:
-		// Some paths couldn't be read, but ripgrep still listed the files it
-		// could, and unreadable files are skipped anyway.
-	case err != nil:
-		return nil, fmt.Errorf("ripgrep: %s", strings.TrimSpace(stderr.String()))
-	}
-	return scanFiles(ctx, dir, func(add func(string)) error {
-		for path := range strings.SplitSeq(string(output), "\x00") {
-			if path != "" {
-				add(filepath.Clean(path))
-			}
-		}
-		return nil
-	})
+	return scanFiles(ctx, dir, exclude)
 }
 
 // sortedMatches orders matches by level, then file and line, so parallel
