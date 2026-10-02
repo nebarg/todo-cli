@@ -315,3 +315,20 @@ func TestClearMissingNeedsGit(t *testing.T) {
 		t.Fatalf("missingBranches = %v", err)
 	}
 }
+
+func TestClearReportPrintsControlCharactersAsSpaces(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	content := "# a\x1b]0;x\x07b\n\n- [x] Done \x1b[2Jtask\n\n# Branches\n\n## br\x07anch\n\n- [ ] Branch task\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := clearTasks(&out, path, true, func(branch string) bool { return branch != "" }); err != nil {
+		t.Fatal(err)
+	}
+	want := "Removed 1 done task and 1 task of a missing branch from " + path + ":\n  Done  [2Jtask\n  Branch task\n" +
+		"Branches no longer in Git: br anch\nRemoved empty headings: @a ]0;x b\n"
+	if out.String() != want {
+		t.Fatalf("output = %q, want %q", out.String(), want)
+	}
+}

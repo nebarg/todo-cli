@@ -114,8 +114,11 @@ func report(ctx context.Context, out, errOut io.Writer, o options) int {
 		matches = slices.DeleteFunc(matches, func(match scan.Match) bool { return !keep(match) })
 	}
 	if o.list {
+		// The paths and text come from the files scanned, so their control
+		// characters, which a terminal would act on, are printed as spaces.
 		for _, match := range matches {
-			_, _ = fmt.Fprintf(out, "%s:%d: %s\n", path.Join(filepath.ToSlash(o.given), match.Path), match.Line, match.Text)
+			location := path.Join(filepath.ToSlash(o.given), match.Path)
+			_, _ = fmt.Fprintf(out, "%s:%d: %s\n", ui.CleanDisplay(location), match.Line, ui.CleanDisplay(match.Text))
 		}
 	}
 	if !o.check {

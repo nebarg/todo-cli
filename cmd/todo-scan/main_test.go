@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -177,5 +178,20 @@ func TestRun(t *testing.T) {
 	var out, errOut strings.Builder
 	if status := run(t.Context(), []string{"--help"}, &out, &errOut); status != exitClean || !strings.HasPrefix(out.String(), "Usage:") || errOut.Len() > 0 {
 		t.Fatalf("--help = %d, %q, %q", status, out.String(), errOut.String())
+	}
+}
+
+func TestListPrintsControlCharactersAsSpaces(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows file names can't hold control characters")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a\x1b[2J.go"), []byte("// TODO: tidy \x1b]0;pwned\x07up\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	var out, errOut strings.Builder
+	if status := run(t.Context(), []string{"--list"}, &out, &errOut); status != exitClean || out.String() != "a [2J.go:1: // TODO: tidy  ]0;pwned up\n" {
+		t.Fatalf("--list = %d, %q, %q", status, out.String(), errOut.String())
 	}
 }

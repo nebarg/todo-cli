@@ -214,7 +214,8 @@ func addTask(out io.Writer, file string, repo project.Context, o options, args [
 
 // clearTasks removes every done task from file when done is set, and every
 // task of a branch missing reports, with any headings left empty, and lists
-// what went. A nil missing leaves branches alone.
+// what went, with the control characters of the file's text as spaces so a
+// terminal doesn't act on them. A nil missing leaves branches alone.
 func clearTasks(out io.Writer, file string, done bool, missing func(string) bool) error {
 	tasks, err := store.Load(file)
 	if err != nil {
@@ -242,10 +243,10 @@ func clearTasks(out io.Writer, file string, done bool, missing func(string) bool
 	var report strings.Builder
 	fmt.Fprintf(&report, "Removed %s from %s:\n", targets.Summary(), file)
 	for _, t := range slices.Backward(removal.Tasks) {
-		fmt.Fprintf(&report, "  %s\n", t.Text)
+		fmt.Fprintf(&report, "  %s\n", ui.CleanDisplay(t.Text))
 	}
 	if len(targets.Branches) > 0 {
-		fmt.Fprintf(&report, "Branches no longer in Git: %s\n", strings.Join(targets.Branches, ", "))
+		fmt.Fprintf(&report, "Branches no longer in Git: %s\n", ui.CleanDisplay(strings.Join(targets.Branches, ", ")))
 	}
 	var headings []string
 	for _, category := range removal.Categories {
@@ -257,7 +258,7 @@ func clearTasks(out io.Writer, file string, done bool, missing func(string) bool
 		}
 	}
 	if len(headings) > 0 {
-		fmt.Fprintf(&report, "Removed empty headings: %s\n", strings.Join(headings, ", "))
+		fmt.Fprintf(&report, "Removed empty headings: %s\n", ui.CleanDisplay(strings.Join(headings, ", ")))
 	}
 	_, err = io.WriteString(out, report.String())
 	return err
