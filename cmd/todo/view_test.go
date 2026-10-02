@@ -23,7 +23,7 @@ func TestDashboardFitsTerminal(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{root: filepath.Dir(path), branch: "feature/login"})
+	m, err := newModel(path, projectContext{root: filepath.Dir(path), branch: "feature/login"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{branch: "main"})
+	m, err := newModel(path, projectContext{branch: "main"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

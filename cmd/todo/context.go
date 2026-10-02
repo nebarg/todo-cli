@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 )
@@ -33,7 +32,7 @@ func currentProject() projectContext {
 
 func (project projectContext) currentBranch() string {
 	if project.root == "" {
-		return project.branch
+		return ""
 	}
 	branch, _ := gitOutput(project.root, "branch", "--show-current")
 	return branch
@@ -43,10 +42,7 @@ func (project projectContext) currentBranch() string {
 // verified is false when there is no Git repository to check against.
 func (project projectContext) localBranchState() (branches []string, current string, verified bool) {
 	if project.root == "" {
-		if project.branch == "" {
-			return nil, "", false
-		}
-		return []string{project.branch}, project.branch, false
+		return nil, "", false
 	}
 	output, err := gitOutput(project.root, "for-each-ref", "--format=%(refname:short)", "refs/heads")
 	if err != nil {
@@ -62,7 +58,7 @@ func (project projectContext) localBranchState() (branches []string, current str
 	if current != "" && !slices.Contains(branches, current) {
 		branches = append(branches, current)
 	}
-	sort.Strings(branches)
+	slices.Sort(branches)
 	return branches, current, true
 }
 
@@ -78,7 +74,7 @@ func (project projectContext) branchExists(name string) (exists, verified bool) 
 		return false, true
 	}
 	if project.root == "" {
-		return name == project.branch, false
+		return false, false
 	}
 	_, err := gitOutput(project.root, "show-ref", "--verify", "--quiet", "refs/heads/"+name)
 	if err == nil {

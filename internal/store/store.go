@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -94,7 +95,7 @@ func parseTasks(lines []string) []Task {
 			}
 		}
 		t.bodyEnd = j
-		t.bodyRaw = append([]string(nil), lines[t.bodyStart:t.bodyEnd]...)
+		t.bodyRaw = slices.Clone(lines[t.bodyStart:t.bodyEnd])
 		end := j
 		for start < end && strings.TrimSpace(lines[start]) == "" {
 			start++
@@ -221,7 +222,7 @@ func validScope(category, branch string) (string, string, error) {
 func taskBlock(selected Task, title, details string) []string {
 	block := []string{normalizedTaskLine(selected, title, selected.Done, selected.Priority)}
 	if strings.Join(formattedDetails(details), "\n") == strings.Join(formattedDetails(selected.Details), "\n") {
-		body := append([]string(nil), selected.bodyRaw...)
+		body := slices.Clone(selected.bodyRaw)
 		for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
 			body = body[:len(body)-1]
 		}
@@ -237,8 +238,7 @@ func taskBlock(selected Task, title, details string) []string {
 // movedTaskLines removes selected from lines, drops a heading it leaves empty,
 // and files block under category or branch.
 func movedTaskLines(lines []string, selected Task, block []string, category, branch string) string {
-	remaining := append([]string{}, lines[:selected.Line]...)
-	remaining = append(remaining, lines[selected.bodyEnd:]...)
+	remaining := slices.Concat(lines[:selected.Line], lines[selected.bodyEnd:])
 	remaining = removeEmptyCategoryHeading(remaining, selected)
 	if selected.Branch != "" && selected.Branch != branch {
 		remaining = removeEmptyBranchHeading(remaining, selected.Branch)
@@ -247,7 +247,7 @@ func movedTaskLines(lines []string, selected Task, block []string, category, bra
 }
 
 func editedTaskLines(lines []string, selected Task, title, details string) []string {
-	updated := append([]string{}, lines[:selected.Line]...)
+	updated := slices.Clone(lines[:selected.Line])
 	updated = append(updated, normalizedTaskLine(selected, title, selected.Done, selected.Priority))
 	eol := lineEnding(lines)
 	if strings.Join(formattedDetails(details), "\n") == strings.Join(formattedDetails(selected.Details), "\n") {
@@ -579,7 +579,7 @@ func removeEmptyCategoryHeading(lines []string, selected Task) []string {
 		}
 		end++
 	}
-	return append(append([]string{}, lines[:start]...), lines[end:]...)
+	return slices.Concat(lines[:start], lines[end:])
 }
 
 func removeEmptyBranchHeading(lines []string, branch string) []string {
@@ -596,7 +596,7 @@ func removeEmptyBranchHeading(lines []string, branch string) []string {
 			return lines
 		}
 	}
-	return append(append([]string{}, lines[:branchStart]...), lines[branchEnd:]...)
+	return slices.Concat(lines[:branchStart], lines[branchEnd:])
 }
 
 func replaceFile(path string, data []byte, mode os.FileMode) error {

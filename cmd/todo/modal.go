@@ -1,10 +1,10 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
@@ -332,9 +332,7 @@ func (f *taskModal) matchingBranches() []string {
 			}
 			return 2
 		}
-		sort.SliceStable(matches, func(i, j int) bool {
-			return rank(matches[i]) < rank(matches[j])
-		})
+		slices.SortStableFunc(matches, func(a, b string) int { return cmp.Compare(rank(a), rank(b)) })
 	}
 	return matches
 }

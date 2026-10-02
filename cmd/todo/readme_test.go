@@ -46,7 +46,7 @@ func TestReadmeTasksOpenFromGeneralAndOnlyToggle(t *testing.T) {
 	if err := os.WriteFile(readme, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{})
+	m, err := newModel(path, projectContext{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestReadmeGroupClosesWhenItsTasksGo(t *testing.T) {
 	if err := os.WriteFile(readme, []byte("## Todo:\n\n- Only task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{})
+	m, err := newModel(path, projectContext{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -77,7 +77,7 @@ func TestBranchExists(t *testing.T) {
 		{"missing branch", project, "feature/gone", false, true},
 		{"empty name", project, "", false, true},
 		{"unborn current branch", projectContext{root: unborn}, "fresh", true, true},
-		{"outside Git", projectContext{branch: "main"}, "main", true, false},
+		{"outside Git", projectContext{}, "main", false, false},
 	} {
 		t.Run(item.name, func(t *testing.T) {
 			exists, verified := item.project.branchExists(item.branch)

@@ -56,7 +56,7 @@ func sortRun(lines []string, run []Task) []string {
 	}
 	slices.SortStableFunc(order, func(a, b int) int { return taskRank(run[a]) - taskRank(run[b]) })
 
-	result := append([]string{}, lines[:run[0].Line]...)
+	result := slices.Clone(lines[:run[0].Line])
 	for i, index := range order {
 		if i > 0 && spaced*2 > len(run)-1 {
 			result = append(result, blank)

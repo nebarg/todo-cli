@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -34,7 +35,7 @@ func Command(path string, line int) *exec.Cmd {
 	if len(parts) == 0 {
 		parts = []string{"vi"}
 	}
-	args := append([]string{}, parts[1:]...)
+	args := slices.Clone(parts[1:])
 	switch filepath.Base(parts[0]) {
 	case "code", "codium", "cursor":
 		args = append(args, "--wait", "--goto", fmt.Sprintf("%s:%d", path, line))

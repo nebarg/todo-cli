@@ -2,7 +2,6 @@ package scan
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -303,12 +302,7 @@ func TestTodoComments(t *testing.T) {
 	}
 }
 
-func TestLevelsSortMostUrgentFirst(t *testing.T) {
-	levels := []string{"", "2", "0", "000", "1", "00", "9"}
-	slices.SortFunc(levels, func(a, b string) int { return cmp.Compare(LevelRank(a), LevelRank(b)) })
-	if want := []string{"000", "00", "0", "1", "2", "9", ""}; !slices.Equal(levels, want) {
-		t.Fatalf("levels = %q, want %q", levels, want)
-	}
+func TestLevelledMatchesSortFirst(t *testing.T) {
 	matches := sortedMatches([]Match{{Path: "a.go", Line: 1}, {Path: "z.go", Line: 9, Level: "0"}, {Path: "b.go", Line: 2, Level: "1"}})
 	if len(matches) != 3 || matches[0].Path != "z.go" || matches[1].Path != "b.go" || matches[2].Path != "a.go" {
 		t.Fatalf("levelled to-dos not first: %+v", matches)

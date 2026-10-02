@@ -1,7 +1,9 @@
 package main
 
 import (
-	"sort"
+	"cmp"
+	"math"
+	"slices"
 	"strings"
 
 	"github.com/nebarg/todo-cli/internal/store"
@@ -117,9 +119,18 @@ func (m *model) branchMissing(name string) bool {
 }
 
 func openTasksFirst(rows []navigationRow) {
-	sort.SliceStable(rows, func(i, j int) bool {
-		return !rows[i].todo.Done && rows[j].todo.Done
-	})
+	slices.SortStableFunc(rows, func(a, b navigationRow) int { return compareDone(a.todo, b.todo) })
+}
+
+// compareDone orders open tasks before done ones.
+func compareDone(a, b store.Task) int {
+	switch {
+	case a.Done == b.Done:
+		return 0
+	case a.Done:
+		return 1
+	}
+	return -1
 }
 
 func (m *model) selectNavigationTask(selected store.Task) {
@@ -135,7 +146,7 @@ func (m *model) selectNavigationTask(selected store.Task) {
 	}
 	// Writes can move the task in the file, so the nearest task with the same
 	// title in the same place is taken to be it.
-	best, distance := -1, int(^uint(0)>>1)
+	best, distance := -1, math.MaxInt
 	for i, row := range rows {
 		if row.kind != rowTask || row.todo.Text != selected.Text || row.todo.Branch != selected.Branch || !strings.EqualFold(row.todo.Category, selected.Category) {
 			continue
@@ -161,21 +172,15 @@ func sortedNames(counts map[string]int) []string {
 	for name := range counts {
 		names = append(names, name)
 	}
-	sort.Slice(names, func(i, j int) bool {
-		a, b := strings.ToLower(names[i]), strings.ToLower(names[j])
-		if a == b {
-			return names[i] < names[j]
-		}
-		return a < b
+	slices.SortFunc(names, func(a, b string) int {
+		return cmp.Or(strings.Compare(strings.ToLower(a), strings.ToLower(b)), strings.Compare(a, b))
 	})
 	return names
 }
 
 func sortedTasksByPriority(tasks []store.Task) []store.Task {
-	sorted := append([]store.Task(nil), tasks...)
-	sort.SliceStable(sorted, func(i, j int) bool {
-		return sorted[i].Priority.Rank() < sorted[j].Priority.Rank()
-	})
+	sorted := slices.Clone(tasks)
+	slices.SortStableFunc(sorted, func(a, b store.Task) int { return cmp.Compare(a.Priority.Rank(), b.Priority.Rank()) })
 	return sorted
 }
 

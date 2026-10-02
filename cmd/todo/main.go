@@ -135,15 +135,14 @@ func main() {
 			fail(err)
 		}
 	case commandDashboard:
-		m, err := newModel(file, project)
-		if err != nil {
-			fail(err)
-		}
 		exclude, err := scan.ParseExclude(cwd, cwd, o.excludes)
 		if err != nil {
 			fail(err)
 		}
-		m.files = filesui.New(cwd, exclude, nil)
+		m, err := newModel(file, project, filesui.New(cwd, exclude, nil))
+		if err != nil {
+			fail(err)
+		}
 		err = ui.Run(m, os.Stdout)
 		if errors.Is(err, ui.ErrNoTerminal) {
 			err = usageError("the dashboard needs a terminal; give a task to add, or use todo-scan --list")

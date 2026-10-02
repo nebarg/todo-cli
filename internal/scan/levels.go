@@ -1,6 +1,6 @@
 package scan
 
-import "strings"
+import "github.com/nebarg/todo-cli/internal/level"
 
 // AnyZeros is the level that matches every level of zeros. It can't be 0*,
 // as the shell would expand that against file names.
@@ -8,12 +8,8 @@ const AnyZeros = "0+"
 
 // ValidLevel accepts todo-system's levels, one digit or only zeros, and
 // AnyZeros.
-func ValidLevel(level string) bool {
-	return level == AnyZeros || (len(level) == 1 && level[0] >= '0' && level[0] <= '9') || isZeros(level)
-}
-
-func isZeros(level string) bool {
-	return level != "" && strings.Trim(level, "0") == ""
+func ValidLevel(l string) bool {
+	return l == AnyZeros || level.Valid(l)
 }
 
 // LevelFilter keeps the TODOs at one of levels, or with any level when
@@ -24,7 +20,7 @@ func LevelFilter(anyLevel bool, levels []string) func(Match) bool {
 	case len(levels) > 0:
 		return func(match Match) bool {
 			for _, want := range levels {
-				if want == match.Level || (want == AnyZeros && isZeros(match.Level)) {
+				if want == match.Level || (want == AnyZeros && level.Zeros(match.Level)) {
 					return true
 				}
 			}

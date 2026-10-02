@@ -5,6 +5,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/nebarg/todo-cli/internal/level"
 )
 
 var readmeLevel = regexp.MustCompile(`(?i)^todo([0-9]+):?$`)
@@ -57,12 +59,12 @@ func splitReadmeLevel(text string) (string, string) {
 		if parts == nil {
 			continue
 		}
-		if level := parts[1]; len(level) == 1 || strings.Trim(level, "0") == "" {
+		if l := parts[1]; level.Valid(l) {
 			rest := strings.Join(append(words[:i:i], words[i+1:]...), " ")
 			if rest == "" {
-				return text, level
+				return text, l
 			}
-			return rest, level
+			return rest, l
 		}
 		return text, ""
 	}

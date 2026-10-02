@@ -22,7 +22,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project)
+	m, err := newModel(path, project, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# test\n\n- [ ] Existing test task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{})
+	m, err := newModel(path, projectContext{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project)
+	m, err := newModel(path, project, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/old\n\n- [ ] Existing task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project)
+	m, err := newModel(path, project, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 
 func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	m, err := newModel(path, projectContext{})
+	m, err := newModel(path, projectContext{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 
 func TestAddFormAcceptsSymbolCategory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	m, err := newModel(path, projectContext{})
+	m, err := newModel(path, projectContext{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +313,7 @@ func TestAddFormAcceptsSymbolCategory(t *testing.T) {
 func TestBranchPickerSearchAndSelection(t *testing.T) {
 	dir := t.TempDir()
 	project := testGitProject(t, dir, "main", "feature/auth", "fix/auth", "feature/ui", "main2")
-	m, err := newModel(filepath.Join(dir, "todo.md"), project)
+	m, err := newModel(filepath.Join(dir, "todo.md"), project, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +375,7 @@ func TestBranchPickerSearchAndSelection(t *testing.T) {
 func TestBranchCreatedAfterStartupIsNotMissing(t *testing.T) {
 	dir := t.TempDir()
 	project := testGitProject(t, dir, "main")
-	m, err := newModel(filepath.Join(dir, "todo.md"), project)
+	m, err := newModel(filepath.Join(dir, "todo.md"), project, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +408,7 @@ func TestEditModalRefreshesBranchState(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/x\n\n- [ ] Branch task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project)
+	m, err := newModel(path, project, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,7 +436,7 @@ func TestBranchPickerRejectsDeletedBranch(t *testing.T) {
 	dir := t.TempDir()
 	project := testGitProject(t, dir, "main", "feature/old")
 	path := filepath.Join(dir, "todo.md")
-	m, err := newModel(path, project)
+	m, err := newModel(path, project, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -460,7 +460,7 @@ func TestBranchPickerRejectsDeletedBranch(t *testing.T) {
 func TestBranchPickerFitsCompactAndRegularModals(t *testing.T) {
 	dir := t.TempDir()
 	project := testGitProject(t, dir, "main", "feature/auth", "feature/ui", "fix/search")
-	m, err := newModel(filepath.Join(dir, "todo.md"), project)
+	m, err := newModel(filepath.Join(dir, "todo.md"), project, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -503,7 +503,7 @@ func TestBranchPickerFitsCompactAndRegularModals(t *testing.T) {
 
 func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	m, err := newModel(path, projectContext{})
+	m, err := newModel(path, projectContext{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -623,7 +623,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 
 func TestTwoLineTaskInputStaysOneMarkdownTask(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	m, err := newModel(path, projectContext{})
+	m, err := newModel(path, projectContext{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -681,7 +681,7 @@ func TestOnBackgroundSurvivesNestedResets(t *testing.T) {
 }
 
 func TestTaskModalFieldsAndFocus(t *testing.T) {
-	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), projectContext{})
+	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), projectContext{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -722,7 +722,7 @@ func TestTaskModalFieldsAndFocus(t *testing.T) {
 }
 
 func TestBranchFieldHintsDescribePicker(t *testing.T) {
-	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), projectContext{branch: "main"})
+	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), projectContext{branch: "main"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -741,7 +741,7 @@ func TestEditFormMovesTaskToAnotherCategory(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# auth\n\n- [ ] Login task\n\n# docs\n\n- [ ] Write guide\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{})
+	m, err := newModel(path, projectContext{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -785,7 +785,7 @@ func TestEditFormMovesTaskToAnotherBranch(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/a\n\n- [ ] Branch task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project)
+	m, err := newModel(path, project, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -816,7 +816,7 @@ func TestEditFormKeepsBranchWithoutGit(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/a\n\n- [ ] Branch task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{})
+	m, err := newModel(path, projectContext{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

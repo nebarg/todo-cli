@@ -6,6 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/level"
 )
 
 // GroupRow is a row that opens a group, such as a category or a branch:
@@ -42,26 +43,26 @@ func (g GroupRow) Render(width int, selected bool) string {
 
 // LevelMark is a todo-system level's label and colour: red for levels of
 // zeros, yellow for the rest, and a dim dot without a level.
-func LevelMark(level string) (string, lipgloss.Style) {
+func LevelMark(l string) (string, lipgloss.Style) {
 	switch {
-	case level == "":
+	case l == "":
 		return "·", MutedStyle
-	case strings.Trim(level, "0") == "":
-		return LevelLabel(level), lipgloss.NewStyle().Foreground(ColorHigh)
+	case level.Zeros(l):
+		return LevelLabel(l), lipgloss.NewStyle().Foreground(ColorHigh)
 	}
-	return LevelLabel(level), lipgloss.NewStyle().Foreground(ColorMedium)
+	return LevelLabel(l), lipgloss.NewStyle().Foreground(ColorMedium)
 }
 
 // LevelLabel keeps a level short: four or more zeros are written as 0x4 up
 // to 0x9, and 0x9+ for anything longer; lists still sort by the real count.
-func LevelLabel(level string) string {
+func LevelLabel(l string) string {
 	switch {
-	case len(level) < 4 || strings.Trim(level, "0") != "":
-		return level
-	case len(level) > 9:
+	case len(l) < 4 || !level.Zeros(l):
+		return l
+	case len(l) > 9:
 		return "0x9+"
 	}
-	return fmt.Sprintf("0x%d", len(level))
+	return fmt.Sprintf("0x%d", len(l))
 }
 
 // LeveledTitle is a detail page's title, led by its todo-system level.

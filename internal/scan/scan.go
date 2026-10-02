@@ -5,12 +5,12 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"math"
 	"os"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
+
+	"github.com/nebarg/todo-cli/internal/level"
 )
 
 // Match is a to-do marker comment found in a source file, with its path relative
@@ -36,22 +36,6 @@ func newMatch(path string, line int, text string, c todoComment) Match {
 	return m
 }
 
-// LevelRank orders todo-system priorities: more zeros is more urgent, then
-// todo1, todo2 and so on, then to-dos without a level.
-func LevelRank(level string) int {
-	if level == "" {
-		return math.MaxInt
-	}
-	if strings.Trim(level, "0") == "" {
-		return -len(level)
-	}
-	n, err := strconv.Atoi(level)
-	if err != nil {
-		return math.MaxInt - 1
-	}
-	return n
-}
-
 // Source finds to-do marker comments under dir, reading each file to tell
 // its comments from its code. Results are sorted most urgent first,
 // then by path and line. Ignored and Markdown files are skipped, as are
@@ -72,7 +56,7 @@ func Source(ctx context.Context, dir string, exclude Exclude) ([]Match, error) {
 // scans always return the same results.
 func sortedMatches(matches []Match) []Match {
 	slices.SortFunc(matches, func(a, b Match) int {
-		return cmp.Or(cmp.Compare(LevelRank(a.Level), LevelRank(b.Level)), strings.Compare(a.Path, b.Path), cmp.Compare(a.Line, b.Line))
+		return cmp.Or(cmp.Compare(level.Rank(a.Level), level.Rank(b.Level)), strings.Compare(a.Path, b.Path), cmp.Compare(a.Line, b.Line))
 	})
 	return matches
 }
@@ -136,7 +120,7 @@ func markerIn(body string) (todoComment, bool) {
 			tag := body[tagStart:loc[7]]
 			if _, category, ok := strings.Cut(tag, "@"); ok {
 				c.category = category
-			} else if validLevel(tag) {
+			} else if level.Valid(tag) {
 				c.level = tag
 			}
 		}
@@ -148,11 +132,6 @@ func markerIn(body string) (todoComment, bool) {
 		return c, true
 	}
 	return todoComment{}, false
-}
-
-// validLevel accepts todo-system's levels, one digit or only zeros.
-func validLevel(level string) bool {
-	return len(level) == 1 || strings.Trim(level, "0") == ""
 }
 
 func noteAfterMarker(rest string) string {

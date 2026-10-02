@@ -1,9 +1,10 @@
 package store
 
 import (
+	"cmp"
 	"errors"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -33,10 +34,10 @@ func PlanRemove(path string, tasks []Task) (Removal, error) {
 	if err != nil {
 		return Removal{}, err
 	}
-	r := Removal{Tasks: append([]Task(nil), tasks...), path: path, before: string(data), mode: info.Mode().Perm()}
+	r := Removal{Tasks: slices.Clone(tasks), path: path, before: string(data), mode: info.Mode().Perm()}
 	// Removing from the bottom up keeps the line numbers of the tasks and
 	// headings still to come valid.
-	sort.Slice(r.Tasks, func(i, j int) bool { return r.Tasks[i].Line > r.Tasks[j].Line })
+	slices.SortFunc(r.Tasks, func(a, b Task) int { return cmp.Compare(b.Line, a.Line) })
 	lines := strings.Split(r.before, "\n")
 	for _, t := range r.Tasks {
 		if !taskUnchanged(lines, t) {
@@ -55,8 +56,8 @@ func PlanRemove(path string, tasks []Task) (Removal, error) {
 			r.Branches = append(r.Branches, t.Branch)
 		}
 	}
-	sort.Strings(r.Categories)
-	sort.Strings(r.Branches)
+	slices.Sort(r.Categories)
+	slices.Sort(r.Branches)
 	r.after = strings.Join(lines, "\n")
 	return r, nil
 }
@@ -92,5 +93,5 @@ func removeEmptyBranchesHeading(lines []string) []string {
 			return lines
 		}
 	}
-	return append(append([]string{}, lines[:start]...), lines[end:]...)
+	return slices.Concat(lines[:start], lines[end:])
 }

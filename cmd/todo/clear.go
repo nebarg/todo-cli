@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -44,7 +43,7 @@ func pickClearTargets(tasks []store.Task, missing func(string) bool) clearTarget
 			c.done++
 		}
 	}
-	sort.Strings(c.branches)
+	slices.Sort(c.branches)
 	return c
 }
 

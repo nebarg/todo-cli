@@ -21,7 +21,7 @@ func clearModel(t *testing.T) (*model, string) {
 	if err := os.WriteFile(path, []byte(clearContent), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{})
+	m, err := newModel(path, projectContext{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func missingBranchModel(t *testing.T) (*model, string) {
 	if err := os.WriteFile(path, []byte(missingContent), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project)
+	m, err := newModel(path, project, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
