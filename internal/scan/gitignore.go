@@ -74,36 +74,32 @@ func pathMatchGlob(glob string) string {
 
 // matches reports whether the rule matches a path, given as its segments
 // from the repository root. The path must be below the rule's gitignore.
-func (r ignoreRule) matches(segments []string, isDir bool) bool {
+func (r ignoreRule) matches(segments []string, isDir, foldCase bool) bool {
 	if r.dirOnly && !isDir {
 		return false
 	}
 	if !r.anchored {
-		ok, _ := path.Match(r.glob[0], segments[len(segments)-1])
-		return ok
+		return matchSegment(r.glob[0], segments[len(segments)-1], foldCase)
 	}
-	return matchSegments(r.glob, segments[r.depth:])
+	return matchSegments(r.glob, segments[r.depth:], foldCase)
 }
 
 // matchSegments matches path segments against glob segments, where "**"
 // matches any number of segments; at the end, at least one.
-func matchSegments(glob, segments []string) bool {
+func matchSegments(glob, segments []string, foldCase bool) bool {
 	for len(glob) > 0 {
 		if glob[0] == "**" {
 			if len(glob) == 1 {
 				return len(segments) > 0
 			}
 			for i := range len(segments) + 1 {
-				if matchSegments(glob[1:], segments[i:]) {
+				if matchSegments(glob[1:], segments[i:], foldCase) {
 					return true
 				}
 			}
 			return false
 		}
-		if len(segments) == 0 {
-			return false
-		}
-		if ok, _ := path.Match(glob[0], segments[0]); !ok {
+		if len(segments) == 0 || !matchSegment(glob[0], segments[0], foldCase) {
 			return false
 		}
 		glob, segments = glob[1:], segments[1:]
@@ -111,11 +107,22 @@ func matchSegments(glob, segments []string) bool {
 	return len(segments) == 0
 }
 
+// matchSegment matches one path segment against one glob segment, ignoring
+// case when foldCase is set.
+func matchSegment(glob, segment string, foldCase bool) bool {
+	if foldCase {
+		glob, segment = strings.ToLower(glob), strings.ToLower(segment)
+	}
+	ok, _ := path.Match(glob, segment)
+	return ok
+}
+
 // ignoreScope is a directory's place in its repository and the ignore rules
 // that apply there, least important first. Outside a repository, nothing is
 // ignored.
 type ignoreScope struct {
 	inRepo   bool
+	foldCase bool     // the repository's core.ignoreCase: rules match regardless of case
 	segments []string // the directory's path from the repository root
 	rules    []ignoreRule
 }
@@ -124,7 +131,7 @@ type ignoreScope struct {
 // the repository root, is ignored. The last rule that matches decides.
 func (s ignoreScope) ignores(segments []string, isDir bool) bool {
 	for _, r := range slices.Backward(s.rules) {
-		if r.matches(segments, isDir) {
+		if r.matches(segments, isDir, s.foldCase) {
 			return !r.negate
 		}
 	}
@@ -142,31 +149,60 @@ func withIgnoreFile(rules []ignoreRule, file string, depth int) []ignoreRule {
 }
 
 // globalIgnoreFile is the user's global gitignore: core.excludesFile in
-// their Git configuration, or Git's default. Includes in the configuration
-// aren't followed.
+// their Git configuration, or Git's default.
 func globalIgnoreFile() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	config := os.Getenv("XDG_CONFIG_HOME")
-	if config == "" {
-		config = filepath.Join(home, ".config")
+	value, ok := lastConfigValue(userConfigFiles(home), "core", "excludesfile")
+	if !ok {
+		return filepath.Join(userConfigDir(home), "git", "ignore")
 	}
-	file := filepath.Join(config, "git", "ignore")
-	configs := []string{filepath.Join(config, "git", "config"), filepath.Join(home, ".gitconfig")}
+	if rest, ok := strings.CutPrefix(value, "~/"); ok {
+		return filepath.Join(home, rest)
+	}
+	return value
+}
+
+// ignoresCase reads core.ignoreCase for the repository at root, from its
+// own configuration or else the user's. Git sets it in a repository it
+// creates on a file system that ignores case, as macOS's does by default.
+func ignoresCase(root string) bool {
+	var files []string
+	if home, err := os.UserHomeDir(); err == nil {
+		files = userConfigFiles(home)
+	}
+	value, _ := lastConfigValue(append(files, filepath.Join(root, ".git", "config")), "core", "ignorecase")
+	return configBool(value)
+}
+
+// userConfigDir is $XDG_CONFIG_HOME, or ~/.config without it.
+func userConfigDir(home string) string {
+	if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
+		return config
+	}
+	return filepath.Join(home, ".config")
+}
+
+// userConfigFiles are the user's Git configuration files, in the order Git
+// reads them. The system configuration and includes aren't read.
+func userConfigFiles(home string) []string {
 	if global := os.Getenv("GIT_CONFIG_GLOBAL"); global != "" {
-		configs = []string{global}
+		return []string{global}
 	}
-	for _, c := range configs {
-		if value, ok := configValue(c, "core", "excludesfile"); ok {
-			file = value
-			if rest, ok := strings.CutPrefix(value, "~/"); ok {
-				file = filepath.Join(home, rest)
-			}
+	return []string{filepath.Join(userConfigDir(home), "git", "config"), filepath.Join(home, ".gitconfig")}
+}
+
+// lastConfigValue finds a key's value in the last of files that sets it,
+// as a later Git configuration file overrides an earlier one.
+func lastConfigValue(files []string, section, key string) (value string, found bool) {
+	for _, file := range files {
+		if v, ok := configValue(file, section, key); ok {
+			value, found = v, true
 		}
 	}
-	return file
+	return value, found
 }
 
 // configValue finds the last value of a key in a section of a Git config
@@ -203,4 +239,14 @@ func configString(v string) string {
 		v = v[:i]
 	}
 	return strings.TrimSpace(v)
+}
+
+// configBool reads a Git boolean, which is true written as true, yes, on
+// or 1, in any case.
+func configBool(v string) bool {
+	switch strings.ToLower(v) {
+	case "true", "yes", "on", "1":
+		return true
+	}
+	return false
 }

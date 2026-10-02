@@ -107,7 +107,9 @@ func (w *walker) walk(rel string, scope ignoreScope) error {
 			if w.exclude.skipsDir(child) || scope.ignores(segments, true) {
 				continue
 			}
-			if err := w.walk(child, ignoreScope{inRepo: scope.inRepo, segments: segments, rules: scope.rules}); err != nil {
+			sub := scope
+			sub.segments = segments
+			if err := w.walk(child, sub); err != nil {
 				return err
 			}
 		case entry.Type().IsRegular() && !isMarkdown(name) && !scope.ignores(segments, false):
@@ -119,7 +121,11 @@ func (w *walker) walk(rel string, scope ignoreScope) error {
 
 // repoScope starts the scope of a repository at its root.
 func (w *walker) repoScope(root string) ignoreScope {
-	return ignoreScope{inRepo: true, rules: withIgnoreFile(w.global, filepath.Join(root, ".git", "info", "exclude"), 0)}
+	return ignoreScope{
+		inRepo:   true,
+		foldCase: ignoresCase(root),
+		rules:    withIgnoreFile(w.global, filepath.Join(root, ".git", "info", "exclude"), 0),
+	}
 }
 
 // enclosingScope finds the repository the scanned directory is in, with the
