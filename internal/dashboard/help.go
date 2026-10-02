@@ -23,15 +23,16 @@ var (
 		{Key: "→ enter", Label: "open"},
 		{Key: "← esc", Label: "back"},
 		{Key: "i", Label: "all tasks"},
+		{Key: "s", Label: "sort tasks"},
 	}}
 	helpTasks = helpSection{"Tasks", []ui.KeyHint{
 		{Key: "d space", Label: "toggle done"},
 		{Key: "e enter", Label: "edit"},
 		{Key: "p", Label: "cycle priority"},
 		{Key: "c", Label: "set category"},
+		{Key: "⌫", Label: "delete"},
 		{Key: "a", Label: "add task"},
 		{Key: "b", Label: "add branch task"},
-		{Key: "s", Label: "sort all tasks"},
 	}}
 	helpApp = []ui.KeyHint{{Key: "X / u", Label: "clear done / undo"}, {Key: "r", Label: "reload"}, {Key: "?", Label: "help"}, {Key: "q", Label: "quit"}}
 )

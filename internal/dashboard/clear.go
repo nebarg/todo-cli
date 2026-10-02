@@ -88,29 +88,44 @@ func (m *model) startClearDone() {
 	m.status = ""
 }
 
-// clearConfirmedMsg is a clear the user confirmed.
-type clearConfirmedMsg struct{ confirmation clearConfirmation }
+// removalConfirmedMsg is a clear or delete the user confirmed, with the
+// status that reports it.
+type removalConfirmedMsg struct {
+	removal store.Removal
+	status  string
+}
 
-// update confirms the clear on y; any other key cancels, so a stray key
-// never deletes anything.
 func (c *clearConfirmation) update(msg tea.Msg) (overlay, tea.Msg, tea.Cmd) {
-	key, ok := msg.(tea.KeyPressMsg)
-	switch {
-	case !ok:
-		return c, nil, nil
-	case key.String() == "y":
-		return nil, clearConfirmedMsg{*c}, nil
-	}
-	return nil, nil, nil
+	return confirmOnY(c, msg, removalConfirmedMsg{c.removal, c.doneStatus()})
 }
 
 func (c *clearConfirmation) view(theme ui.Theme, _, _ int) string { return c.render(theme) }
 
-// applyClear removes a confirmed clear's tasks, keeping the removal so u can
-// undo it.
-func (m *model) applyClear(msg clearConfirmedMsg) (tea.Model, tea.Cmd) {
-	confirmation := msg.confirmation
-	if err := confirmation.removal.Apply(); err != nil {
+// doneStatus reports the clear once it is applied.
+func (c *clearConfirmation) doneStatus() string {
+	if c.wholeBranch {
+		return "Removed the tasks of " + c.targets.Branches[0]
+	}
+	return "Removed " + c.targets.Summary()
+}
+
+// confirmOnY closes o with confirmed as its outcome on y; any other key
+// cancels, so a stray key never deletes anything.
+func confirmOnY(o overlay, msg tea.Msg, confirmed removalConfirmedMsg) (overlay, tea.Msg, tea.Cmd) {
+	key, ok := msg.(tea.KeyPressMsg)
+	switch {
+	case !ok:
+		return o, nil, nil
+	case key.String() == "y":
+		return nil, confirmed, nil
+	}
+	return nil, nil, nil
+}
+
+// applyRemoval removes a confirmed clear's or delete's tasks, keeping the
+// removal so u can undo it.
+func (m *model) applyRemoval(msg removalConfirmedMsg) (tea.Model, tea.Cmd) {
+	if err := msg.removal.Apply(); err != nil {
 		m.status = errorStatus(err)
 		return m, nil
 	}
@@ -121,25 +136,21 @@ func (m *model) applyClear(msg clearConfirmedMsg) (tea.Model, tea.Cmd) {
 		m.status = err.Error()
 		return m, nil
 	}
-	m.lastClear = &confirmation.removal
-	if confirmation.wholeBranch {
-		m.status = "Removed the tasks of " + confirmation.targets.Branches[0]
-	} else {
-		m.status = "Removed " + confirmation.targets.Summary()
-	}
+	m.lastRemoval = &msg.removal
+	m.status = msg.status
 	return m, nil
 }
 
-func (m *model) undoClear() {
-	if m.lastClear == nil {
+func (m *model) undoRemoval() {
+	if m.lastRemoval == nil {
 		m.status = "Nothing to undo"
 		return
 	}
-	removal := *m.lastClear
-	m.lastClear = nil
+	removal := *m.lastRemoval
+	m.lastRemoval = nil
 	if err := removal.Undo(); err != nil {
 		if errors.Is(err, store.ErrFileChanged) {
-			m.status = "The file changed after clearing, so it cannot be undone"
+			m.status = "The file has changed since, so it cannot be undone"
 		} else {
 			m.status = err.Error()
 		}
@@ -155,7 +166,6 @@ func (m *model) undoClear() {
 func taskCount(n int) string { return ui.Plural(n, "task", "tasks") }
 
 func (c clearConfirmation) render(theme ui.Theme) string {
-	const width = 48
 	var title, reason string
 	missingTasks := len(c.targets.Tasks) - c.targets.Done
 	missing := make([]string, len(c.targets.Branches))
@@ -175,30 +185,44 @@ func (c clearConfirmation) render(theme ui.Theme) string {
 	default:
 		title = fmt.Sprintf("Remove %s from %s?", c.targets.Summary(), c.scope)
 	}
+	return renderConfirmation(theme, title, []string{reason, emptiedHeadings(c.removal, c.targets.Branches)}, "remove")
+}
+
+// renderConfirmation draws a dialog asking to go ahead with action, with
+// any non-empty notes under the title.
+func renderConfirmation(theme ui.Theme, title string, notes []string, action string) string {
+	const width = 48
 	lines := []string{theme.TitleStyle.Render(ansi.Wrap(title, width, ""))}
-	if reason != "" {
-		lines = append(lines, theme.MutedStyle.Render(ansi.Wrap(reason, width, "")))
-	}
-	var headings []string
-	for _, category := range c.removal.Categories {
-		headings = append(headings, "@"+category)
-	}
-	for _, branch := range c.removal.Branches {
-		if !slices.Contains(c.targets.Branches, branch) {
-			headings = append(headings, branchIcon+" "+branch)
+	for _, note := range notes {
+		if note != "" {
+			lines = append(lines, theme.MutedStyle.Render(ansi.Wrap(note, width, "")))
 		}
 	}
-	if len(headings) > 0 {
-		noun := "heading"
-		if len(headings) > 1 {
-			noun = "headings"
-		}
-		lines = append(lines, theme.MutedStyle.Render(ansi.Wrap(fmt.Sprintf("The %s %s will be empty and removed too.", joinNames(headings), noun), width, "")))
-	}
-	lines = append(lines, "", theme.RenderHints([]ui.KeyHint{{Key: "y", Label: "remove"}, {Key: "esc", Label: "cancel"}}))
+	lines = append(lines, "", theme.RenderHints([]ui.KeyHint{{Key: "y", Label: action}, {Key: "esc", Label: "cancel"}}))
 	return lipgloss.NewStyle().Padding(0, 2).
 		Border(lipgloss.RoundedBorder()).BorderForeground(theme.ColorHigh).BorderBackground(theme.ColorModal).
 		Background(theme.ColorModal).Render(ui.OnBackground(strings.Join(lines, "\n"), theme.ColorModal))
+}
+
+// emptiedHeadings names the headings removal leaves empty, other than those
+// of the branches in named, or is "" when there are none.
+func emptiedHeadings(removal store.Removal, named []string) string {
+	var headings []string
+	for _, category := range removal.Categories {
+		headings = append(headings, "@"+category)
+	}
+	for _, branch := range removal.Branches {
+		if !slices.Contains(named, branch) {
+			headings = append(headings, branchIcon+" "+branch)
+		}
+	}
+	switch len(headings) {
+	case 0:
+		return ""
+	case 1:
+		return fmt.Sprintf("The %s heading will be empty and removed too.", headings[0])
+	}
+	return fmt.Sprintf("The %s headings will be empty and removed too.", joinNames(headings))
 }
 
 // joinNames lists names as "a", "a and b" or "a, b and c".

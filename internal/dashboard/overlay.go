@@ -6,7 +6,7 @@ import (
 )
 
 // overlay takes the keyboard while it is open over the dashboard: the help,
-// a clear confirmation, the task form or the category prompt.
+// a clear or delete confirmation, the task form or the category prompt.
 type overlay interface {
 	// update handles a key or a paste. It returns the overlay to keep
 	// open, or nil once it has closed, and anything the model should act

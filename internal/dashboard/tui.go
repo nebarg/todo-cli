@@ -1,6 +1,6 @@
 // Package dashboard is the terminal dashboard of todo. Its tabs show the
 // general tasks, the tasks of each Git branch and the TODO comments in source
-// files, and tasks can be added, edited, marked done and cleared from it.
+// files. Tasks can be added, edited, marked done, deleted and cleared from it.
 package dashboard
 
 import (
@@ -43,8 +43,8 @@ type model struct {
 	localBranches    []string // as Git last listed them, sorted
 	branchesVerified bool     // whether Git answered, so a branch not in localBranches is gone
 	files            filesui.Model
-	overlay          overlay // nil when nothing is open over the dashboard
-	lastClear        *store.Removal
+	overlay          overlay        // nil when nothing is open over the dashboard
+	lastRemoval      *store.Removal // the last clear or delete, for u to undo
 	status           string
 	width            int
 	height           int
@@ -109,8 +109,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.taskSaved(msg)
 	case categorySetMsg:
 		return m.categorySet(msg)
-	case clearConfirmedMsg:
-		return m.applyClear(msg)
+	case removalConfirmedMsg:
+		return m.applyRemoval(msg)
 	case tea.PasteMsg:
 		if m.overlay != nil {
 			return m, m.updateOverlay(msg)
@@ -168,10 +168,12 @@ func (m *model) taskKey(key string) tea.Cmd {
 		m.cyclePriority()
 	case "space", "d":
 		m.toggleSelected()
+	case "backspace":
+		m.startDelete()
 	case "X":
 		m.startClearDone()
 	case "u":
-		m.undoClear()
+		m.undoRemoval()
 	case "r":
 		m.status = ""
 		if err := m.readTasks(true); err != nil {
@@ -492,10 +494,10 @@ func (m *model) refresh() error {
 	return m.readTasks(false)
 }
 
-// readTasks also drops any pending undo of a clear: whatever caused the
-// reload may have changed the file since.
+// readTasks also drops any pending undo of a clear or delete: whatever
+// caused the reload may have changed the file since.
 func (m *model) readTasks(sortByPriority bool) error {
-	m.lastClear = nil
+	m.lastRemoval = nil
 	previous, hadSelection := m.selectedTask()
 	tasks, err := store.Load(m.file)
 	if err != nil {

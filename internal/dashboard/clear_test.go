@@ -36,6 +36,8 @@ func press(m *model, key string) *model {
 		msg = tea.KeyPressMsg{Code: tea.KeyEsc}
 	case "enter":
 		msg = tea.KeyPressMsg{Code: tea.KeyEnter}
+	case "backspace":
+		msg = tea.KeyPressMsg{Code: tea.KeyBackspace}
 	}
 	updated, _ := m.Update(msg)
 	return updated.(*model)
@@ -128,7 +130,7 @@ func TestClearDoneOnlyRemovesOnY(t *testing.T) {
 func TestUndoClearRestoresTheFile(t *testing.T) {
 	m, path := clearModel(t)
 	m = press(press(m, "X"), "y")
-	if hints := m.footerHints(); len(hints) == 0 || hints[0] != (ui.KeyHint{Key: "u", Label: "undo clear"}) {
+	if hints := m.footerHints(); len(hints) == 0 || hints[0] != (ui.KeyHint{Key: "u", Label: "undo"}) {
 		t.Fatalf("footer does not offer undo first: %v", hints)
 	}
 	if help := ansi.Strip(renderHelp(m.theme)); !strings.Contains(help, "X / u clear done / undo") {
@@ -138,7 +140,7 @@ func TestUndoClearRestoresTheFile(t *testing.T) {
 	if fileContent(t, path) != clearContent || m.status != "Restored 3 tasks" {
 		t.Fatalf("undo left %q with status %q", fileContent(t, path), m.status)
 	}
-	if m.lastClear != nil {
+	if m.lastRemoval != nil {
 		t.Fatal("undo can be repeated")
 	}
 
@@ -160,7 +162,7 @@ func TestLaterEditsDropUndoClear(t *testing.T) {
 	if m.status != "" {
 		t.Fatalf("toggle failed: %q", m.status)
 	}
-	if m.lastClear != nil {
+	if m.lastRemoval != nil {
 		t.Fatal("undo clear survived another edit")
 	}
 	for _, hint := range m.footerHints() {

@@ -150,8 +150,8 @@ func (m *model) renderFooter(width int) string {
 
 func (m *model) footerHints() []ui.KeyHint {
 	hints := m.contextHints()
-	if m.lastClear != nil {
-		hints = append([]ui.KeyHint{{Key: "u", Label: "undo clear"}}, hints...)
+	if m.lastRemoval != nil {
+		hints = append([]ui.KeyHint{{Key: "u", Label: "undo"}}, hints...)
 	}
 	return hints
 }
@@ -160,9 +160,10 @@ func (m *model) contextHints() []ui.KeyHint {
 	back := ui.KeyHint{Key: "←", Label: "back"}
 	reload := ui.KeyHint{Key: "r", Label: "reload"}
 	index := ui.KeyHint{Key: "i", Label: "all tasks"}
+	remove := ui.KeyHint{Key: "⌫", Label: "delete"}
 	switch {
 	case m.all != nil:
-		hints := []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, {Key: "s", Label: "sort"}, {Key: "c", Label: "category"}, {Key: "a", Label: "add"}, {Key: "b", Label: "branch task"}}
+		hints := []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, {Key: "s", Label: "sort"}, {Key: "c", Label: "category"}, remove, {Key: "a", Label: "add"}, {Key: "b", Label: "branch task"}}
 		return append(append(hints, m.clearHint()...), back, reload)
 	case m.focus == detailPane && m.viewingMissingBranch():
 		return []ui.KeyHint{back}
@@ -174,9 +175,9 @@ func (m *model) contextHints() []ui.KeyHint {
 	case m.readmeSelected():
 		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "open file"}, back, {Key: "→", Label: "details"}, index, reload}
 	case m.focus == detailPane && m.activePane() == branchPane:
-		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, back}
+		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, remove, back}
 	case m.focus == detailPane:
-		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, {Key: "c", Label: "category"}, back}
+		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, {Key: "c", Label: "category"}, remove, back}
 	case m.focus == sourcePane && m.files.Details():
 		return m.files.Hints()
 	case m.focus == sourcePane:
@@ -193,7 +194,7 @@ func (m *model) contextHints() []ui.KeyHint {
 	if m.focus == generalPane {
 		hints = append(hints, ui.KeyHint{Key: "c", Label: "category"})
 	}
-	hints = append(hints, ui.KeyHint{Key: "a", Label: "add"})
+	hints = append(hints, remove, ui.KeyHint{Key: "a", Label: "add"})
 	if m.focus == generalPane {
 		hints = append(hints, ui.KeyHint{Key: "b", Label: "branch task"})
 	}

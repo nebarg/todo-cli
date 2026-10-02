@@ -1,0 +1,207 @@
+package dashboard
+
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/project"
+	"github.com/nebarg/todo-cli/internal/store"
+	"github.com/nebarg/todo-cli/internal/ui"
+)
+
+// selectTask puts the cursor on the task reading text in the focused list.
+func selectTask(t *testing.T, m *model, text string) {
+	t.Helper()
+	for i, row := range m.rows(m.focus) {
+		if row.kind == rowTask && row.todo.Text == text {
+			m.list(m.focus).cursor = i
+			return
+		}
+	}
+	t.Fatalf("no task %q in the list", text)
+}
+
+// deleteDialog is the open delete confirmation as plain text on one line.
+func deleteDialog(t *testing.T, m *model) string {
+	t.Helper()
+	dialog := ansi.Strip(opened[*deleteConfirmation](t, m).render(m.theme))
+	return strings.Join(strings.Fields(strings.ReplaceAll(dialog, "│", " ")), " ")
+}
+
+func TestDeleteRemovesTheSelectedTaskUntilUndone(t *testing.T) {
+	m, path := clearModel(t)
+	selectTask(t, m, "Loose open")
+	if footer := ansi.Strip(m.renderFooter(200)); !strings.Contains(footer, "⌫ delete") {
+		t.Fatalf("footer lacks the delete hint: %q", footer)
+	}
+	if help := strings.Join(strings.Fields(ansi.Strip(renderHelp(m.theme))), " "); !strings.Contains(help, "⌫ delete") {
+		t.Fatalf("help does not list delete: %s", help)
+	}
+	m = press(m, "backspace")
+	if dialog := deleteDialog(t, m); !strings.Contains(dialog, `Delete "Loose open"?`) || !strings.Contains(dialog, "y delete") || strings.Contains(dialog, "heading") {
+		t.Fatalf("dialog = %s", dialog)
+	}
+	if fileContent(t, path) != clearContent {
+		t.Fatal("asking for confirmation changed the file")
+	}
+	m = press(m, "y")
+	want := strings.Replace(clearContent, "- [ ] Loose open\n\n", "", 1)
+	if got := fileContent(t, path); got != want || m.status != `Deleted "Loose open"` {
+		t.Fatalf("file = %q, status %q", got, m.status)
+	}
+	if hints := m.footerHints(); len(hints) == 0 || hints[0] != (ui.KeyHint{Key: "u", Label: "undo"}) {
+		t.Fatalf("footer does not offer undo first: %v", hints)
+	}
+	m = press(m, "u")
+	if got := fileContent(t, path); got != clearContent || m.status != "Restored 1 task" {
+		t.Fatalf("undo left %q with status %q", got, m.status)
+	}
+}
+
+func TestDeleteTakesDetailsAndEmptiedHeadings(t *testing.T) {
+	const content = "- [ ] Keep\n\n# docs\n\n- [ ] Write guide\n\n  Cover install and usage.\n\n# auth\n\n- [ ] Auth open\n\n# Branches\n\n## feature/x\n\n- [ ] Branch open\n"
+	for _, item := range []struct {
+		name  string
+		open  func(m *model)
+		task  string
+		notes []string
+		want  string
+	}{
+		{"category", func(m *model) { m.general.open = categoryGroup("docs") }, "Write guide",
+			[]string{"Its details go too.", "The @docs heading will be empty and removed too."},
+			"- [ ] Keep\n\n# auth\n\n- [ ] Auth open\n\n# Branches\n\n## feature/x\n\n- [ ] Branch open\n"},
+		{"branch", func(m *model) { m.focus, m.branch.open = branchPane, branchGroup("feature/x") }, "Branch open",
+			[]string{"The " + branchIcon + " feature/x heading will be empty and removed too."},
+			"- [ ] Keep\n\n# docs\n\n- [ ] Write guide\n\n  Cover install and usage.\n\n# auth\n\n- [ ] Auth open\n"},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "todo.md")
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			m, err := newModel(path, project.Context{}, testFiles())
+			if err != nil {
+				t.Fatal(err)
+			}
+			item.open(m)
+			selectTask(t, m, item.task)
+			m = press(m, "backspace")
+			dialog := deleteDialog(t, m)
+			for _, note := range item.notes {
+				if !strings.Contains(dialog, note) {
+					t.Errorf("dialog lacks %q: %s", note, dialog)
+				}
+			}
+			m = press(m, "y")
+			if got := fileContent(t, path); got != item.want {
+				t.Fatalf("file = %q, want %q", got, item.want)
+			}
+			if m.general.open != (group{}) || m.branch.open != (group{}) {
+				t.Fatal("the emptied group stayed open")
+			}
+		})
+	}
+}
+
+func TestDeleteOnlyOnY(t *testing.T) {
+	for _, key := range []string{"esc", "n", "enter", "backspace"} {
+		t.Run(key, func(t *testing.T) {
+			m, path := clearModel(t)
+			selectTask(t, m, "Loose open")
+			m = press(press(m, "backspace"), key)
+			if isOpen[*deleteConfirmation](m) || fileContent(t, path) != clearContent || m.lastRemoval != nil {
+				t.Fatalf("%s did not cancel cleanly", key)
+			}
+		})
+	}
+}
+
+func TestDeleteFromAllTasksAndDetails(t *testing.T) {
+	for _, item := range []struct {
+		name string
+		pick func(t *testing.T, m *model)
+	}{
+		{"all tasks", func(t *testing.T, m *model) {
+			m.openAllTasks()
+			m.all.cursor = slices.IndexFunc(m.all.sorted(m.tasks.all), func(t store.Task) bool { return t.Text == "Auth open" })
+		}},
+		{"details", func(t *testing.T, m *model) {
+			m.general.open = categoryGroup("auth")
+			selectTask(t, m, "Auth open")
+			m.detailFrom, m.focus = generalPane, detailPane
+		}},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			m, path := clearModel(t)
+			item.pick(t, m)
+			m = press(press(m, "backspace"), "y")
+			if strings.Contains(fileContent(t, path), "Auth open") || m.status != `Deleted "Auth open"` {
+				t.Fatalf("file = %q, status %q", fileContent(t, path), m.status)
+			}
+			if m.focus == detailPane {
+				t.Fatal("the details of the deleted task stayed open")
+			}
+		})
+	}
+}
+
+func TestDeleteRefusesWhatItCannotDelete(t *testing.T) {
+	for _, item := range []struct {
+		name   string
+		setup  func(t *testing.T) *model
+		status string
+	}{
+		{"file TODO", func(t *testing.T) *model {
+			m, _ := clearModel(t)
+			m.focus = sourcePane
+			return m
+		}, "File TODOs are read only"},
+		{"category row", func(t *testing.T) *model {
+			m, _ := clearModel(t)
+			m.general.cursor = 0
+			return m
+		}, "Select a task to delete"},
+		{"README task", func(t *testing.T) *model {
+			m, path := clearModel(t)
+			if err := os.WriteFile(filepath.Join(filepath.Dir(path), "README.md"), []byte("## TODOs\n\n- Write docs\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := m.refresh(); err != nil {
+				t.Fatal(err)
+			}
+			m.general.open = group{kind: rowReadme, name: readmeGroup}
+			return m
+		}, readmeReadOnly},
+		{"missing branch", func(t *testing.T) *model {
+			m, _ := missingBranchModel(t)
+			m.branch.open = branchGroup("feature/gone")
+			selectTask(t, m, "Gone open")
+			return m
+		}, missingBranchStatus},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			m := press(item.setup(t), "backspace")
+			if isOpen[*deleteConfirmation](m) || m.status != item.status {
+				t.Fatalf("status = %q, want %q", m.status, item.status)
+			}
+		})
+	}
+}
+
+func TestDeleteLeavesAFileChangedSinceAlone(t *testing.T) {
+	m, path := clearModel(t)
+	selectTask(t, m, "Loose open")
+	m = press(m, "backspace")
+	const elsewhere = "- [ ] Loose open\n\n- [ ] Written elsewhere\n"
+	if err := os.WriteFile(path, []byte(elsewhere), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m = press(m, "y")
+	if got := fileContent(t, path); got != elsewhere || !strings.Contains(m.status, "changed") || m.lastRemoval != nil {
+		t.Fatalf("file = %q, status %q", got, m.status)
+	}
+}

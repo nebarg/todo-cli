@@ -93,6 +93,10 @@ In the form:
 
 `c` changes just the category of a general task, without the form.
 
+### Deleting a task
+
+`backspace` deletes the selected task with its details. A dialog names the task and any heading it leaves empty, and only `y` goes ahead. Afterwards `u` undoes it, until the file next changes.
+
 ### Clearing done tasks
 
 `X` clears done tasks from where you are: the opened category or branch, the whole tab, or everything in the All tasks view. The tasks of missing branches go too, open ones included. Inside a missing branch, `X` removes all of its tasks.
@@ -112,7 +116,8 @@ A dialog shows what will be removed, including headings left empty. Only `y` goe
 | `e` / `enter` | Edit a task, or open a file or README TODO in your editor. `enter` also opens a category or branch |
 | `d` / `space` | Mark done or reopen |
 | `p` / `c` | Cycle priority / change category |
-| `X` / `u` | Clear done / undo the clear |
+| `backspace` | Delete a task |
+| `X` / `u` | Clear done / undo the clear or delete |
 | `r` | Reload the file and Git branches, and rescan files |
 | `?` | Help |
 | `q` / `ctrl+c` | Quit |
@@ -165,7 +170,7 @@ The dashboard reads the TODO list in the `README.md` next to the task file, whic
 - Tasks are the list items (`- foo` or `- [ ] foo`) directly under a heading reading `TODO` or `TODOs`, with or without a `:`, in any case. The next heading ends the list.
 - Nested list items are tasks too, and anything in a ` ``` ` code block is skipped.
 - `d` marks a task done or reopens it. It changes only the checkbox, adding one to a plain `- foo`, and leaves the README's order alone.
-- Levels such as `todo0` show and sort as in the Files tab. `p`, `c`, `X` and the edit form don't apply; `e` opens the README in your editor at the task.
+- Levels such as `todo0` show and sort as in the Files tab. `p`, `c`, `backspace`, `X` and the edit form don't apply; `e` opens the README in your editor at the task.
 
 ## TODOs in source files
 
