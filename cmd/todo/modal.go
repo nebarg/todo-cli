@@ -47,14 +47,14 @@ const (
 	detailsField
 )
 
-func (m *model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
+func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 	modal := &taskModal{mode: mode, file: m.file, project: m.project}
-	if mode == modalAddGeneral && !m.indexMode && m.activePane() == generalPane {
+	if mode == modalAddGeneral && m.all == nil && m.activePane() == generalPane {
 		modal.targetCategory = m.generalCategory
 	}
 	if mode == modalAddBranch {
 		modal.branches, modal.targetBranch = m.checkLocalBranches()
-		if !m.indexMode && m.activePane() == branchPane && m.branchFilter != "" {
+		if m.all == nil && m.activePane() == branchPane && m.branchFilter != "" {
 			modal.targetBranch = m.branchFilter
 		}
 		if !slices.Contains(modal.branches, modal.targetBranch) {
@@ -65,13 +65,13 @@ func (m *model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
 		selected, ok := m.selectedTask()
 		if !ok {
 			m.status = "Select a Markdown task to edit"
-			return m, nil
+			return nil
 		}
 		if selected.Branch != "" {
 			modal.branches, _ = m.checkLocalBranches()
 		}
 		if m.blockMissingBranch(selected) {
-			return m, nil
+			return nil
 		}
 		modal.selected = selected
 		modal.targetCategory, modal.targetBranch = selected.Category, selected.Branch
@@ -104,7 +104,7 @@ func (m *model) startTaskModal(mode modalMode) (tea.Model, tea.Cmd) {
 	modal.resize(m.width, m.height)
 	m.overlay = modal
 	m.status = ""
-	return m, modal.title.Focus()
+	return modal.title.Focus()
 }
 
 // taskSavedMsg is a task the form added or edited, as it now is: its title,
@@ -123,15 +123,15 @@ func (m *model) taskSaved(msg taskSavedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch {
-	case msg.added || msg.moved && !m.indexMode:
-		m.indexMode = false
+	case msg.added || msg.moved && m.all == nil:
+		m.all = nil
 		m.focus = generalPane
 		if msg.task.Branch != "" {
 			m.focus = branchPane
 		}
 		m.reveal(msg.task)
-	case m.indexMode:
-		m.selectIndexTask(msg.task)
+	case m.all != nil:
+		m.selectInAllTasks(msg.task)
 	}
 	m.detailScroll = 0
 	m.status = ""

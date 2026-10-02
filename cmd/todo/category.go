@@ -23,19 +23,19 @@ type categoryPrompt struct {
 	err   string
 }
 
-func (m *model) startCategoryInput() (tea.Model, tea.Cmd) {
+func (m *model) startCategoryInput() tea.Cmd {
 	if m.readmeSelected() {
 		m.status = readmeReadOnly
-		return m, nil
+		return nil
 	}
 	selected, ok := m.selectedTask()
 	if !ok {
 		m.status = "Select a Markdown task to edit its category"
-		return m, nil
+		return nil
 	}
 	if selected.Branch != "" {
 		m.status = "Categories are only for general tasks"
-		return m, nil
+		return nil
 	}
 	p := &categoryPrompt{file: m.file, task: selected, input: textinput.New()}
 	p.input.Prompt = "Category: "
@@ -43,7 +43,7 @@ func (m *model) startCategoryInput() (tea.Model, tea.Cmd) {
 	p.input.SetValue(selected.Category)
 	m.overlay = p
 	m.status = ""
-	return m, p.input.Focus()
+	return p.input.Focus()
 }
 
 // categorySetMsg is a task the prompt filed under a new category, as it now
@@ -58,8 +58,8 @@ func (m *model) categorySet(msg categorySetMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch {
-	case m.indexMode:
-		m.selectIndexTask(msg.task)
+	case m.all != nil:
+		m.selectInAllTasks(msg.task)
 	case m.activePane() == generalPane:
 		m.reveal(msg.task)
 	}

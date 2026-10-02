@@ -62,7 +62,7 @@ func (c clearTargets) summary() string {
 // clearScope is the tasks X clears from where the user is, and a name for
 // them: an opened category or branch, the current tab, or every task.
 func (m *model) clearScope() ([]store.Task, string) {
-	if m.indexMode {
+	if m.all != nil {
 		return m.allTasks, "all tasks"
 	}
 	switch m.activePane() {
@@ -115,7 +115,7 @@ func (m *model) clearHint() []ui.KeyHint {
 }
 
 func (m *model) startClearDone() {
-	if m.activePane() == sourcePane && !m.indexMode {
+	if m.activePane() == sourcePane && m.all == nil {
 		m.status = "File TODOs are read only"
 		return
 	}

@@ -74,8 +74,7 @@ func TestCategoryPromptShowsAFailedSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, _ := m.startCategoryInput()
-	m = opened.(*model)
+	m.startCategoryInput()
 	prompt(t, m).input.SetValue("docs")
 	if err := os.WriteFile(path, []byte("- [ ] Changed elsewhere\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -98,8 +97,7 @@ func TestCategoryInputBlocksSpaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, _ := m.startCategoryInput()
-	m = opened.(*model)
+	m.startCategoryInput()
 	prompt(t, m).input.SetValue("a")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
 	m = updated.(*model)
@@ -157,7 +155,7 @@ func TestEnterEditsAndDoneOrSpaceTogglesTasks(t *testing.T) {
 	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
-	if !isOpen[*taskModal](m) || !m.indexMode {
+	if !isOpen[*taskModal](m) || m.all == nil {
 		t.Fatal("Enter from All tasks did not open the edit form")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -212,14 +210,14 @@ func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	m = updated.(*model)
-	if got := indexTitles(m.indexTasks()); !strings.HasPrefix(got, "Urgent,Routine,Bare,Another unprioritized") {
+	if got := indexTitles(m.all.sorted(m.allTasks)); !strings.HasPrefix(got, "Urgent,Routine,Bare,Another unprioritized") {
 		t.Fatalf("opening the full list unexpectedly resorted tasks: %q", got)
 	}
 	for range 3 {
 		updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 		m = updated.(*model)
 	}
-	if got := indexTitles(m.indexTasks()); !strings.HasPrefix(got, "Urgent,Bare,Routine") {
+	if got := indexTitles(m.all.sorted(m.allTasks)); !strings.HasPrefix(got, "Urgent,Bare,Routine") {
 		t.Fatalf("cycling the full-list sort back to priority failed: %q", got)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -333,7 +331,9 @@ func TestOnlyCOpensCategoryInput(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		m.indexMode = index
+		if index {
+			m.openAllTasks()
+		}
 		updated, _ := m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
 		if isOpen[*categoryPrompt](updated.(*model)) {
 			t.Fatalf("l opened the category input (index=%v)", index)

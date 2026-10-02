@@ -27,8 +27,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.enterSelectedGroup()
-	opened, _ := m.startTaskModal(modalAddGeneral)
-	m = opened.(*model)
+	m.startTaskModal(modalAddGeneral)
 	if form(t, m).targetCategory != "auth" {
 		t.Fatal("add form did not inherit selected category")
 	}
@@ -40,8 +39,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	}
 	m.focus = branchPane
 	m.enterSelectedGroup()
-	opened, _ = m.startTaskModal(modalAddBranch)
-	m = opened.(*model)
+	m.startTaskModal(modalAddBranch)
 	if form(t, m).targetBranch != "feature/login" {
 		t.Fatalf("add form chose %q instead of selected branch", form(t, m).targetBranch)
 	}
@@ -51,8 +49,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	if m.branchFilter != "feature/login" || len(m.branchRows()) != 2 || m.branchRows()[1].todo.Text != "New branch task" {
 		t.Fatalf("new task was not added to branch: %+v", m.branchRows())
 	}
-	opened, _ = m.startTaskModal(modalAddBranch)
-	m = opened.(*model)
+	m.startTaskModal(modalAddBranch)
 	if form(t, m).targetCategory != "" {
 		t.Fatal("branch add form unexpectedly inherited a category")
 	}
@@ -193,7 +190,7 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(*model)
-	m.indexMode = true
+	m.openAllTasks()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
 	m = updated.(*model)
 	if !isOpen[*taskModal](m) || form(t, m).targetBranch != "feature/new" {
@@ -264,7 +261,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	if !strings.Contains(string(data), "# newarea") || !strings.Contains(string(data), "# Branches\n\n## feature/new") {
 		t.Fatalf("new category or branch heading missing: %s", data)
 	}
-	m.indexMode = true
+	m.openAllTasks()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
 	m = updated.(*model)
 	if !isOpen[*taskModal](m) || form(t, m).mode != modalAddBranch || form(t, m).scope.Value() != "feature/new" {
@@ -274,10 +271,11 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	form(t, m).scope.SetValue("feature/index")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
-	if m.indexMode || m.branchFilter != "feature/index" {
+	if m.all != nil || m.branchFilter != "feature/index" {
 		t.Fatalf("branch add from All tasks did not open the new section: %q", m.branchFilter)
 	}
-	m.indexMode, m.focus, m.generalCategory = true, generalPane, "newarea"
+	m.focus, m.generalCategory = generalPane, "newarea"
+	m.openAllTasks()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
 	if !isOpen[*taskModal](m) || form(t, m).mode != modalAddGeneral || form(t, m).scope.Value() != "" {
@@ -287,7 +285,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	form(t, m).scope.SetValue("docs")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
-	if selected, ok := m.selectedTask(); isOpen[*taskModal](m) || m.indexMode || m.generalCategory != "docs" || !ok || selected.Text != "General from All tasks" {
+	if selected, ok := m.selectedTask(); isOpen[*taskModal](m) || m.all != nil || m.generalCategory != "docs" || !ok || selected.Text != "General from All tasks" {
 		t.Fatalf("general add from All tasks did not open the new task: category %q, %+v", m.generalCategory, selected)
 	}
 }
@@ -298,8 +296,7 @@ func TestAddFormAcceptsSymbolCategory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, _ := m.startTaskModal(modalAddGeneral)
-	m = opened.(*model)
+	m.startTaskModal(modalAddGeneral)
 	form(t, m).title.SetValue("Version task")
 	form(t, m).scope.SetValue("+v1")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
@@ -317,8 +314,7 @@ func TestBranchPickerSearchAndSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, _ := m.startTaskModal(modalAddBranch)
-	m = opened.(*model)
+	m.startTaskModal(modalAddBranch)
 	form(t, m).title.SetValue("Check auth")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(*model)
@@ -359,8 +355,7 @@ func TestBranchPickerSearchAndSelection(t *testing.T) {
 	if isOpen[*taskModal](m) || !ok || selected.Branch != "fix/auth" {
 		t.Fatalf("task was not saved under the selected branch: %+v", selected)
 	}
-	opened, _ = m.startTaskModal(modalAddBranch)
-	m = opened.(*model)
+	m.startTaskModal(modalAddBranch)
 	form(t, m).scope.SetValue("main")
 	form(t, m).resetBranchCursor()
 	if got := form(t, m).matchingBranches(); len(got) != 2 || got[0] != "main" || got[1] != "main2" {
@@ -382,8 +377,7 @@ func TestBranchCreatedAfterStartupIsNotMissing(t *testing.T) {
 	if _, err := gitOutput(dir, "branch", "feature/new"); err != nil {
 		t.Fatal(err)
 	}
-	opened, _ := m.startTaskModal(modalAddBranch)
-	m = opened.(*model)
+	m.startTaskModal(modalAddBranch)
 	form(t, m).title.SetValue("Late branch task")
 	form(t, m).scope.SetValue("new")
 	form(t, m).resetBranchCursor()
@@ -417,16 +411,14 @@ func TestEditModalRefreshesBranchState(t *testing.T) {
 	if _, err := gitOutput(dir, "branch", "-D", "feature/x"); err != nil {
 		t.Fatal(err)
 	}
-	opened, _ := m.startTaskModal(modalEdit)
-	m = opened.(*model)
+	m.startTaskModal(modalEdit)
 	if isOpen[*taskModal](m) || m.status != missingBranchStatus {
 		t.Fatalf("edit opened for a branch deleted after startup: status %q", m.status)
 	}
 	if _, err := gitOutput(dir, "branch", "feature/x"); err != nil {
 		t.Fatal(err)
 	}
-	opened, _ = m.startTaskModal(modalEdit)
-	m = opened.(*model)
+	m.startTaskModal(modalEdit)
 	if !isOpen[*taskModal](m) || m.branchMissing("feature/x") {
 		t.Fatalf("edit stayed blocked after the branch was restored: status %q", m.status)
 	}
@@ -440,8 +432,7 @@ func TestBranchPickerRejectsDeletedBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, _ := m.startTaskModal(modalAddBranch)
-	m = opened.(*model)
+	m.startTaskModal(modalAddBranch)
 	form(t, m).title.SetValue("Do not save")
 	form(t, m).scope.SetValue("feature/old")
 	if _, err := gitOutput(dir, "branch", "-D", "feature/old"); err != nil {
@@ -464,8 +455,7 @@ func TestBranchPickerFitsCompactAndRegularModals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, _ := m.startTaskModal(modalAddBranch)
-	m = opened.(*model)
+	m.startTaskModal(modalAddBranch)
 	form(t, m).scope.SetValue("")
 	form(t, m).branchCursor = 0
 	suggestions := form(t, m).branchSuggestions(24)
@@ -654,8 +644,7 @@ func TestModalDetailsFillRemainingHeight(t *testing.T) {
 		for _, mode := range []modalMode{modalAddGeneral, modalAddBranch, modalEdit} {
 			t.Run(fmt.Sprintf("%dx%d mode %d", size[0], size[1], mode), func(t *testing.T) {
 				m := &model{width: size[0], height: size[1], general: []store.Task{{Text: "Task"}}}
-				opened, _ := m.startTaskModal(mode)
-				m = opened.(*model)
+				m.startTaskModal(mode)
 				width, height := form(t, m).dimensions(size[0], size[1])
 				lines := strings.Split(ansi.Strip(form(t, m).render(width, height)), "\n")
 				if len(lines) != height {
@@ -747,8 +736,7 @@ func TestEditFormMovesTaskToAnotherCategory(t *testing.T) {
 	}
 	m.width, m.height = 80, 24
 	m.generalCategory = "auth"
-	opened, _ := m.startTaskModal(modalEdit)
-	m = opened.(*model)
+	m.startTaskModal(modalEdit)
 	if form(t, m).branchScope() || form(t, m).scope.Value() != "auth" || !strings.Contains(ansi.Strip(form(t, m).render(76, 20)), "Category") {
 		t.Fatalf("edit form did not offer the task's category: %q", form(t, m).scope.Value())
 	}
@@ -768,8 +756,7 @@ func TestEditFormMovesTaskToAnotherCategory(t *testing.T) {
 	if strings.Contains(string(data), "# auth") {
 		t.Fatalf("moving the last task left its heading behind: %s", data)
 	}
-	opened, _ = m.startTaskModal(modalEdit)
-	m = opened.(*model)
+	m.startTaskModal(modalEdit)
 	form(t, m).scope.SetValue("")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
@@ -791,8 +778,7 @@ func TestEditFormMovesTaskToAnotherBranch(t *testing.T) {
 	}
 	m.width, m.height = 80, 24
 	m.focus, m.branchFilter = branchPane, "feature/a"
-	opened, _ := m.startTaskModal(modalEdit)
-	m = opened.(*model)
+	m.startTaskModal(modalEdit)
 	if !form(t, m).branchScope() || form(t, m).scope.Value() != "feature/a" || len(form(t, m).branches) != 3 {
 		t.Fatalf("edit form did not offer the branch picker: %q %v", form(t, m).scope.Value(), form(t, m).branches)
 	}
@@ -821,8 +807,7 @@ func TestEditFormKeepsBranchWithoutGit(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.focus, m.branchFilter = branchPane, "feature/a"
-	opened, _ := m.startTaskModal(modalEdit)
-	m = opened.(*model)
+	m.startTaskModal(modalEdit)
 	form(t, m).title.SetValue("Renamed branch task")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)

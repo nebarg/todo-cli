@@ -32,8 +32,8 @@ func (m *model) View() tea.View {
 	footer := m.renderFooter(width)
 	bodyHeight := height - 2
 	var body string
-	if m.indexMode {
-		body = m.renderIndex(width, bodyHeight)
+	if m.all != nil {
+		body = m.all.view(m.allTasks, m.branchMissing, width, bodyHeight)
 	} else {
 		switch m.focus {
 		case branchPane:
@@ -68,7 +68,7 @@ func placeOver(content, box string, width, height int) string {
 // giving the tabs priority when the terminal is narrow.
 func (m *model) renderHeader(width int) string {
 	tabs := ""
-	if !m.indexMode {
+	if m.all == nil {
 		tabs = m.renderTabs()
 	}
 	project := m.renderProject(width - ansi.StringWidth(tabs) - 1)
@@ -161,7 +161,7 @@ func (m *model) contextHints() []ui.KeyHint {
 	reload := ui.KeyHint{Key: "r", Label: "reload"}
 	index := ui.KeyHint{Key: "i", Label: "all tasks"}
 	switch {
-	case m.indexMode:
+	case m.all != nil:
 		hints := []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, {Key: "s", Label: "sort"}, {Key: "c", Label: "category"}, {Key: "a", Label: "add"}, {Key: "b", Label: "branch task"}}
 		return append(append(hints, m.clearHint()...), back, reload)
 	case m.focus == detailPane && m.viewingMissingBranch():

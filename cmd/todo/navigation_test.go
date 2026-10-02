@@ -247,8 +247,8 @@ func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 		{"category", "Auth open,Auth done,Branch open first,Branch open second,Branch done,General open,General done"},
 	} {
 		t.Run(string(item.sort), func(t *testing.T) {
-			m.indexSort = item.sort
-			if got := indexTitles(m.indexTasks()); got != item.want {
+			view := allTasksView{sort: item.sort}
+			if got := indexTitles(view.sorted(m.allTasks)); got != item.want {
 				t.Errorf("%s order = %q, want %q", item.sort, got, item.want)
 			}
 		})

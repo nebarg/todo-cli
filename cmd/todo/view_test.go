@@ -218,8 +218,8 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 	if detail := ansi.Strip(m.renderDetailPane(60, 20)); !strings.Contains(detail, "Branches › "+branchIcon+" main › Details") {
 		t.Fatalf("detail breadcrumb = %s", detail)
 	}
-	m.indexMode = true
-	if index := ansi.Strip(m.renderIndex(100, 20)); !regexp.MustCompile(`All tasks  3/6 +sorted by`).MatchString(index) {
+	m.openAllTasks()
+	if index := ansi.Strip(m.all.view(m.allTasks, m.branchMissing, 100, 20)); !regexp.MustCompile(`All tasks  3/6 +sorted by`).MatchString(index) {
 		t.Fatalf("all tasks heading = %s", index)
 	}
 }
@@ -238,7 +238,7 @@ func TestHeaderShowsRepositoryAndBranch(t *testing.T) {
 	if plain := ansi.Strip(header); ansi.StringWidth(header) != 60 || !strings.Contains(plain, "3 Files") || strings.Contains(plain, "todo-cli") || !strings.HasSuffix(plain, "…  ") {
 		t.Fatalf("long branch should drop the repo and shorten before the tabs: %q", plain)
 	}
-	m.indexMode = true
+	m.openAllTasks()
 	if plain := ansi.Strip(m.renderHeader(60)); strings.Contains(plain, "General") || !strings.Contains(plain, "todo-cli") {
 		t.Fatalf("All tasks header = %q", plain)
 	}
@@ -309,7 +309,7 @@ func TestHelpOverlayOpensAndCloses(t *testing.T) {
 	if isOpen[helpOverlay](m) || cmd != nil {
 		t.Fatal("a key press while help is open should only close it")
 	}
-	m.indexMode = true
+	m.openAllTasks()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
 	if !isOpen[helpOverlay](updated.(*model)) {
 		t.Fatal("help did not open from All tasks")
@@ -326,7 +326,7 @@ func TestFooterOmitsObviousMovementHints(t *testing.T) {
 			}
 		})
 	}
-	m.indexMode = true
+	m.openAllTasks()
 	if footer := ansi.Strip(m.renderFooter(120)); strings.Contains(footer, "↑/↓") || strings.Contains(footer, "move") {
 		t.Errorf("movement hint remains in All tasks: %q", footer)
 	}

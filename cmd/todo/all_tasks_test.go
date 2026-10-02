@@ -28,10 +28,10 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	m = updated.(*model)
-	if !m.indexMode || m.indexSort != "priority" {
-		t.Fatalf("index opened with sort %q", m.indexSort)
+	if m.all == nil || m.all.sort != "priority" {
+		t.Fatalf("index opened with sort %q", m.all.sort)
 	}
-	if got := indexTitles(m.indexTasks()); got != "Medium task,Low task,Plain task,High task" {
+	if got := indexTitles(m.all.sorted(m.allTasks)); got != "Medium task,Low task,Plain task,High task" {
 		t.Fatalf("priority order = %q", got)
 	}
 	for _, size := range [][2]int{{120, 35}, {78, 16}, {60, 20}, {56, 19}} {
@@ -55,7 +55,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 			}
 		})
 	}
-	rendered := m.renderIndex(120, 20)
+	rendered := m.all.view(m.allTasks, m.branchMissing, 120, 20)
 	plain := ansi.Strip(rendered)
 	lines := strings.Split(plain, "\n")
 	if len(lines) < 4 || strings.Trim(lines[2], " │") != "" || strings.Index(lines[3], "TASK: DETAILS") > strings.Index(lines[3], "CATEGORY / BRANCH") {
@@ -66,12 +66,12 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'B', Text: "B"})
 	m = updated.(*model)
-	if m.indexSort != "priority" {
+	if m.all.sort != "priority" {
 		t.Fatal("old branch sort shortcut still changed the sort")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	m = updated.(*model)
-	if got := indexTitles(m.indexTasks()); m.indexSort != "branch" || got != "High task,Low task,Medium task,Plain task" {
+	if got := indexTitles(m.all.sorted(m.allTasks)); m.all.sort != "branch" || got != "High task,Low task,Medium task,Plain task" {
 		t.Fatalf("branch order = %q", got)
 	}
 	if selected, _ := m.selectedTask(); selected.Text != "Medium task" {
@@ -79,20 +79,20 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	m = updated.(*model)
-	if m.indexSort != "category" || !strings.Contains(ansi.Strip(m.renderIndex(120, 20)), "CATEGORY / BRANCH") {
+	if m.all.sort != "category" || !strings.Contains(ansi.Strip(m.all.view(m.allTasks, m.branchMissing, 120, 20)), "CATEGORY / BRANCH") {
 		t.Fatal("category sort or column heading is missing")
 	}
-	if got := indexTitles(m.indexTasks()); got != "Medium task,High task,Low task,Plain task" {
+	if got := indexTitles(m.all.sorted(m.allTasks)); got != "Medium task,High task,Low task,Plain task" {
 		t.Fatalf("category order = %q", got)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	m = updated.(*model)
-	if m.indexSort != "priority" || indexTitles(m.indexTasks()) != "Medium task,Low task,Plain task,High task" {
+	if m.all.sort != "priority" || indexTitles(m.all.sorted(m.allTasks)) != "Medium task,Low task,Plain task,High task" {
 		t.Fatal("sort did not cycle back to priority")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(*model)
-	if m.indexMode {
+	if m.all != nil {
 		t.Fatal("Escape did not return to dashboard")
 	}
 }
@@ -115,16 +115,16 @@ func TestIndexEditShowsTaskLocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.indexMode = true
+	m.openAllTasks()
 	for _, item := range []struct{ task, location string }{
 		{"Plain task", "General › Edit task"},
 		{"Category task", "General › @auth › Edit task"},
 		{"Branch task", "Branches › " + branchIcon + " feature/ui › Edit task"},
 	} {
 		t.Run(item.task, func(t *testing.T) {
-			for i, task := range m.indexTasks() {
+			for i, task := range m.all.sorted(m.allTasks) {
 				if task.Text == item.task {
-					m.indexCursor = i
+					m.all.cursor = i
 					break
 				}
 			}
@@ -156,8 +156,8 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.indexMode = true
-	m.indexSort = "priority"
+	m.openAllTasks()
+	m.all.sort = "priority"
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(*model)
 	if selected, ok := m.selectedTask(); !ok || selected.Text != "First" || !selected.Done {
@@ -172,12 +172,12 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
 	m = updated.(*model)
-	if selected, ok := m.selectedTask(); !ok || selected.Text != "First" || selected.Priority != "medium" || m.indexSort != "priority" {
+	if selected, ok := m.selectedTask(); !ok || selected.Text != "First" || selected.Priority != "medium" || m.all.sort != "priority" {
 		t.Fatal("p should change the selected task's priority without changing sort")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
 	m = updated.(*model)
-	if !isOpen[*categoryPrompt](m) || m.indexSort != "priority" {
+	if !isOpen[*categoryPrompt](m) || m.all.sort != "priority" {
 		t.Fatal("c should edit the selected task's category without changing sort")
 	}
 	for p, want := range map[store.Priority]color.Color{"high": ui.ColorHigh, "medium": ui.ColorMedium, "low": ui.ColorLow} {

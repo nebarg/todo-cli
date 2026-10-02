@@ -25,58 +25,36 @@ const (
 	detailPane
 )
 
-type sortOrder string
-
-const (
-	sortPriority sortOrder = "priority"
-	sortBranch   sortOrder = "branch"
-	sortCategory sortOrder = "category"
-)
-
-func (s sortOrder) next() sortOrder {
-	switch s {
-	case sortPriority:
-		return sortBranch
-	case sortBranch:
-		return sortCategory
-	default:
-		return sortPriority
-	}
-}
-
 type model struct {
-	file                  string
-	project               projectContext
-	allTasks              []store.Task
-	indexMode             bool
-	indexSort             sortOrder
-	indexPriorityExplicit bool
-	indexCursor           int
-	general               []store.Task
-	readme                []store.Task
-	readmeOpen            bool
-	branches              []store.Task
-	focus                 pane
-	detailFrom            pane
-	detailScroll          int
-	generalCursor         int
-	generalRootCursor     int
-	generalCategory       string
-	branchCursor          int
-	branchRootCursor      int
-	branchFilter          string
-	localBranchNames      map[string]bool
-	branchesVerified      bool
-	files                 filesui.Model
-	overlay               overlay // nil when nothing is open over the dashboard
-	lastClear             *store.Removal
-	status                string
-	width                 int
-	height                int
+	file              string
+	project           projectContext
+	allTasks          []store.Task
+	all               *allTasksView // nil unless the All tasks view is open
+	general           []store.Task
+	readme            []store.Task
+	readmeOpen        bool
+	branches          []store.Task
+	focus             pane
+	detailFrom        pane
+	detailScroll      int
+	generalCursor     int
+	generalRootCursor int
+	generalCategory   string
+	branchCursor      int
+	branchRootCursor  int
+	branchFilter      string
+	localBranchNames  map[string]bool
+	branchesVerified  bool
+	files             filesui.Model
+	overlay           overlay // nil when nothing is open over the dashboard
+	lastClear         *store.Removal
+	status            string
+	width             int
+	height            int
 }
 
 func newModel(file string, project projectContext, files filesui.Model) (*model, error) {
-	m := &model{file: file, project: project, width: 100, height: 30, indexSort: sortPriority, files: files}
+	m := &model{file: file, project: project, width: 100, height: 30, files: files}
 	if err := m.reload(); err != nil {
 		return nil, err
 	}
@@ -91,7 +69,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		if m.overlay != nil {
-			return m.updateOverlay(msg)
+			return m, m.updateOverlay(msg)
 		}
 	case tea.BackgroundColorMsg:
 		ui.ApplyTheme(msg.IsDark())
@@ -120,139 +98,167 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.applyClear(msg)
 	case tea.PasteMsg:
 		if m.overlay != nil {
-			return m.updateOverlay(msg)
+			return m, m.updateOverlay(msg)
 		}
 	case tea.KeyPressMsg:
-		key := msg.String()
-		if key == "ctrl+c" {
-			return m, tea.Quit
-		}
-		if m.overlay != nil {
-			return m.updateOverlay(msg)
-		}
-		if m.indexMode {
-			return m.updateIndex(msg)
-		}
-		if m.focus == sourcePane {
-			switch key {
-			case "right", "left", "esc", "up", "k", "down", "j", "e", "enter":
-				return m, m.files.Update(msg)
-			}
-		}
-		switch key {
-		case "q":
-			return m, tea.Quit
-		case "?":
-			m.overlay = helpOverlay{}
-		case "i":
-			m.indexMode = true
-			m.indexSort = sortPriority
-			m.indexPriorityExplicit = false
-			m.indexCursor = 0
-			m.status = ""
-		case "tab":
-			if m.focus == detailPane {
-				m.focus = (m.detailFrom + 1) % 3
-			} else {
-				m.focus = (m.focus + 1) % 3
-			}
-			m.detailScroll = 0
-			m.files.CloseDetails()
-		case "shift+tab":
-			if m.focus == detailPane {
-				m.focus = m.detailFrom
-			} else {
-				m.focus = (m.focus + 2) % 3
-			}
-			m.detailScroll = 0
-			m.files.CloseDetails()
-		case "1":
-			m.jumpToTab(generalPane)
-		case "2":
-			m.jumpToTab(branchPane)
-		case "3":
-			if m.focus == sourcePane {
-				m.files.Top()
-			} else {
-				m.focus = sourcePane
-				m.detailScroll = 0
-			}
-			return m, m.files.PreviewCmd()
-		case "right":
-			if m.focus != detailPane && !m.enterSelectedGroup() {
-				if _, ok := m.selectedTask(); ok {
-					m.detailFrom = m.focus
-					m.focus = detailPane
-					m.detailScroll = 0
-				}
-			}
-		case "left", "esc":
-			if m.focus == detailPane {
-				m.focus = m.detailFrom
-				m.detailScroll = 0
-			} else {
-				m.leaveGroup()
-			}
-		case "up", "k":
-			if m.focus == detailPane {
-				m.detailScroll = max(0, m.detailScroll-1)
-			} else {
-				m.moveCursor(-1)
-			}
-		case "down", "j":
-			if m.focus == detailPane {
-				m.detailScroll++
-			} else {
-				m.moveCursor(1)
-			}
-		case "a":
-			if m.activePane() == branchPane {
-				return m.startTaskModal(modalAddBranch)
-			}
-			return m.startTaskModal(modalAddGeneral)
-		case "b":
-			return m.startTaskModal(modalAddBranch)
-		case "c":
-			return m.startCategoryInput()
-		case "e":
-			if m.readmeSelected() {
-				return m, m.openReadme()
-			}
-			return m.startTaskModal(modalEdit)
-		case "p":
-			m.cyclePriority()
-		case "space", "d":
-			m.toggleSelected()
-		case "X":
-			m.startClearDone()
-		case "u":
-			m.undoClear()
-		case "enter":
-			if m.enterSelectedGroup() {
-				return m, nil
-			}
-			if m.readmeSelected() {
-				return m, m.openReadme()
-			}
-			return m.startTaskModal(modalEdit)
-		case "r":
-			m.status = ""
-			if err := m.refreshProject(); err != nil {
-				m.status = err.Error()
-			}
-			return m, m.files.Scan()
-		}
+		return m, m.updateKey(msg)
 	default:
 		return m, m.files.Update(msg)
 	}
 	return m, nil
 }
 
+// updateKey sends a key to the open overlay, or else to the current view,
+// and then to the task keys both views share.
+func (m *model) updateKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch {
+	case msg.String() == "ctrl+c":
+		return tea.Quit
+	case m.overlay != nil:
+		return m.updateOverlay(msg)
+	}
+	var cmd tea.Cmd
+	var handled bool
+	if m.all != nil {
+		cmd, handled = m.allTasksKey(msg.String())
+	} else {
+		cmd, handled = m.dashboardKey(msg)
+	}
+	if handled {
+		return cmd
+	}
+	return m.taskKey(msg.String())
+}
+
+// taskKey handles the keys that work the same in the dashboard and the All
+// tasks view.
+func (m *model) taskKey(key string) tea.Cmd {
+	switch key {
+	case "q":
+		return tea.Quit
+	case "?":
+		m.overlay = helpOverlay{}
+	case "a":
+		if m.all == nil && m.activePane() == branchPane {
+			return m.startTaskModal(modalAddBranch)
+		}
+		return m.startTaskModal(modalAddGeneral)
+	case "b":
+		return m.startTaskModal(modalAddBranch)
+	case "c":
+		return m.startCategoryInput()
+	case "e":
+		return m.editSelected()
+	case "p":
+		m.cyclePriority()
+	case "space", "d":
+		m.toggleSelected()
+	case "X":
+		m.startClearDone()
+	case "u":
+		m.undoClear()
+	case "r":
+		m.status = ""
+		if err := m.refreshProject(); err != nil {
+			m.status = err.Error()
+		}
+		return m.files.Scan()
+	}
+	return nil
+}
+
+// dashboardKey handles the keys for moving around the dashboard's tabs,
+// reporting false for any other.
+func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	key := msg.String()
+	if m.focus == sourcePane {
+		switch key {
+		case "right", "left", "esc", "up", "k", "down", "j", "e", "enter":
+			return m.files.Update(msg), true
+		}
+	}
+	switch key {
+	case "i":
+		m.openAllTasks()
+	case "tab":
+		if m.focus == detailPane {
+			m.focus = (m.detailFrom + 1) % 3
+		} else {
+			m.focus = (m.focus + 1) % 3
+		}
+		m.detailScroll = 0
+		m.files.CloseDetails()
+	case "shift+tab":
+		if m.focus == detailPane {
+			m.focus = m.detailFrom
+		} else {
+			m.focus = (m.focus + 2) % 3
+		}
+		m.detailScroll = 0
+		m.files.CloseDetails()
+	case "1":
+		m.jumpToTab(generalPane)
+	case "2":
+		m.jumpToTab(branchPane)
+	case "3":
+		if m.focus == sourcePane {
+			m.files.Top()
+		} else {
+			m.focus = sourcePane
+			m.detailScroll = 0
+		}
+		return m.files.PreviewCmd(), true
+	case "right":
+		if m.focus != detailPane && !m.enterSelectedGroup() {
+			if _, ok := m.selectedTask(); ok {
+				m.detailFrom = m.focus
+				m.focus = detailPane
+				m.detailScroll = 0
+			}
+		}
+	case "left", "esc":
+		if m.focus == detailPane {
+			m.focus = m.detailFrom
+			m.detailScroll = 0
+		} else {
+			m.leaveGroup()
+		}
+	case "up", "k":
+		if m.focus == detailPane {
+			m.detailScroll = max(0, m.detailScroll-1)
+		} else {
+			m.moveCursor(-1)
+		}
+	case "down", "j":
+		if m.focus == detailPane {
+			m.detailScroll++
+		} else {
+			m.moveCursor(1)
+		}
+	case "enter":
+		if !m.enterSelectedGroup() {
+			return m.editSelected(), true
+		}
+	default:
+		return nil, false
+	}
+	return nil, true
+}
+
+// editSelected opens the selected task in the form, or a README task in the
+// editor.
+func (m *model) editSelected() tea.Cmd {
+	if m.readmeSelected() {
+		return m.openReadme()
+	}
+	return m.startTaskModal(modalEdit)
+}
+
 func (m *model) moveCursor(delta int) {
 	cursor, length := &m.generalCursor, len(m.generalRows())
 	switch {
-	case m.indexMode:
-		cursor, length = &m.indexCursor, len(m.allTasks)
+	case m.all != nil:
+		cursor, length = &m.all.cursor, len(m.allTasks)
 	case m.focus == branchPane:
 		cursor, length = &m.branchCursor, len(m.branchRows())
 	}
@@ -260,10 +266,10 @@ func (m *model) moveCursor(delta int) {
 }
 
 func (m *model) selectedTask() (store.Task, bool) {
-	if m.indexMode {
-		tasks := m.indexTasks()
-		if m.indexCursor >= 0 && m.indexCursor < len(tasks) {
-			return tasks[m.indexCursor], true
+	if m.all != nil {
+		tasks := m.all.sorted(m.allTasks)
+		if m.all.cursor >= 0 && m.all.cursor < len(tasks) {
+			return tasks[m.all.cursor], true
 		}
 		return store.Task{}, false
 	}
@@ -284,7 +290,7 @@ func (m *model) activePane() pane {
 // readmeSelected is true while the README.md group is open, where every
 // row is a README task.
 func (m *model) readmeSelected() bool {
-	return m.readmeOpen && !m.indexMode && m.activePane() == generalPane
+	return m.readmeOpen && m.all == nil && m.activePane() == generalPane
 }
 
 // readmeReadOnly is the status for anything but done and reopen on a README
@@ -328,7 +334,7 @@ func (m *model) toggleSelected() {
 		m.status = err.Error()
 		return
 	}
-	if !m.indexMode {
+	if m.all == nil {
 		m.selectNavigationTask(selected)
 	}
 	m.status = ""
@@ -436,7 +442,9 @@ func (m *model) readTasks(sortByPriority bool) error {
 	}
 	if sortByPriority {
 		m.allTasks = sortedTasksByPriority(tasks)
-		m.indexPriorityExplicit = false
+		if m.all != nil {
+			m.all.byPriority = false
+		}
 	} else {
 		m.allTasks = preserveTaskOrder(previousTasks, tasks)
 	}
@@ -458,10 +466,10 @@ func (m *model) readTasks(sortByPriority bool) error {
 	}
 	m.generalCursor = min(m.generalCursor, max(0, len(m.generalRows())-1))
 	m.branchCursor = min(m.branchCursor, max(0, len(m.branchRows())-1))
-	if m.indexMode {
-		m.indexCursor = min(m.indexCursor, max(0, len(m.allTasks)-1))
+	if m.all != nil {
+		m.all.cursor = min(m.all.cursor, max(0, len(m.allTasks)-1))
 		if hadSelection {
-			m.selectIndexTask(previous)
+			m.selectInAllTasks(previous)
 		}
 	}
 	return nil
@@ -528,102 +536,6 @@ func preserveTaskOrder(previous, loaded []store.Task) []store.Task {
 		}
 	}
 	return ordered
-}
-
-func (m *model) indexTasks() []store.Task {
-	tasks := slices.Clone(m.allTasks)
-	slices.SortStableFunc(tasks, func(a, b store.Task) int {
-		switch m.indexSort {
-		case sortBranch:
-			if c := compareIndexGroup(a.Branch, b.Branch); c != 0 {
-				return c
-			}
-			if a.Branch == "" {
-				if c := compareIndexGroup(a.Category, b.Category); c != 0 {
-					return c
-				}
-			}
-		case sortCategory:
-			if c := compareIndexGroup(a.Category, b.Category); c != 0 {
-				return c
-			}
-			if a.Category == "" {
-				if c := compareIndexGroup(a.Branch, b.Branch); c != 0 {
-					return c
-				}
-			}
-		}
-		if c := compareDone(a, b); c != 0 {
-			return c
-		}
-		if m.indexSort == sortPriority && m.indexPriorityExplicit {
-			return cmp.Compare(a.Priority.Rank(), b.Priority.Rank())
-		}
-		return 0
-	})
-	return tasks
-}
-
-func compareIndexGroup(a, b string) int {
-	if a == "" && b != "" {
-		return 1
-	}
-	if b == "" && a != "" {
-		return -1
-	}
-	return strings.Compare(strings.ToLower(a), strings.ToLower(b))
-}
-
-func (m *model) selectIndexTask(selected store.Task) {
-	if i := nearestTask(m.indexTasks(), selected); i >= 0 {
-		m.indexCursor = i
-	}
-}
-
-func (m *model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "i", "esc", "left":
-		m.indexMode = false
-		m.status = ""
-	case "q":
-		return m, tea.Quit
-	case "?":
-		m.overlay = helpOverlay{}
-	case "up", "k":
-		m.moveCursor(-1)
-	case "down", "j":
-		m.moveCursor(1)
-	case "s":
-		selected, ok := m.selectedTask()
-		m.indexSort = m.indexSort.next()
-		m.indexPriorityExplicit = m.indexSort == sortPriority
-		if ok {
-			m.selectIndexTask(selected)
-		}
-	case "p":
-		m.cyclePriority()
-	case "c":
-		return m.startCategoryInput()
-	case "a":
-		return m.startTaskModal(modalAddGeneral)
-	case "b":
-		return m.startTaskModal(modalAddBranch)
-	case "space", "d":
-		m.toggleSelected()
-	case "X":
-		m.startClearDone()
-	case "u":
-		m.undoClear()
-	case "enter", "e":
-		return m.startTaskModal(modalEdit)
-	case "r":
-		m.status = ""
-		if err := m.refreshProject(); err != nil {
-			m.status = err.Error()
-		}
-		return m, m.files.Scan()
-	}
-	return m, nil
 }
 
 // loadReadme reads the README's tasks with todo-system levels first, most

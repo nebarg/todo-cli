@@ -19,12 +19,12 @@ type dialog interface {
 
 // updateOverlay passes msg to the open overlay, then acts on its outcome
 // straight away, so the dashboard is up to date as the overlay closes.
-func (m *model) updateOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *model) updateOverlay(msg tea.Msg) tea.Cmd {
 	next, outcome, cmd := m.overlay.update(msg)
 	m.overlay = next
 	if outcome == nil {
-		return m, cmd
+		return cmd
 	}
 	_, outcomeCmd := m.Update(outcome)
-	return m, tea.Batch(cmd, outcomeCmd)
+	return tea.Batch(cmd, outcomeCmd)
 }

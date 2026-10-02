@@ -60,7 +60,7 @@ func TestClearDoneFollowsWhereYouAre(t *testing.T) {
 		{"General", func(m *model) {}, "Remove 3 done tasks from General?", []string{"Loose done", "Doc done", "Auth done", "# docs"}, []string{"Branch done", "# auth"}},
 		{"category", func(m *model) { m.generalCategory = "auth" }, "Remove 1 done task from @auth?", []string{"Auth done"}, []string{"Loose done", "Doc done"}},
 		{"Branches", func(m *model) { m.focus = branchPane }, "Remove 1 done task from Branches?", []string{"Branch done", "# Branches"}, []string{"Loose done"}},
-		{"all tasks", func(m *model) { m.indexMode = true }, "Remove 4 done tasks from all tasks?", []string{"Loose done", "Doc done", "Auth done", "Branch done"}, []string{"Loose open", "Auth open"}},
+		{"all tasks", func(m *model) { m.openAllTasks() }, "Remove 4 done tasks from all tasks?", []string{"Loose done", "Doc done", "Auth done", "Branch done"}, []string{"Loose open", "Auth open"}},
 	} {
 		t.Run(item.name, func(t *testing.T) {
 			m, path := clearModel(t)
@@ -96,7 +96,7 @@ func TestClearDoneFollowsWhereYouAre(t *testing.T) {
 
 func TestClearDoneNamesHeadingsItEmpties(t *testing.T) {
 	m, _ := clearModel(t)
-	m.indexMode = true
+	m.openAllTasks()
 	m = press(m, "X")
 	dialog := ansi.Strip(confirmation(t, m).render())
 	if !strings.Contains(dialog, "The @docs and "+branchIcon+" feature/x headings will be empty") || !strings.Contains(dialog, "y remove") {
@@ -153,7 +153,7 @@ func TestUndoClearRestoresTheFile(t *testing.T) {
 
 func TestLaterEditsDropUndoClear(t *testing.T) {
 	m, _ := clearModel(t)
-	m.indexMode = true
+	m.openAllTasks()
 	m = press(press(m, "X"), "y")
 	m = press(m, "d")
 	if m.status != "" {
@@ -297,8 +297,8 @@ func TestClearDoneAndMissingTogether(t *testing.T) {
 
 func TestIndexMarksMissingBranches(t *testing.T) {
 	m, _ := missingBranchModel(t)
-	m.indexMode = true
-	view := m.renderIndex(100, 20)
+	m.openAllTasks()
+	view := m.all.view(m.allTasks, m.branchMissing, 100, 20)
 	gone := lipgloss.NewStyle().Foreground(ui.ColorHigh).Render(ui.Column("⚠ feature/gone", 24))
 	if !strings.Contains(view, gone) || !strings.Contains(ansi.Strip(view), branchIcon+" feature/live") {
 		t.Fatalf("index does not mark the missing branch:\n%s", view)
