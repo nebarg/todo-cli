@@ -60,23 +60,45 @@ func scanFiles(ctx context.Context, dir string, files []string) ([]Match, error)
 }
 
 func sourceFiles(ctx context.Context, dir string, exclude Exclude) ([]string, error) {
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", ".")
-	if output, err := cmd.Output(); err == nil {
-		var files []string
-		for raw := range bytes.SplitSeq(output, []byte{0}) {
-			if len(raw) == 0 {
-				continue
-			}
-			path := filepath.Clean(string(raw))
-			if !isMarkdown(path) && !exclude.skipsFileIn(path) {
-				files = append(files, path)
-			}
-		}
+	if files, ok := gitFiles(ctx, dir, exclude); ok {
 		return files, nil
 	}
+	return walkFiles(dir, exclude)
+}
+
+// gitFiles lists the files under dir that Git doesn't ignore. ok is false
+// outside a repository, and when dir is itself ignored, as Git would then
+// list nothing in a directory the user asked to scan.
+func gitFiles(ctx context.Context, dir string, exclude Exclude) (files []string, ok bool) {
+	// check-ignore exits 0 only when dir is ignored.
+	if exec.CommandContext(ctx, "git", "-C", dir, "check-ignore", "-q", ".").Run() == nil {
+		return nil, false
+	}
+	output, err := exec.CommandContext(ctx, "git", "-C", dir, "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", ".").Output()
+	if err != nil {
+		return nil, false
+	}
+	for raw := range bytes.SplitSeq(output, []byte{0}) {
+		if len(raw) == 0 {
+			continue
+		}
+		path := filepath.Clean(string(raw))
+		if !isMarkdown(path) && !exclude.skipsFileIn(path) {
+			files = append(files, path)
+		}
+	}
+	return files, true
+}
+
+func walkFiles(dir string, exclude Exclude) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
+			// A directory that can't be read is skipped, as unreadable files
+			// are; only the scanned directory itself must be readable.
+			if path != dir && entry != nil && entry.IsDir() {
+				return filepath.SkipDir
+			}
 			return walkErr
 		}
 		rel, err := filepath.Rel(dir, path)

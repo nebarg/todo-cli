@@ -68,7 +68,7 @@ func parseTasks(lines []string) []Task {
 				continue
 			}
 			branchSectionLevel, branch = 0, ""
-			category, categoryLine = headingCategoryName(name), i
+			category, categoryLine = NormalizeCategory(name), i
 			continue
 		}
 		parts := taskLine.FindStringSubmatch(raw)
@@ -249,14 +249,15 @@ func movedTaskLines(lines []string, selected Task, block []string, category, bra
 func editedTaskLines(lines []string, selected Task, title, details string) []string {
 	updated := append([]string{}, lines[:selected.Line]...)
 	updated = append(updated, normalizedTaskLine(selected, title, selected.Done, selected.Priority))
+	eol := lineEnding(lines)
 	if strings.Join(formattedDetails(details), "\n") == strings.Join(formattedDetails(selected.Details), "\n") {
 		updated = append(updated, selected.bodyRaw...)
 	} else if body := formattedDetails(details); len(body) > 0 {
-		updated = append(updated, "")
-		updated = append(updated, body...)
-		updated = append(updated, "")
+		updated = append(updated, eol)
+		updated = append(updated, withEnding(body, eol)...)
+		updated = append(updated, eol)
 	} else if selected.bodyEnd < len(lines) {
-		updated = append(updated, "")
+		updated = append(updated, eol)
 	}
 	return append(updated, lines[selected.bodyEnd:]...)
 }
@@ -314,28 +315,15 @@ func NormalizeCategory(raw string) string {
 	return raw
 }
 
-func headingCategoryName(name string) string {
-	if len(name) > 1 {
-		return strings.TrimPrefix(name, "@")
-	}
-	return name
-}
-
 func insertTaskBlock(data string, block []string, branch, category string) string {
 	if strings.TrimSpace(data) == "" {
-		if branch != "" {
-			return "# Branches\n\n## " + branch + "\n\n" + strings.Join(block, "\n") + "\n"
-		}
-		if category != "" {
-			return "# " + category + "\n\n" + strings.Join(block, "\n") + "\n"
-		}
-		return strings.Join(block, "\n") + "\n"
+		return strings.Join(sectionLines(block, branch, category), "\n") + "\n"
 	}
-	lines := strings.Split(data, "\n")
+	lines := withFinalNewline(strings.Split(data, "\n"))
 	if branch != "" {
 		start, end, level := findBranchesSection(lines)
 		if start < 0 {
-			return appendSection(data, insertTaskBlock("", block, branch, ""))
+			return insertBlockAt(lines, len(lines)-1, sectionLines(block, branch, ""))
 		}
 		branchStart, branchEnd := findBranchSection(lines, start, end, level, branch)
 		if branchStart < 0 {
@@ -366,7 +354,51 @@ func insertTaskBlock(data string, block []string, branch, category string) strin
 	if branchesStart, _, _ := findBranchesSection(lines); branchesStart >= 0 {
 		idx = branchesStart
 	}
-	return insertBlockAt(lines, trimBlankEnd(lines, idx, 0), append([]string{"# " + category, ""}, block...))
+	return insertBlockAt(lines, trimBlankEnd(lines, idx, 0), sectionLines(block, "", category))
+}
+
+// sectionLines is block under the headings of a new section: a branch in a
+// new Branches section, a category, or neither for the general list.
+func sectionLines(block []string, branch, category string) []string {
+	switch {
+	case branch != "":
+		return append([]string{"# Branches", "", "## " + branch, ""}, block...)
+	case category != "":
+		return append([]string{"# " + category, ""}, block...)
+	}
+	return block
+}
+
+// withFinalNewline ends the last line, in the file's line ending, so lines
+// added at the end are separated from it.
+func withFinalNewline(lines []string) []string {
+	if last := len(lines) - 1; lines[last] != "" {
+		lines[last] += lineEnding(lines)
+		lines = append(lines, "")
+	}
+	return lines
+}
+
+// lineEnding is "\r" when the file's first line ends with "\r\n", so the
+// lines the app adds match a Windows file. Lines already in the file keep
+// their own endings.
+func lineEnding(lines []string) string {
+	if len(lines) > 1 && strings.HasSuffix(lines[0], "\r") {
+		return "\r"
+	}
+	return ""
+}
+
+// withEnding copies lines, adding eol to those without a "\r" ending.
+func withEnding(lines []string, eol string) []string {
+	result := make([]string, len(lines))
+	for i, line := range lines {
+		if !strings.HasSuffix(line, "\r") {
+			line += eol
+		}
+		result[i] = line
+	}
+	return result
 }
 
 func parseHeading(line string) (int, string, bool) {
@@ -436,7 +468,7 @@ func findCategorySection(lines []string, category string) (int, int) {
 			branchesEnd += i
 			continue
 		}
-		if !strings.EqualFold(headingCategoryName(name), category) {
+		if !strings.EqualFold(NormalizeCategory(name), category) {
 			continue
 		}
 		end := len(lines)
@@ -451,29 +483,19 @@ func findCategorySection(lines []string, category string) (int, int) {
 	return -1, -1
 }
 
+// insertBlockAt adds block before lines[idx], separated from its neighbours
+// by blank lines. lines must end with a newline, as withFinalNewline leaves
+// them, and idx must come before it.
 func insertBlockAt(lines []string, idx int, block []string) string {
-	addition := append([]string(nil), block...)
+	eol := lineEnding(lines)
+	addition := withEnding(block, eol)
 	if idx > 0 && strings.TrimSpace(lines[idx-1]) != "" {
-		addition = append([]string{""}, addition...)
+		addition = append([]string{eol}, addition...)
 	}
-	if idx < len(lines) && strings.TrimSpace(lines[idx]) != "" {
-		addition = append(addition, "")
+	if strings.TrimSpace(lines[idx]) != "" {
+		addition = append(addition, eol)
 	}
-	updated := strings.Join(insertLines(lines, idx, addition), "\n")
-	if !strings.HasSuffix(updated, "\n") {
-		updated += "\n"
-	}
-	return updated
-}
-
-func appendSection(data, section string) string {
-	if !strings.HasSuffix(data, "\n") {
-		data += "\n"
-	}
-	if !strings.HasSuffix(data, "\n\n") {
-		data += "\n"
-	}
-	return data + section
+	return strings.Join(insertLines(lines, idx, addition), "\n")
 }
 
 func trimBlankEnd(lines []string, end, minimum int) int {
@@ -544,7 +566,7 @@ func removeEmptyCategoryHeading(lines []string, selected Task) []string {
 	}
 	start := selected.categoryLine
 	_, name, ok := parseHeading(lines[start])
-	if !ok || !strings.EqualFold(headingCategoryName(name), selected.Category) {
+	if !ok || !strings.EqualFold(NormalizeCategory(name), selected.Category) {
 		return lines
 	}
 	end := start + 1
@@ -578,6 +600,10 @@ func removeEmptyBranchHeading(lines []string, branch string) []string {
 }
 
 func replaceFile(path string, data []byte, mode os.FileMode) error {
+	path, err := linkTarget(path)
+	if err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".todo-*")
 	if err != nil {
 		return err
@@ -592,6 +618,30 @@ func replaceFile(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+// linkTarget follows symlinks from path, so a write replaces the file a
+// link points to rather than the link. A link to a file not yet created
+// names that file; any other missing path is used as it is.
+func linkTarget(path string) (string, error) {
+	target, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return target, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	link, err := os.Readlink(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return path, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(link) {
+		link = filepath.Join(filepath.Dir(path), link)
+	}
+	return link, nil
 }
 
 func writeSynced(f *os.File, data []byte, mode os.FileMode) error {

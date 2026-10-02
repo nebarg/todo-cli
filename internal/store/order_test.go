@@ -50,6 +50,36 @@ func TestWritesSortOnlyTheirSection(t *testing.T) {
 			change:  func(path string, _ []Task) error { return Add(path, "New", "", PriorityMedium, "", "") },
 		},
 		{
+			name:    "a new task keeps a two-task compact list compact",
+			content: "- [ ] One\n- [ ] Two\n",
+			want:    "- [ ] One\n- [ ] Two\n- [ ] Three\n",
+			change:  func(path string, _ []Task) error { return Add(path, "Three", "", PriorityNone, "", "") },
+		},
+		{
+			name:    "a new task takes windows line endings",
+			content: "- [ ] One\r\n- [ ] Two",
+			want:    "- [ ] One\r\n- [ ] Two\r\n- [ ] Three\r\n",
+			change:  func(path string, _ []Task) error { return Add(path, "Three", "", PriorityNone, "", "") },
+		},
+		{
+			name:    "a new category takes windows line endings",
+			content: "- [ ] One\r\n",
+			want:    "- [ ] One\r\n\r\n# docs\r\n\r\n- [ ] Doc\r\n",
+			change:  func(path string, _ []Task) error { return Add(path, "Doc", "", PriorityNone, "docs", "") },
+		},
+		{
+			name:    "a new branch section takes windows line endings",
+			content: "- [ ] One\r\n",
+			want:    "- [ ] One\r\n\r\n# Branches\r\n\r\n## main\r\n\r\n- [ ] Fix\r\n",
+			change:  func(path string, _ []Task) error { return Add(path, "Fix", "", PriorityNone, "", "main") },
+		},
+		{
+			name:    "new details take windows line endings",
+			content: "- [ ] One\r\n- [ ] Two\r\n",
+			want:    "- [ ] One\r\n\r\n  Some details\r\n\r\n- [ ] Two\r\n",
+			change:  func(path string, tasks []Task) error { return Edit(path, tasks[0], "One", "Some details", "", "") },
+		},
+		{
 			name:    "a moved task is sorted into its new section",
 			content: "- [ ] Move me !high\n\n# docs\n\n- [ ] Doc\n\n- [x] Doc done\n",
 			want:    "# docs\n\n- [ ] Move me !high\n\n- [ ] Doc\n\n- [x] Doc done\n",

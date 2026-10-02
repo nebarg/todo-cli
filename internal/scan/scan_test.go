@@ -45,22 +45,11 @@ func TestScanSource(t *testing.T) {
 	for _, scanner := range scanners(t) {
 		t.Run(scanner.name, func(t *testing.T) {
 			dir := t.TempDir()
-			for name, content := range files {
-				if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
-					t.Fatal(err)
-				}
-			}
+			writeFiles(t, dir, files)
 			if scanner.git {
-				if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
-					t.Fatalf("git init: %v %s", err, out)
-				}
+				gitInit(t, dir)
 			}
-			t.Setenv("PATH", scanner.path)
-			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull) // A global gitignore would hide test files.
-			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			scanner.use(t)
 			for _, c := range cases {
 				matches, err := Source(dir, c.exclude)
 				if err != nil {
@@ -78,10 +67,86 @@ func TestScanSource(t *testing.T) {
 	}
 }
 
+func TestScanSkipsUnreadableDirectories(t *testing.T) {
+	for _, scanner := range scanners(t) {
+		t.Run(scanner.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFiles(t, dir, map[string]string{"ok/a.go": "// TODO: readable\n", "locked/b.go": "// TODO: unreadable\n"})
+			locked := filepath.Join(dir, "locked")
+			if err := os.Chmod(locked, 0); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(locked, 0755) }) // So TempDir can remove it.
+			if _, err := os.ReadDir(locked); err == nil {
+				t.Skip("directory permissions aren't enforced for this user")
+			}
+			if scanner.git {
+				gitInit(t, dir)
+			}
+			scanner.use(t)
+			matches, err := Source(dir, Exclude{})
+			if err != nil || len(matches) != 1 || matches[0].Path != "ok/a.go" {
+				t.Fatalf("matches = %+v, %v", matches, err)
+			}
+			if scanner.ripgrep {
+				// Source falls back to the built-in scanner when ripgrep fails.
+				matches, err := scanWithRipgrep(t.Context(), dir, Exclude{})
+				if err != nil || len(matches) != 1 {
+					t.Fatalf("ripgrep matches = %+v, %v", matches, err)
+				}
+			}
+		})
+	}
+}
+
+func TestScanReadsADirectoryItsRepositoryIgnores(t *testing.T) {
+	for _, scanner := range scanners(t) {
+		t.Run(scanner.name, func(t *testing.T) {
+			repo := t.TempDir()
+			writeFiles(t, repo, map[string]string{".gitignore": "/*\n", "ignored/a.go": "// TODO: in an ignored directory\n"})
+			gitInit(t, repo)
+			scanner.use(t)
+			matches, err := Source(filepath.Join(repo, "ignored"), Exclude{})
+			if err != nil || len(matches) != 1 || matches[0].Path != "a.go" {
+				t.Fatalf("matches = %+v, %v", matches, err)
+			}
+		})
+	}
+}
+
+func writeFiles(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func gitInit(t *testing.T, dir string) {
+	t.Helper()
+	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+}
+
 type scanner struct {
-	name string
-	path string
-	git  bool
+	name    string
+	path    string
+	git     bool
+	ripgrep bool
+}
+
+// use puts only the scanner's tools on PATH, and keeps the user's Git
+// configuration out of the test.
+func (s scanner) use(t *testing.T) {
+	t.Setenv("PATH", s.path)
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull) // A global gitignore would hide test files.
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 }
 
 // scanners runs a test with the built-in scanner, with and without Git to
@@ -95,9 +160,9 @@ func scanners(t *testing.T) []scanner {
 	if err := os.Symlink(git, filepath.Join(gitOnly, "git")); err != nil {
 		t.Fatal(err)
 	}
-	list := []scanner{{"built-in", t.TempDir(), false}, {"built-in with git", gitOnly, true}}
+	list := []scanner{{name: "built-in", path: t.TempDir()}, {name: "built-in with git", path: gitOnly, git: true}}
 	if rg, err := exec.LookPath("rg"); err == nil {
-		list = append(list, scanner{"ripgrep", filepath.Dir(rg), false})
+		list = append(list, scanner{name: "ripgrep", path: filepath.Dir(rg), ripgrep: true})
 	} else {
 		t.Log("ripgrep not installed; skipping its scanner")
 	}

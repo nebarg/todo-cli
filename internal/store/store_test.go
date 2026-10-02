@@ -117,6 +117,48 @@ func TestCategoriesAllowSymbolsButNotWhitespace(t *testing.T) {
 	}
 }
 
+func TestHashHeadingIsTheSameCategory(t *testing.T) {
+	path, tasks := writeAndLoad(t, "# #auth\n\n- [ ] Existing\n")
+	if len(tasks) != 1 || tasks[0].Category != "auth" {
+		t.Fatalf("tasks = %+v", tasks)
+	}
+	if err := Add(path, "New", "", PriorityNone, "auth", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := readFile(t, path), "# #auth\n\n- [ ] Existing\n\n- [ ] New\n"; got != want {
+		t.Fatalf("file = %q, want %q", got, want)
+	}
+}
+
+func TestWritesFollowSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "notes", "todo.md")
+	if err := os.Mkdir(filepath.Dir(target), 0755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "todo.md")
+	if err := os.Symlink(filepath.Join("notes", "todo.md"), link); err != nil {
+		t.Fatal(err)
+	}
+	// The target doesn't exist yet, so the first task creates it.
+	if err := Add(link, "First", "", PriorityNone, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := Load(link)
+	if err != nil || len(tasks) != 1 {
+		t.Fatalf("tasks = %+v, %v", tasks, err)
+	}
+	if err := Toggle(link, tasks[0]); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the link was replaced: %v, %v", info, err)
+	}
+	if got := readFile(t, target); got != "- [x] First\n" {
+		t.Fatalf("target = %q", got)
+	}
+}
+
 func TestChangingCategoryToSymbolName(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
 	if err := Add(path, "Task", "", "", "auth", ""); err != nil {

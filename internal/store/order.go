@@ -30,7 +30,8 @@ func sortSection(content, category, branch string) string {
 }
 
 // sortRun reorders tasks that follow one another directly, separating them
-// with blank lines unless most of them were written without.
+// with blank lines when most of them were. A tie keeps them compact, as a
+// newly added task arrives after a blank line of its own.
 func sortRun(lines []string, run []Task) []string {
 	if len(run) < 2 {
 		return lines
@@ -57,7 +58,7 @@ func sortRun(lines []string, run []Task) []string {
 
 	result := append([]string{}, lines[:run[0].Line]...)
 	for i, index := range order {
-		if i > 0 && spaced*2 >= len(run)-1 {
+		if i > 0 && spaced*2 > len(run)-1 {
 			result = append(result, blank)
 		}
 		result = append(result, blocks[index]...)

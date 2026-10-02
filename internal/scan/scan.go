@@ -98,11 +98,14 @@ func scanWithRipgrep(ctx context.Context, dir string, exclude Exclude) ([]Match,
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
-			return nil, nil
-		}
+	exitErr, exited := errors.AsType[*exec.ExitError](err)
+	switch {
+	case exited && exitErr.ExitCode() == 1:
+		return nil, nil // No file mentions a TODO.
+	case exited && exitErr.ExitCode() == 2 && len(output) > 0:
+		// Some paths couldn't be read, but ripgrep still listed the files it
+		// could, and unreadable files are skipped anyway.
+	case err != nil:
 		return nil, fmt.Errorf("ripgrep: %s", strings.TrimSpace(stderr.String()))
 	}
 	var files []string
