@@ -63,7 +63,7 @@ func sourceFiles(ctx context.Context, dir string, exclude Exclude) ([]string, er
 	if files, ok := gitFiles(ctx, dir, exclude); ok {
 		return files, nil
 	}
-	return walkFiles(dir, exclude)
+	return walkFiles(ctx, dir, exclude)
 }
 
 // gitFiles lists the files under dir that Git doesn't ignore. ok is false
@@ -90,9 +90,12 @@ func gitFiles(ctx context.Context, dir string, exclude Exclude) (files []string,
 	return files, true
 }
 
-func walkFiles(dir string, exclude Exclude) ([]string, error) {
+func walkFiles(ctx context.Context, dir string, exclude Exclude) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			// A directory that can't be read is skipped, as unreadable files
 			// are; only the scanned directory itself must be readable.

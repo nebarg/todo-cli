@@ -4,6 +4,7 @@
 package filesui
 
 import (
+	"context"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -25,6 +26,8 @@ type Model struct {
 	exclude scan.Exclude
 	keep    func(scan.Match) bool
 
+	scans      int // how many scans have started, to tell the latest apart
+	cancel     context.CancelFunc
 	matches    []scan.Match
 	loading    bool
 	err        string
@@ -47,10 +50,13 @@ func New(dir string, exclude scan.Exclude, keep func(scan.Match) bool) Model {
 	return Model{dir: dir, exclude: exclude, keep: keep, loading: true}
 }
 
-// ScannedMsg carries a scan's results.
+// ScannedMsg carries a scan's results. Only the latest scan's are used, so
+// a scan replaced by a rescan can't overwrite newer results.
 type ScannedMsg struct {
 	Matches []scan.Match
 	Err     error
+
+	scan int // which scan sent it, counting from 1
 }
 
 type previewMsg struct {
@@ -60,16 +66,27 @@ type previewMsg struct {
 	err   error
 }
 
-// Scan rescans in the background.
+// Scan rescans in the background, cancelling any scan still running.
 func (m *Model) Scan() tea.Cmd {
+	m.stopScan()
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
+	m.scans++
 	m.loading = true
-	dir, exclude, keep := m.dir, m.exclude, m.keep
+	id, dir, exclude, keep := m.scans, m.dir, m.exclude, m.keep
 	return func() tea.Msg {
-		matches, err := scan.Source(dir, exclude)
+		matches, err := scan.Source(ctx, dir, exclude)
 		if keep != nil {
 			matches = slices.DeleteFunc(matches, func(match scan.Match) bool { return !keep(match) })
 		}
-		return ScannedMsg{Matches: matches, Err: err}
+		return ScannedMsg{Matches: matches, Err: err, scan: id}
+	}
+}
+
+func (m *Model) stopScan() {
+	if m.cancel != nil {
+		m.cancel()
+		m.cancel = nil
 	}
 }
 
@@ -90,6 +107,10 @@ func (m *Model) PreviewCmd() tea.Cmd {
 func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case ScannedMsg:
+		if msg.scan != m.scans {
+			return nil // A rescan replaced it.
+		}
+		m.stopScan()
 		m.loading = false
 		if msg.Err != nil {
 			m.err = msg.Err.Error()

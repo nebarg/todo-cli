@@ -2,6 +2,8 @@ package scan
 
 import (
 	"cmp"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -51,7 +53,7 @@ func TestScanSource(t *testing.T) {
 			}
 			scanner.use(t)
 			for _, c := range cases {
-				matches, err := Source(dir, c.exclude)
+				matches, err := Source(t.Context(), dir, c.exclude)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -84,7 +86,7 @@ func TestScanSkipsUnreadableDirectories(t *testing.T) {
 				gitInit(t, dir)
 			}
 			scanner.use(t)
-			matches, err := Source(dir, Exclude{})
+			matches, err := Source(t.Context(), dir, Exclude{})
 			if err != nil || len(matches) != 1 || matches[0].Path != "ok/a.go" {
 				t.Fatalf("matches = %+v, %v", matches, err)
 			}
@@ -106,9 +108,27 @@ func TestScanReadsADirectoryItsRepositoryIgnores(t *testing.T) {
 			writeFiles(t, repo, map[string]string{".gitignore": "/*\n", "ignored/a.go": "// TODO: in an ignored directory\n"})
 			gitInit(t, repo)
 			scanner.use(t)
-			matches, err := Source(filepath.Join(repo, "ignored"), Exclude{})
+			matches, err := Source(t.Context(), filepath.Join(repo, "ignored"), Exclude{})
 			if err != nil || len(matches) != 1 || matches[0].Path != "a.go" {
 				t.Fatalf("matches = %+v, %v", matches, err)
+			}
+		})
+	}
+}
+
+func TestScanStopsWhenCancelled(t *testing.T) {
+	for _, scanner := range scanners(t) {
+		t.Run(scanner.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFiles(t, dir, map[string]string{"a.go": "// TODO: never read\n"})
+			if scanner.git {
+				gitInit(t, dir)
+			}
+			scanner.use(t)
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			if matches, err := Source(ctx, dir, Exclude{}); !errors.Is(err, context.Canceled) {
+				t.Fatalf("cancelled scan = %+v, %v", matches, err)
 			}
 		})
 	}
@@ -189,7 +209,7 @@ func TestBuiltInScanIsDeterministic(t *testing.T) {
 		}
 	}
 	for range 5 {
-		matches, err := Source(dir, Exclude{})
+		matches, err := Source(t.Context(), dir, Exclude{})
 		if err != nil {
 			t.Fatal(err)
 		}

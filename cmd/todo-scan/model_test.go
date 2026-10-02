@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -93,12 +92,17 @@ func TestKeys(t *testing.T) {
 		}
 	}
 	m.status = "old"
-	if _, cmd := m.Update(key("r")); cmd == nil || !m.files.Loading() || m.status != "" {
+	_, cmd := m.Update(key("r"))
+	if cmd == nil || !m.files.Loading() || m.status != "" {
 		t.Fatal("r did not rescan")
 	}
-	m.Update(filesui.ScannedMsg{Err: errors.New("permission denied")})
-	if m.status != "Scan failed: permission denied" {
-		t.Fatalf("status = %q", m.status)
+	if err := os.Remove(m.dir); err != nil {
+		t.Fatal(err)
+	}
+	_, statErr := os.Stat(m.dir)
+	m.Update(cmd())
+	if want := "Scan failed: " + statErr.Error(); m.status != want {
+		t.Fatalf("status = %q, want %q", m.status, want)
 	}
 	if _, cmd := m.Update(editor.ClosedMsg{Err: fmt.Errorf("exit status 1")}); cmd == nil || m.status != "exit status 1" || !m.files.Loading() {
 		t.Fatalf("closing the editor should rescan and report its error: %q", m.status)

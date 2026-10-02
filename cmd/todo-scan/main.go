@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -93,8 +94,8 @@ func parseArgs(cwd string, argv []string) (options, error) {
 // report prints the TODOs for --list and their count for --check, and
 // returns the exit status. With both, the count goes to errOut, so out stays
 // a list a script can read.
-func report(out, errOut io.Writer, o options) int {
-	matches, err := scan.Source(o.dir, o.exclude)
+func report(ctx context.Context, out, errOut io.Writer, o options) int {
+	matches, err := scan.Source(ctx, o.dir, o.exclude)
 	if err != nil {
 		_, _ = fmt.Fprintln(errOut, err)
 		return exitError
@@ -138,7 +139,7 @@ func main() {
 		fail(err)
 	}
 	if o.list || o.check {
-		os.Exit(report(os.Stdout, os.Stderr, o))
+		os.Exit(report(context.Background(), os.Stdout, os.Stderr, o))
 	}
 	err = ui.Run(newModel(o.dir, o.exclude, scan.LevelFilter(o.levels, o.level)), os.Stdout)
 	if errors.Is(err, ui.ErrNoTerminal) {

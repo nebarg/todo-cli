@@ -76,7 +76,7 @@ func TestReport(t *testing.T) {
 	}
 	run := func(o options) (string, string, int) {
 		var out, errOut strings.Builder
-		status := report(&out, &errOut, o)
+		status := report(t.Context(), &out, &errOut, o)
 		return out.String(), errOut.String(), status
 	}
 	all := "a.go:3: y := 2 // todo00 fix before that\na.go:2: x := 1 // todo0 fix first\nweb/app.js:1: /* todo1 later */\na.go:1: // TODO: tidy\nb.go:1: // todo@ui split\n"

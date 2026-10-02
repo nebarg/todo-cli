@@ -133,6 +133,27 @@ func TestEmptyListOpensNothing(t *testing.T) {
 	}
 }
 
+func TestRescanReplacesARunningScan(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("// TODO: found\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m := New(dir, scan.Exclude{}, nil)
+	first := m.Scan()
+	second := m.Scan()
+	// The rescan cancelled the first scan, which then reports that error.
+	if m.Update(first()); !m.Loading() || m.Err() != "" {
+		t.Fatalf("the replaced scan was used: loading %v, error %q", m.Loading(), m.Err())
+	}
+	if m.Update(second()); m.Loading() || m.Err() != "" || m.Total() != 1 {
+		t.Fatalf("the rescan wasn't used: loading %v, error %q, %d TODOs", m.Loading(), m.Err(), m.Total())
+	}
+	// Arriving after the rescan's results, it still mustn't replace them.
+	if m.Update(first()); m.Err() != "" || m.Total() != 1 {
+		t.Fatalf("the replaced scan overwrote the rescan: error %q, %d TODOs", m.Err(), m.Total())
+	}
+}
+
 func TestScanErrorVisibleInDetails(t *testing.T) {
 	m := Model{err: "permission denied"}
 	got := strings.Join(m.detailLines(60, 20), "\n")

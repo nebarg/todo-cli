@@ -14,7 +14,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // Match is a to-do marker comment found in a source file, with its path relative
@@ -61,8 +60,8 @@ func LevelRank(level string) int {
 // to tell its comments from its code. Results are sorted most urgent first,
 // then by path and line. Ignored and Markdown files are skipped, as are
 // directories in exclude and those starting with a dot; hidden files are
-// read.
-func Source(dir string, exclude Exclude) ([]Match, error) {
+// read. Cancelling ctx stops the scan.
+func Source(ctx context.Context, dir string, exclude Exclude) ([]Match, error) {
 	info, err := os.Stat(dir)
 	if err != nil {
 		return nil, err
@@ -70,8 +69,6 @@ func Source(dir string, exclude Exclude) ([]Match, error) {
 	if !info.IsDir() {
 		return nil, fmt.Errorf("not a directory: %s", dir)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 	if _, err := exec.LookPath("rg"); err == nil {
 		matches, scanErr := scanWithRipgrep(ctx, dir, exclude)
 		if scanErr == nil {
