@@ -19,6 +19,7 @@ import (
 type model struct {
 	dir      string
 	levelled bool
+	theme    ui.Theme
 	files    filesui.Model
 	status   string
 	width    int
@@ -28,7 +29,7 @@ type model struct {
 // newModel browses dir, listing only the TODOs keep accepts when it isn't
 // nil.
 func newModel(dir string, exclude scan.Exclude, keep func(scan.Match) bool) *model {
-	return &model{dir: dir, levelled: keep != nil, files: filesui.New(dir, exclude, keep), width: 100, height: 30}
+	return &model{dir: dir, levelled: keep != nil, theme: ui.NewTheme(true), files: filesui.New(dir, exclude, keep), width: 100, height: 30}
 }
 
 func (m *model) Init() tea.Cmd { return tea.Batch(m.files.Scan(), tea.RequestBackgroundColor) }
@@ -38,7 +39,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	case tea.BackgroundColorMsg:
-		ui.ApplyTheme(msg.IsDark())
+		m.theme = ui.NewTheme(msg.IsDark())
 	case filesui.ScannedMsg:
 		cmd := m.files.Update(msg)
 		m.status = ""
@@ -80,7 +81,7 @@ func (m *model) View() tea.View {
 	if !m.files.Details() {
 		hints = append(hints, ui.KeyHint{Key: "r", Label: "rescan"})
 	}
-	content := m.renderHeader(width) + "\n" + m.files.View(width, height-2) + "\n" + ui.Footer(m.status, hints, pinnedHints, width)
+	content := m.renderHeader(width) + "\n" + m.files.View(m.theme, width, height-2) + "\n" + m.theme.Footer(m.status, hints, pinnedHints, width)
 	v := tea.NewView(content)
 	v.AltScreen = true
 	return v
@@ -89,8 +90,8 @@ func (m *model) View() tea.View {
 // renderHeader names the app and the directory on the left, shortening
 // the directory from the left, and the number of TODOs on the right.
 func (m *model) renderHeader(width int) string {
-	bar := lipgloss.NewStyle().Background(ui.ColorBar)
-	title := ui.TitleStyle.Background(ui.ColorBar).Render(" todo-scan ")
+	bar := lipgloss.NewStyle().Background(m.theme.ColorBar)
+	title := m.theme.TitleStyle.Background(m.theme.ColorBar).Render(" todo-scan ")
 	one, many := "TODO", "TODOs"
 	if m.levelled {
 		one, many = "levelled TODO", "levelled TODOs"
@@ -99,13 +100,13 @@ func (m *model) renderHeader(width int) string {
 	if m.files.Loading() {
 		count = "scanning…"
 	}
-	count = bar.Foreground(ui.ColorMuted).Render(count + " ")
+	count = bar.Foreground(m.theme.ColorMuted).Render(count + " ")
 	room := max(0, width-ansi.StringWidth(title)-ansi.StringWidth(count)-3)
 	dir := displayDir(m.dir)
 	if ansi.StringWidth(dir) > room {
 		dir = "…" + ansi.TruncateLeft(dir, ansi.StringWidth(dir)-room+1, "")
 	}
-	left := title + bar.Foreground(ui.ColorText).Render(" "+dir)
+	left := title + bar.Foreground(m.theme.ColorText).Render(" "+dir)
 	gap := bar.Render(strings.Repeat(" ", max(0, width-ansi.StringWidth(left)-ansi.StringWidth(count))))
 	return left + gap + count
 }

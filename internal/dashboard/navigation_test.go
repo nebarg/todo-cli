@@ -15,6 +15,7 @@ import (
 	"github.com/nebarg/todo-cli/internal/project/projecttest"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
+	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 func TestBranchListMarksMissingGitBranches(t *testing.T) {
@@ -44,7 +45,7 @@ func TestBranchListMarksMissingGitBranches(t *testing.T) {
 		t.Fatalf("branch list warning is unclear: %s", view)
 	}
 	long := navigationRow{kind: rowBranch, name: "feature/a-very-long-branch-name-that-needs-truncating", count: 4, completed: 1, missingGitBranch: true}
-	if got := ansi.Strip(renderGroupRow(long, 28, true, false)); !strings.HasPrefix(got, "⚠ feature/") || !strings.HasSuffix(got, "…  missing  1/4") || ansi.StringWidth(got) != 28 {
+	if got := ansi.Strip(renderGroupRow(m.theme, long, 28, true, false)); !strings.HasPrefix(got, "⚠ feature/") || !strings.HasSuffix(got, "…  missing  1/4") || ansi.StringWidth(got) != 28 {
 		t.Fatalf("long branch hid its missing marker: %q", got)
 	}
 	projecttest.Git(t, dir, "branch", "feature/gone")
@@ -183,7 +184,7 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 }
 
 func TestArrowOpensDetailsAndEscapeReturnsToList(t *testing.T) {
-	m := &model{tasks: taskSet{general: []store.Task{{Text: "First task"}}}, width: 100, height: 30}
+	m := &model{tasks: taskSet{general: []store.Task{{Text: "First task"}}}, theme: ui.NewTheme(true), width: 100, height: 30}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	m = updated.(*model)
 	if m.focus != detailPane || m.detailFrom != generalPane {
@@ -397,7 +398,7 @@ func TestTwoTogglesBetweenBranchListAndCurrentBranch(t *testing.T) {
 }
 
 func TestFilesTabKeysReachTheBrowser(t *testing.T) {
-	m := &model{width: 100, height: 20}
+	m := &model{theme: ui.NewTheme(true), width: 100, height: 20}
 	m.files.Update(filesui.ScannedMsg{Matches: []scan.Match{
 		{Path: "a.go", Line: 1, Note: "urgent", Level: "0"},
 		{Path: "b.css", Line: 2, Note: "hide", Category: "Boundary"},

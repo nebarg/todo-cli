@@ -76,15 +76,15 @@ func TestDashboardFitsTerminal(t *testing.T) {
 }
 
 func TestInactiveTabsShareTheBarBackground(t *testing.T) {
-	m := &model{focus: sourcePane}
+	m := &model{theme: ui.NewTheme(true), focus: sourcePane}
 	tabs := m.renderHeader(80)
-	inactive := lipgloss.NewStyle().Foreground(ui.ColorMuted).Background(ui.ColorBar)
+	inactive := lipgloss.NewStyle().Foreground(m.theme.ColorMuted).Background(m.theme.ColorBar)
 	for _, tab := range []string{" General ", " Branches "} {
 		if !strings.Contains(tabs, inactive.Render(tab)) {
 			t.Errorf("inactive tab %q has the wrong background: %q", tab, tabs)
 		}
 	}
-	if !strings.Contains(tabs, ui.KeyStyle.Background(ui.ColorBar).Render("1")) || !strings.Contains(tabs, ui.KeyStyle.Background(ui.ColorSelection).Render("3")) {
+	if !strings.Contains(tabs, m.theme.KeyStyle.Background(m.theme.ColorBar).Render("1")) || !strings.Contains(tabs, m.theme.KeyStyle.Background(m.theme.ColorSelection).Render("3")) {
 		t.Errorf("tab numbers are not styled as keys: %q", tabs)
 	}
 	if ansi.StringWidth(tabs) != 80 {
@@ -93,10 +93,11 @@ func TestInactiveTabsShareTheBarBackground(t *testing.T) {
 }
 
 func TestTaskDetailsShownOnDetailPage(t *testing.T) {
-	if ui.TaskTitleStyle.GetForeground() != ui.ColorStrong {
+	theme := ui.NewTheme(true)
+	if theme.TaskTitleStyle.GetForeground() != theme.ColorStrong {
 		t.Fatal("task title is not styled with the white text color")
 	}
-	m := &model{tasks: taskSet{general: []store.Task{{Text: "Fix login redirect", Details: "When a session expires, return to the previous page.\n\n- Add a regression test"}}}}
+	m := &model{theme: theme, tasks: taskSet{general: []store.Task{{Text: "Fix login redirect", Details: "When a session expires, return to the previous page.\n\n- Add a regression test"}}}}
 	got := strings.Join(m.taskDetails(60), "\n")
 	for _, want := range []string{"Fix login redirect", "When a session expires", "- Add a regression test"} {
 		if !strings.Contains(got, want) {
@@ -139,38 +140,39 @@ func TestTaskDetailsShownOnDetailPage(t *testing.T) {
 }
 
 func TestTaskRowsColourPriorityOnTheBullet(t *testing.T) {
+	theme := ui.NewTheme(true)
 	for p, want := range map[store.Priority]struct{ foreground, mark string }{
 		"high": {"240;119;119", "●"}, "medium": {"244;211;94", "●"}, "low": {"125;207;223", "●"},
 	} {
 		foreground, mark := want.foreground, want.mark
 		t.Run(string(p), func(t *testing.T) {
 			task := store.Task{Text: "Highlighted title", Priority: p, Details: "Extra context"}
-			selected := renderTaskRow(task, 30, true)
+			selected := renderTaskRow(theme, task, 30, true)
 			if ansi.StringWidth(selected) != 30 || !strings.HasPrefix(ansi.Strip(selected), mark+" Highlighted title") || !strings.HasSuffix(ansi.Strip(selected), "⋯") {
 				t.Fatalf("%s selected task is not full width with a right-aligned details marker: %q", p, ansi.Strip(selected))
 			}
 			if !strings.Contains(selected, "38;2;"+foreground+";48;2;36;87;166m"+mark) || strings.Contains(selected, foreground+";48;2;36;87;166mHighlighted") {
 				t.Fatalf("%s selected task should colour only its bullet: %q", p, selected)
 			}
-			unselected := renderTaskRow(task, 30, false)
+			unselected := renderTaskRow(theme, task, 30, false)
 			if ansi.StringWidth(unselected) != 30 || !strings.HasSuffix(ansi.Strip(unselected), "⋯") {
 				t.Fatalf("%s details marker is not right-aligned: %q", p, ansi.Strip(unselected))
 			}
 			if !strings.Contains(unselected, "38;2;"+foreground+"m"+mark) || strings.Contains(unselected, foreground+"mHighlighted") {
 				t.Fatalf("%s unselected task should colour only its bullet: %q", p, unselected)
 			}
-			done := renderTaskRow(store.Task{Text: "Highlighted title", Priority: p, Done: true}, 30, false)
+			done := renderTaskRow(theme, store.Task{Text: "Highlighted title", Priority: p, Done: true}, 30, false)
 			if ansi.Strip(done) != "✓ Highlighted title" || strings.Contains(done, "38;2;"+foreground) {
 				t.Fatalf("%s done task is not muted: %q", p, done)
 			}
 		})
 	}
-	open := ansi.Strip(renderTaskRow(store.Task{Text: "Same title"}, 24, false))
-	done := ansi.Strip(renderTaskRow(store.Task{Text: "Same title", Done: true}, 24, false))
+	open := ansi.Strip(renderTaskRow(theme, store.Task{Text: "Same title"}, 24, false))
+	done := ansi.Strip(renderTaskRow(theme, store.Task{Text: "Same title", Done: true}, 24, false))
 	if strings.Index(open, "Same title") != strings.Index(done, "Same title") || strings.Contains(open, "⋯") || strings.Contains(done, "⋯") {
 		t.Fatalf("completion changed title alignment or added details marker: %q / %q", open, done)
 	}
-	truncated := ansi.Strip(renderTaskRow(store.Task{Text: strings.Repeat("x", 50), Details: "More"}, 24, false))
+	truncated := ansi.Strip(renderTaskRow(theme, store.Task{Text: strings.Repeat("x", 50), Details: "More"}, 24, false))
 	if ansi.StringWidth(truncated) != 24 || !strings.HasSuffix(truncated, "…  ⋯") {
 		t.Fatalf("long task lost its details marker: %q", truncated)
 	}
@@ -220,18 +222,18 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 		t.Fatalf("detail breadcrumb = %s", detail)
 	}
 	m.openAllTasks()
-	if index := ansi.Strip(m.all.view(m.tasks.all, m.branchMissing, 100, 20)); !regexp.MustCompile(`All tasks  3/6 +sorted by`).MatchString(index) {
+	if index := ansi.Strip(m.all.view(m.theme, m.tasks.all, m.branchMissing, 100, 20)); !regexp.MustCompile(`All tasks  3/6 +sorted by`).MatchString(index) {
 		t.Fatalf("all tasks heading = %s", index)
 	}
 }
 
 func TestHeaderShowsRepositoryAndBranch(t *testing.T) {
-	m := &model{project: project.Context{Root: "/src/todo-cli", Branch: "feature/login"}}
+	m := &model{project: project.Context{Root: "/src/todo-cli", Branch: "feature/login"}, theme: ui.NewTheme(true)}
 	header := m.renderHeader(80)
 	if plain := ansi.Strip(header); ansi.StringWidth(header) != 80 || !strings.HasPrefix(plain, " 1 General") || !strings.HasSuffix(plain, "todo-cli  "+gitIcon+" feature/login  ") {
 		t.Fatalf("header = %q", plain)
 	}
-	if !strings.Contains(header, lipgloss.NewStyle().Foreground(ui.ColorGit).Background(ui.ColorBar).Render(gitIcon+" ")) {
+	if !strings.Contains(header, lipgloss.NewStyle().Foreground(m.theme.ColorGit).Background(m.theme.ColorBar).Render(gitIcon+" ")) {
 		t.Fatalf("git icon is not coloured: %q", header)
 	}
 	m.project.Branch = strings.Repeat("b", 100)
@@ -246,7 +248,7 @@ func TestHeaderShowsRepositoryAndBranch(t *testing.T) {
 }
 
 func TestLooseTasksAreSeparatedFromCategories(t *testing.T) {
-	m := &model{tasks: taskSet{general: []store.Task{{Text: "Loose"}, {Text: "Filed", Category: "Docs"}}}}
+	m := &model{theme: ui.NewTheme(true), tasks: taskSet{general: []store.Task{{Text: "Loose"}, {Text: "Filed", Category: "Docs"}}}}
 	rows := m.rows(generalPane)
 	if got := firstTaskAfterGroups(rows); got != 1 {
 		t.Fatalf("divider row = %d", got)
@@ -261,7 +263,7 @@ func TestLooseTasksAreSeparatedFromCategories(t *testing.T) {
 }
 
 func TestFooterFitsHintsAndPinsHelp(t *testing.T) {
-	m := &model{tasks: taskSet{general: []store.Task{{Text: "Loose"}}}}
+	m := &model{theme: ui.NewTheme(true), tasks: taskSet{general: []store.Task{{Text: "Loose"}}}}
 	for _, width := range []int{56, 80, 160} {
 		footer := m.renderFooter(width)
 		plain := ansi.Strip(footer)
@@ -290,17 +292,17 @@ func TestFooterFitsHintsAndPinsHelp(t *testing.T) {
 }
 
 func TestHelpOverlayOpensAndCloses(t *testing.T) {
-	m := &model{width: 56, height: 16}
+	m := &model{theme: ui.NewTheme(true), width: 56, height: 16}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
 	m = updated.(*model)
 	view := m.View().Content
 	if !isOpen[helpOverlay](m) || !strings.Contains(ansi.Strip(view), "toggle done") || lipgloss.Width(view) != 56 || lipgloss.Height(view) != 16 {
 		t.Fatalf("help overlay did not open within the terminal: %s", ansi.Strip(view))
 	}
-	if w, h := lipgloss.Width(renderHelp()), lipgloss.Height(renderHelp()); w > 56 || h > 16 {
+	if w, h := lipgloss.Width(renderHelp(m.theme)), lipgloss.Height(renderHelp(m.theme)); w > 56 || h > 16 {
 		t.Fatalf("help is %dx%d, larger than the smallest supported terminal", w, h)
 	}
-	for line := range strings.SplitSeq(renderHelp(), "\n") {
+	for line := range strings.SplitSeq(renderHelp(m.theme), "\n") {
 		if strings.Contains(line, "\x1b[m ") {
 			t.Fatalf("help lets the terminal background through after a reset: %q", line)
 		}
@@ -318,7 +320,7 @@ func TestHelpOverlayOpensAndCloses(t *testing.T) {
 }
 
 func TestFooterOmitsObviousMovementHints(t *testing.T) {
-	m := &model{}
+	m := &model{theme: ui.NewTheme(true)}
 	for _, pane := range []pane{generalPane, branchPane, sourcePane, detailPane} {
 		t.Run(fmt.Sprint("pane ", pane), func(t *testing.T) {
 			m.focus = pane
@@ -334,22 +336,24 @@ func TestFooterOmitsObviousMovementHints(t *testing.T) {
 }
 
 func TestPriorityReadsFromShapeAsWellAsColour(t *testing.T) {
+	theme := ui.NewTheme(true)
 	marks := map[store.Priority]string{store.PriorityHigh: "●", store.PriorityMedium: "●", store.PriorityLow: "●", store.PriorityNone: "○"}
 	for p, want := range marks {
 		if got := priorityMark(p); got != want {
 			t.Errorf("priorityMark(%q) = %q, want %q", p, got, want)
 		}
 	}
-	if status := ansi.Strip(taskStatus(store.Task{Text: "Urgent", Priority: store.PriorityHigh})); status != "Open  ·  ● High priority" {
+	if status := ansi.Strip(taskStatus(theme, store.Task{Text: "Urgent", Priority: store.PriorityHigh})); status != "Open  ·  ● High priority" {
 		t.Fatalf("status bar = %q", status)
 	}
-	if help := ansi.Strip(renderHelp()); !regexp.MustCompile(`quit[ │]*\n[│ ]*\n[│ ]*Priority  ● high  ● medium  ● low`).MatchString(help) {
+	if help := ansi.Strip(renderHelp(theme)); !regexp.MustCompile(`quit[ │]*\n[│ ]*\n[│ ]*Priority  ● high  ● medium  ● low`).MatchString(help) {
 		t.Fatalf("help lacks the priority legend: %s", help)
 	}
 }
 
 func TestStatusBarDescribesTheHighlightedRow(t *testing.T) {
 	m := &model{
+		theme: ui.NewTheme(true),
 		tasks: taskSet{general: []store.Task{{Text: "Loose", Priority: store.PriorityMedium}, {Text: "Filed", Category: "Docs", Done: true}, {Text: "Open filed", Category: "Docs"}}},
 		width: 80, height: 20,
 	}

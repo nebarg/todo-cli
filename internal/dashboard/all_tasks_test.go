@@ -14,7 +14,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/project"
 	"github.com/nebarg/todo-cli/internal/store"
-	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
@@ -56,7 +55,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 			}
 		})
 	}
-	rendered := m.all.view(m.tasks.all, m.branchMissing, 120, 20)
+	rendered := m.all.view(m.theme, m.tasks.all, m.branchMissing, 120, 20)
 	plain := ansi.Strip(rendered)
 	lines := strings.Split(plain, "\n")
 	if len(lines) < 4 || strings.Trim(lines[2], " │") != "" || strings.Index(lines[3], "TASK: DETAILS") > strings.Index(lines[3], "CATEGORY / BRANCH") {
@@ -80,7 +79,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 	m = updated.(*model)
-	if m.all.sort != "category" || !strings.Contains(ansi.Strip(m.all.view(m.tasks.all, m.branchMissing, 120, 20)), "CATEGORY / BRANCH") {
+	if m.all.sort != "category" || !strings.Contains(ansi.Strip(m.all.view(m.theme, m.tasks.all, m.branchMissing, 120, 20)), "CATEGORY / BRANCH") {
 		t.Fatal("category sort or column heading is missing")
 	}
 	if got := indexTitles(m.all.sorted(m.tasks.all)); got != "Medium task,High task,Low task,Plain task" {
@@ -135,9 +134,9 @@ func TestIndexEditShowsTaskLocation(t *testing.T) {
 				t.Fatalf("edit did not open for %s", item.task)
 			}
 			for _, size := range [][2]int{{76, 20}, {54, 12}} {
-				form(t, m).resize(size[0]+2, size[1]+4)
+				form(t, m).resize(m.theme, size[0]+2, size[1]+4)
 				width, height := form(t, m).dimensions(size[0]+2, size[1]+4)
-				rendered := form(t, m).render(width, height)
+				rendered := form(t, m).render(m.theme, width, height)
 				if !strings.Contains(ansi.Strip(rendered), item.location) || lipgloss.Width(rendered) != width || lipgloss.Height(rendered) != height {
 					t.Errorf("edit location missing or overflowing for %s at %dx%d: %s", item.task, size[0], size[1], ansi.Strip(rendered))
 				}
@@ -181,9 +180,9 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	if !isOpen[*categoryPrompt](m) || m.all.sort != "priority" {
 		t.Fatal("c should edit the selected task's category without changing sort")
 	}
-	for p, want := range map[store.Priority]color.Color{"high": ui.ColorHigh, "medium": ui.ColorMedium, "low": ui.ColorLow} {
+	for p, want := range map[store.Priority]color.Color{"high": m.theme.ColorHigh, "medium": m.theme.ColorMedium, "low": m.theme.ColorLow} {
 		t.Run(string(p), func(t *testing.T) {
-			if got := priorityStyle(p).GetForeground(); got != want {
+			if got := priorityStyle(m.theme, p).GetForeground(); got != want {
 				t.Errorf("%s priority color = %v, want %v", p, got, want)
 			}
 		})

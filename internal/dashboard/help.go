@@ -46,42 +46,42 @@ func (h helpOverlay) update(msg tea.Msg) (overlay, tea.Msg, tea.Cmd) {
 	return h, nil, nil
 }
 
-func (helpOverlay) view(int, int) string { return renderHelp() }
+func (helpOverlay) view(theme ui.Theme, _, _ int) string { return renderHelp(theme) }
 
-func renderHelp() string {
+func renderHelp(theme ui.Theme) string {
 	keyWidth := 0
 	for _, section := range []helpSection{helpNavigate, helpTasks} {
 		for _, hint := range section.keys {
 			keyWidth = max(keyWidth, ansi.StringWidth(hint.Key))
 		}
 	}
-	body := lipgloss.JoinHorizontal(lipgloss.Top, helpNavigate.render(keyWidth), "    ", helpTasks.render(keyWidth))
-	title := ui.TitleStyle.Render("Keys")
-	closeHint := ui.MutedStyle.Render("any key closes")
+	body := lipgloss.JoinHorizontal(lipgloss.Top, helpNavigate.render(theme, keyWidth), "    ", helpTasks.render(theme, keyWidth))
+	title := theme.TitleStyle.Render("Keys")
+	closeHint := theme.MutedStyle.Render("any key closes")
 	gap := strings.Repeat(" ", max(2, lipgloss.Width(body)-ansi.StringWidth(title)-ansi.StringWidth(closeHint)))
-	content := title + gap + closeHint + "\n\n" + body + "\n\n" + ui.RenderHints(helpApp) + "\n\n" + priorityLegend()
+	content := title + gap + closeHint + "\n\n" + body + "\n\n" + theme.RenderHints(helpApp) + "\n\n" + priorityLegend(theme)
 	return lipgloss.NewStyle().Padding(0, 2).
-		Border(lipgloss.RoundedBorder()).BorderForeground(ui.ColorFocus).BorderBackground(ui.ColorModal).
-		Background(ui.ColorModal).Render(ui.OnBackground(content, ui.ColorModal))
+		Border(lipgloss.RoundedBorder()).BorderForeground(theme.ColorFocus).BorderBackground(theme.ColorModal).
+		Background(theme.ColorModal).Render(ui.OnBackground(content, theme.ColorModal))
 }
 
-func (s helpSection) render(keyWidth int) string {
-	lines := []string{helpHeadingStyle().Render(s.title)}
+func (s helpSection) render(theme ui.Theme, keyWidth int) string {
+	lines := []string{helpHeadingStyle(theme).Render(s.title)}
 	for _, hint := range s.keys {
 		padding := strings.Repeat(" ", keyWidth-ansi.StringWidth(hint.Key))
-		lines = append(lines, ui.KeyStyle.Render(hint.Key)+padding+"  "+ui.MutedStyle.Render(hint.Label))
+		lines = append(lines, theme.KeyStyle.Render(hint.Key)+padding+"  "+theme.MutedStyle.Render(hint.Label))
 	}
 	return strings.Join(lines, "\n")
 }
 
-func priorityLegend() string {
+func priorityLegend(theme ui.Theme) string {
 	parts := make([]string, 0, 3)
 	for _, p := range []store.Priority{store.PriorityHigh, store.PriorityMedium, store.PriorityLow} {
-		parts = append(parts, priorityStyle(p).Render(priorityMark(p))+" "+ui.MutedStyle.Render(strings.ToLower(p.Title())))
+		parts = append(parts, priorityStyle(theme, p).Render(priorityMark(p))+" "+theme.MutedStyle.Render(strings.ToLower(p.Title())))
 	}
-	return helpHeadingStyle().Render("Priority") + "  " + strings.Join(parts, "  ")
+	return helpHeadingStyle(theme).Render("Priority") + "  " + strings.Join(parts, "  ")
 }
 
-func helpHeadingStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Bold(true).Foreground(ui.ColorText)
+func helpHeadingStyle(theme ui.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().Bold(true).Foreground(theme.ColorText)
 }

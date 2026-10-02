@@ -212,8 +212,8 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	if form(t, m).field != 1 {
 		t.Fatal("tab did not focus category field")
 	}
-	form(t, m).resize(56, 16)
-	if view := ansi.Strip(form(t, m).render(54, 12)); !strings.Contains(view, "Category") || !strings.Contains(view, "Optional category") {
+	form(t, m).resize(m.theme, 56, 16)
+	if view := ansi.Strip(form(t, m).render(m.theme, 54, 12)); !strings.Contains(view, "Category") || !strings.Contains(view, "Optional category") {
 		t.Fatalf("category field is not visible in the small add form: %s", view)
 	}
 	form(t, m).title.SetValue("New categorised task")
@@ -237,8 +237,8 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	if !isOpen[*taskModal](m) || form(t, m).mode != modalAddBranch || form(t, m).scope.Value() != "feature/new" {
 		t.Fatalf("branch form did not prefill the current Git branch: %+v", m.overlay)
 	}
-	form(t, m).resize(56, 16)
-	if view := ansi.Strip(form(t, m).render(54, 12)); !strings.Contains(view, "Branch") || !strings.Contains(view, "feature/new") {
+	form(t, m).resize(m.theme, 56, 16)
+	if view := ansi.Strip(form(t, m).render(m.theme, 54, 12)); !strings.Contains(view, "Branch") || !strings.Contains(view, "feature/new") {
 		t.Fatalf("branch field is not visible in the small add form: %s", view)
 	}
 	form(t, m).title.SetValue("New branch task")
@@ -432,7 +432,7 @@ func TestEditModalRefreshesBranchState(t *testing.T) {
 }
 
 func TestGitAnswerUpdatesAnOpenBranchForm(t *testing.T) {
-	m := &model{project: project.Context{Branch: "main"}, localBranches: []string{"feature/b", "main"}, width: 100, height: 30}
+	m := &model{project: project.Context{Branch: "main"}, theme: ui.NewTheme(true), localBranches: []string{"feature/b", "main"}, width: 100, height: 30}
 	m.startTaskModal(modalAddBranch)
 	f := form(t, m)
 	f.scope.SetValue("feature")
@@ -491,25 +491,25 @@ func TestBranchPickerFitsCompactAndRegularModals(t *testing.T) {
 	m.startTaskModal(modalAddBranch)
 	form(t, m).scope.SetValue("")
 	form(t, m).branchCursor = 0
-	suggestions := form(t, m).branchSuggestions(24)
+	suggestions := form(t, m).branchSuggestions(m.theme, 24)
 	if len(suggestions) != 2 || !strings.Contains(ansi.Strip(suggestions[0]), "feature/auth") || !strings.Contains(ansi.Strip(suggestions[1]), "feature/ui") || strings.Contains(strings.Join(suggestions, ""), "fix/search") || !strings.Contains(strings.Join(suggestions, ""), "┃") {
 		t.Fatalf("picker did not show two rows with a scroll indicator: %q", suggestions)
 	}
 	form(t, m).scope.SetValue("feature/")
 	form(t, m).resetBranchCursor()
-	if suggestions = form(t, m).branchSuggestions(24); len(suggestions) != 2 || strings.Contains(strings.Join(suggestions, ""), "┃") || strings.Contains(strings.Join(suggestions, ""), "│") {
+	if suggestions = form(t, m).branchSuggestions(m.theme, 24); len(suggestions) != 2 || strings.Contains(strings.Join(suggestions, ""), "┃") || strings.Contains(strings.Join(suggestions, ""), "│") {
 		t.Fatalf("scroll indicator shown for only two matches: %q", suggestions)
 	}
 	form(t, m).scope.SetValue("")
 	form(t, m).branchCursor = 0
 	for _, size := range [][2]int{{80, 24}, {56, 19}, {56, 16}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
-			form(t, m).resize(size[0], size[1])
+			form(t, m).resize(m.theme, size[0], size[1])
 			if size[1] == 24 && lipgloss.Height(form(t, m).details.View()) != 5 {
 				t.Errorf("regular details box did not gain one line: height %d", lipgloss.Height(form(t, m).details.View()))
 			}
 			width, height := form(t, m).dimensions(size[0], size[1])
-			view := form(t, m).render(width, height)
+			view := form(t, m).render(m.theme, width, height)
 			if got := lipgloss.Width(view); got != width {
 				t.Errorf("picker width at %dx%d = %d, want %d", size[0], size[1], got, width)
 			}
@@ -535,7 +535,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if !isOpen[*taskModal](m) || form(t, m).field != 0 {
 		t.Fatal("add did not open the title field")
 	}
-	if help := ansi.Strip(form(t, m).render(76, 20)); !strings.Contains(help, "ctrl+enter save  esc cancel  tab next field") || !strings.Contains(help, "Category") {
+	if help := ansi.Strip(form(t, m).render(m.theme, 76, 20)); !strings.Contains(help, "ctrl+enter save  esc cancel  tab next field") || !strings.Contains(help, "Category") {
 		t.Fatalf("add form has wrong labels or help: %s", help)
 	} else {
 		for line := range strings.SplitSeq(help, "\n") {
@@ -544,15 +544,15 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 			}
 		}
 	}
-	if rendered := form(t, m).render(76, 20); !strings.Contains(rendered, ui.MutedStyle.Render("Category")) {
+	if rendered := form(t, m).render(m.theme, 76, 20); !strings.Contains(rendered, m.theme.MutedStyle.Render("Category")) {
 		t.Fatal("unfocused category label is not muted")
 	}
 	for _, size := range [][2]int{{120, 35}, {78, 16}, {60, 20}, {56, 19}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			m.width, m.height = size[0], size[1]
-			form(t, m).resize(m.width, m.height)
+			form(t, m).resize(m.theme, m.width, m.height)
 			modalWidth, modalHeight := form(t, m).dimensions(m.width, m.height)
-			if rendered := form(t, m).render(modalWidth, modalHeight); lipgloss.Width(rendered) != modalWidth || lipgloss.Height(rendered) != modalHeight {
+			if rendered := form(t, m).render(m.theme, modalWidth, modalHeight); lipgloss.Width(rendered) != modalWidth || lipgloss.Height(rendered) != modalHeight {
 				t.Errorf("modal itself overflows at %dx%d: %dx%d", size[0], size[1], lipgloss.Width(rendered), lipgloss.Height(rendered))
 			}
 			view := m.View().Content
@@ -580,10 +580,10 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if form(t, m).field != 1 {
 		t.Fatal("down arrow did not focus category field")
 	}
-	if help := ansi.Strip(form(t, m).render(76, 20)); !strings.Contains(help, "ctrl+enter save  esc cancel  tab next field") {
+	if help := ansi.Strip(form(t, m).render(m.theme, 76, 20)); !strings.Contains(help, "ctrl+enter save  esc cancel  tab next field") {
 		t.Fatalf("category help changed by focus: %s", help)
 	}
-	if rendered := form(t, m).render(76, 20); !strings.Contains(rendered, ui.TitleStyle.Render("Category")) {
+	if rendered := form(t, m).render(m.theme, 76, 20); !strings.Contains(rendered, m.theme.TitleStyle.Render("Category")) {
 		t.Fatal("focused category label is not highlighted")
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
@@ -601,7 +601,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if form(t, m).field != 2 {
 		t.Fatal("down arrow did not focus details")
 	}
-	if help := ansi.Strip(form(t, m).render(76, 20)); !strings.Contains(help, "ctrl+enter save  esc cancel  tab next field") {
+	if help := ansi.Strip(form(t, m).render(m.theme, 76, 20)); !strings.Contains(help, "ctrl+enter save  esc cancel  tab next field") {
 		t.Fatalf("details help changed by focus: %s", help)
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: 'X', Text: "X"})
@@ -676,10 +676,10 @@ func TestModalDetailsFillRemainingHeight(t *testing.T) {
 	for _, size := range [][2]int{{100, 30}, {80, 24}, {80, 18}, {80, 17}, {60, 16}, {56, 19}, {56, 16}} {
 		for _, mode := range []modalMode{modalAddGeneral, modalAddBranch, modalEdit} {
 			t.Run(fmt.Sprintf("%dx%d mode %d", size[0], size[1], mode), func(t *testing.T) {
-				m := &model{width: size[0], height: size[1], tasks: taskSet{general: []store.Task{{Text: "Task"}}}}
+				m := &model{theme: ui.NewTheme(true), width: size[0], height: size[1], tasks: taskSet{general: []store.Task{{Text: "Task"}}}}
 				m.startTaskModal(mode)
 				width, height := form(t, m).dimensions(size[0], size[1])
-				lines := strings.Split(ansi.Strip(form(t, m).render(width, height)), "\n")
+				lines := strings.Split(ansi.Strip(form(t, m).render(m.theme, width, height)), "\n")
 				if len(lines) != height {
 					t.Fatalf("modal is %d lines, want %d", len(lines), height)
 				}
@@ -692,12 +692,13 @@ func TestModalDetailsFillRemainingHeight(t *testing.T) {
 }
 
 func TestOnBackgroundSurvivesNestedResets(t *testing.T) {
-	seq := ansi.NewStyle().BackgroundColor(ui.ColorModal).String()
-	got := ui.OnBackground(ui.KeyStyle.Render("esc")+" "+ui.MutedStyle.Render("cancel"), ui.ColorModal)
+	theme := ui.NewTheme(true)
+	seq := ansi.NewStyle().BackgroundColor(theme.ColorModal).String()
+	got := ui.OnBackground(theme.KeyStyle.Render("esc")+" "+theme.MutedStyle.Render("cancel"), theme.ColorModal)
 	if !strings.HasPrefix(got, seq) || strings.Count(got, "\x1b[m"+seq) != 2 {
 		t.Fatalf("background not restored after resets: %q", got)
 	}
-	if got := ui.OnBackground("a\x1b[49mb", ui.ColorModal); got != seq+"a"+seq+"b" {
+	if got := ui.OnBackground("a\x1b[49mb", theme.ColorModal); got != seq+"a"+seq+"b" {
 		t.Fatalf("default background not replaced: %q", got)
 	}
 }
@@ -711,7 +712,7 @@ func TestTaskModalFieldsAndFocus(t *testing.T) {
 	opened, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = opened.(*model)
 	focusedLine := func() string {
-		for line := range strings.SplitSeq(ansi.Strip(form(t, m).render(76, 20)), "\n") {
+		for line := range strings.SplitSeq(ansi.Strip(form(t, m).render(m.theme, 76, 20)), "\n") {
 			if strings.Contains(line, "┃") {
 				return line
 			}
@@ -721,7 +722,7 @@ func TestTaskModalFieldsAndFocus(t *testing.T) {
 	if line := focusedLine(); !strings.Contains(line, "What needs doing?") {
 		t.Fatalf("focus bar is not beside the task field: %q", line)
 	}
-	for line := range strings.SplitSeq(form(t, m).render(76, 20), "\n") {
+	for line := range strings.SplitSeq(form(t, m).render(m.theme, 76, 20), "\n") {
 		if strings.Contains(line, "\x1b[m ") {
 			t.Fatalf("modal line lets the terminal background through after a reset: %q", line)
 		}
@@ -736,7 +737,7 @@ func TestTaskModalFieldsAndFocus(t *testing.T) {
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = opened.(*model)
-	plain := ansi.Strip(form(t, m).render(76, 20))
+	plain := ansi.Strip(form(t, m).render(m.theme, 76, 20))
 	lines := strings.Split(plain, "\n")
 	if form(t, m).err == "" || !strings.Contains(lines[1], "General › New task") || !strings.Contains(lines[len(lines)-2], form(t, m).err) || strings.Contains(plain, "ctrl+enter") {
 		t.Fatalf("error should replace the key hints and keep the heading: %s", plain)
@@ -753,7 +754,7 @@ func TestBranchFieldHintsDescribePicker(t *testing.T) {
 	m = opened.(*model)
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = opened.(*model)
-	if plain := ansi.Strip(form(t, m).render(76, 20)); !strings.Contains(plain, "Branches › New task") || !strings.Contains(plain, "↑↓ choose  tab accept") {
+	if plain := ansi.Strip(form(t, m).render(m.theme, 76, 20)); !strings.Contains(plain, "Branches › New task") || !strings.Contains(plain, "↑↓ choose  tab accept") {
 		t.Fatalf("branch form heading or picker hints missing: %s", plain)
 	}
 }
@@ -770,7 +771,7 @@ func TestEditFormMovesTaskToAnotherCategory(t *testing.T) {
 	m.width, m.height = 80, 24
 	m.general.open = categoryGroup("auth")
 	m.startTaskModal(modalEdit)
-	if form(t, m).branchScope() || form(t, m).scope.Value() != "auth" || !strings.Contains(ansi.Strip(form(t, m).render(76, 20)), "Category") {
+	if form(t, m).branchScope() || form(t, m).scope.Value() != "auth" || !strings.Contains(ansi.Strip(form(t, m).render(m.theme, 76, 20)), "Category") {
 		t.Fatalf("edit form did not offer the task's category: %q", form(t, m).scope.Value())
 	}
 	form(t, m).scope.SetValue("@docs")

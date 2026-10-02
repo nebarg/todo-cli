@@ -36,6 +36,7 @@ type model struct {
 	all              *allTasksView // nil unless the All tasks view is open
 	general          groupList
 	branch           groupList
+	theme            ui.Theme
 	focus            pane
 	detailFrom       pane
 	detailScroll     int
@@ -60,7 +61,7 @@ func New(file string, repo project.Context, files filesui.Model) (tea.Model, err
 }
 
 func newModel(file string, repo project.Context, files filesui.Model) (*model, error) {
-	m := &model{file: file, project: repo, width: 100, height: 30, files: files}
+	m := &model{file: file, project: repo, theme: ui.NewTheme(true), width: 100, height: 30, files: files}
 	// Before the dashboard is drawn, Git is asked directly.
 	m.setBranches(branchState(repo))
 	if err := m.readTasks(true); err != nil {
@@ -76,11 +77,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		if m.overlay != nil {
-			return m, m.updateOverlay(msg)
+		// Laying the task form out needs the theme, which only the model
+		// holds, so it is resized here rather than through its update.
+		if f, ok := m.overlay.(*taskModal); ok {
+			f.resize(m.theme, msg.Width, msg.Height)
 		}
 	case tea.BackgroundColorMsg:
-		ui.ApplyTheme(msg.IsDark())
+		m.setTheme(ui.NewTheme(msg.IsDark()))
 	case filesui.ScannedMsg:
 		cmd := m.files.Update(msg)
 		m.status = ""
@@ -473,6 +476,15 @@ func (m *model) setProject(msg projectStateMsg) {
 			m.focus = branchPane
 		}
 		m.openCurrentBranch()
+	}
+}
+
+// setTheme takes the theme for the terminal's background, passing it on to
+// an open task form, whose fields keep the styles they were given.
+func (m *model) setTheme(theme ui.Theme) {
+	m.theme = theme
+	if f, ok := m.overlay.(*taskModal); ok {
+		f.setTheme(theme)
 	}
 }
 

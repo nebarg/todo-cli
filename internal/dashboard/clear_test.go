@@ -99,7 +99,7 @@ func TestClearDoneNamesHeadingsItEmpties(t *testing.T) {
 	m, _ := clearModel(t)
 	m.openAllTasks()
 	m = press(m, "X")
-	dialog := ansi.Strip(confirmation(t, m).render())
+	dialog := ansi.Strip(confirmation(t, m).render(m.theme))
 	if !strings.Contains(dialog, "The @docs and "+branchIcon+" feature/x headings will be empty") || !strings.Contains(dialog, "y remove") {
 		t.Fatalf("dialog = %s", dialog)
 	}
@@ -131,7 +131,7 @@ func TestUndoClearRestoresTheFile(t *testing.T) {
 	if hints := m.footerHints(); len(hints) == 0 || hints[0] != (ui.KeyHint{Key: "u", Label: "undo clear"}) {
 		t.Fatalf("footer does not offer undo first: %v", hints)
 	}
-	if help := ansi.Strip(renderHelp()); !strings.Contains(help, "X / u clear done / undo") {
+	if help := ansi.Strip(renderHelp(m.theme)); !strings.Contains(help, "X / u clear done / undo") {
 		t.Fatalf("help does not list undo: %s", help)
 	}
 	m = press(m, "u")
@@ -218,7 +218,7 @@ func TestClearInsideMissingBranchDeletesIt(t *testing.T) {
 	if !isOpen[*clearConfirmation](m) {
 		t.Fatalf("X did not ask for confirmation: %q", m.status)
 	}
-	if dialog := ansi.Strip(confirmation(t, m).render()); !strings.Contains(dialog, "Remove the 2 tasks of "+branchIcon+" feature/gone?") || !strings.Contains(dialog, "no longer exists in Git") {
+	if dialog := ansi.Strip(confirmation(t, m).render(m.theme)); !strings.Contains(dialog, "Remove the 2 tasks of "+branchIcon+" feature/gone?") || !strings.Contains(dialog, "no longer exists in Git") {
 		t.Fatalf("dialog = %s", dialog)
 	}
 	m = press(m, "y")
@@ -237,7 +237,7 @@ func TestClearingBranchesRemovesMissingOnes(t *testing.T) {
 		t.Fatalf("footer = %q", footer)
 	}
 	m = press(m, "X")
-	dialog := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(confirmation(t, m).render()), "│", " ")), " ")
+	dialog := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(confirmation(t, m).render(m.theme)), "│", " ")), " ")
 	for _, want := range []string{"Remove 1 done task and 2 tasks of missing branches from Branches?", branchIcon + " feature/gone no longer exists in Git, so all of its 2 tasks go too."} {
 		if !strings.Contains(dialog, want) {
 			t.Errorf("dialog lacks %q: %s", want, dialog)
@@ -253,8 +253,8 @@ func TestClearingBranchesRemovesMissingOnes(t *testing.T) {
 func TestIndexMarksMissingBranches(t *testing.T) {
 	m, _ := missingBranchModel(t)
 	m.openAllTasks()
-	view := m.all.view(m.tasks.all, m.branchMissing, 100, 20)
-	gone := lipgloss.NewStyle().Foreground(ui.ColorHigh).Render(ui.Column("⚠ feature/gone", 24))
+	view := m.all.view(m.theme, m.tasks.all, m.branchMissing, 100, 20)
+	gone := lipgloss.NewStyle().Foreground(m.theme.ColorHigh).Render(ui.Column("⚠ feature/gone", 24))
 	if !strings.Contains(view, gone) || !strings.Contains(ansi.Strip(view), branchIcon+" feature/live") {
 		t.Fatalf("index does not mark the missing branch:\n%s", view)
 	}

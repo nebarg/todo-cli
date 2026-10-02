@@ -127,15 +127,15 @@ func (m *model) selectInAllTasks(selected store.Task) {
 	}
 }
 
-func priorityStyle(p store.Priority) lipgloss.Style {
-	color := ui.ColorMuted
+func priorityStyle(theme ui.Theme, p store.Priority) lipgloss.Style {
+	color := theme.ColorMuted
 	switch p {
 	case store.PriorityHigh:
-		color = ui.ColorHigh
+		color = theme.ColorHigh
 	case store.PriorityMedium:
-		color = ui.ColorMedium
+		color = theme.ColorMedium
 	case store.PriorityLow:
-		color = ui.ColorLow
+		color = theme.ColorLow
 	}
 	return lipgloss.NewStyle().Bold(p != store.PriorityNone).Foreground(color)
 }
@@ -151,23 +151,23 @@ func priorityMark(p store.Priority) string {
 
 // view draws tasks in the view's order, marking those of a branch missing
 // reports as gone.
-func (v *allTasksView) view(tasks []store.Task, missing func(branch string) bool, width, height int) string {
+func (v *allTasksView) view(theme ui.Theme, tasks []store.Task, missing func(branch string) bool, width, height int) string {
 	innerWidth := max(1, width-4)
 	tasks = v.sorted(tasks)
 	scopeWidth := min(24, max(17, innerWidth/3))
 	taskWidth := max(1, innerWidth-2-scopeWidth)
-	heading := ui.TitleStyle.Render("All tasks") + ui.MutedStyle.Render(fmt.Sprintf("  %d/%d", completedCount(tasks), len(tasks)))
-	sorted := ui.MutedStyle.Render("sorted by ") + lipgloss.NewStyle().Foreground(ui.ColorText).Render(string(v.sort))
+	heading := theme.TitleStyle.Render("All tasks") + theme.MutedStyle.Render(fmt.Sprintf("  %d/%d", completedCount(tasks), len(tasks)))
+	sorted := theme.MutedStyle.Render("sorted by ") + lipgloss.NewStyle().Foreground(theme.ColorText).Render(string(v.sort))
 	if gap := innerWidth - ansi.StringWidth(heading) - ansi.StringWidth(sorted); gap >= 2 {
 		heading += strings.Repeat(" ", gap) + sorted
 	}
 	lines := []string{ansi.Truncate(heading, innerWidth, "…"), ""}
 	columns := ui.Column("TASK: DETAILS", taskWidth) + "  " + ui.Column("CATEGORY / BRANCH", scopeWidth)
-	lines = append(lines, ui.MutedStyle.Render(columns))
+	lines = append(lines, theme.MutedStyle.Render(columns))
 	visible := max(1, height-5)
 	start, end := ui.VisibleRange(v.cursor, len(tasks), visible)
 	if len(tasks) == 0 {
-		lines = append(lines, ui.MutedStyle.Render("No tasks in the Markdown file"))
+		lines = append(lines, theme.MutedStyle.Render("No tasks in the Markdown file"))
 	}
 	for i := start; i < end; i++ {
 		t := tasks[i]
@@ -182,40 +182,40 @@ func (v *allTasksView) view(tasks []store.Task, missing func(branch string) bool
 		if gone {
 			scope = "⚠ " + t.Branch
 		}
-		mark, markStyle := priorityMark(t.Priority)+" ", ui.MutedStyle
+		mark, markStyle := priorityMark(t.Priority)+" ", theme.MutedStyle
 		if t.Priority != "" {
-			markStyle = priorityStyle(t.Priority)
+			markStyle = priorityStyle(theme, t.Priority)
 		}
-		taskStyle := lipgloss.NewStyle().Foreground(ui.ColorStrong)
+		taskStyle := lipgloss.NewStyle().Foreground(theme.ColorStrong)
 		if t.Done {
-			mark, markStyle, taskStyle = "✓ ", ui.MutedStyle, ui.MutedStyle
+			mark, markStyle, taskStyle = "✓ ", theme.MutedStyle, theme.MutedStyle
 		}
 		title := ui.CleanDisplay(t.Text)
 		if details := strings.Join(strings.Fields(ui.CleanDisplay(t.Details)), " "); details != "" {
 			title += ": " + details
 		}
 		selected := i == v.cursor
-		scopeStyle := ui.MutedStyle
+		scopeStyle := theme.MutedStyle
 		switch {
 		case gone:
-			scopeStyle = lipgloss.NewStyle().Foreground(ui.ColorHigh)
+			scopeStyle = lipgloss.NewStyle().Foreground(theme.ColorHigh)
 		case t.Branch != "":
-			scopeStyle = lipgloss.NewStyle().Foreground(ui.ColorGreen)
+			scopeStyle = lipgloss.NewStyle().Foreground(theme.ColorGreen)
 		case t.Category != "":
-			scopeStyle = lipgloss.NewStyle().Foreground(ui.ColorPurple)
+			scopeStyle = lipgloss.NewStyle().Foreground(theme.ColorPurple)
 		}
 		if selected {
-			markStyle = markStyle.Background(ui.ColorSelection)
-			taskStyle = taskStyle.Background(ui.ColorSelection)
-			scopeStyle = scopeStyle.Background(ui.ColorSelection)
+			markStyle = markStyle.Background(theme.ColorSelection)
+			taskStyle = taskStyle.Background(theme.ColorSelection)
+			scopeStyle = scopeStyle.Background(theme.ColorSelection)
 		}
 		gap := "  "
 		if selected {
-			gap = lipgloss.NewStyle().Background(ui.ColorSelection).Render(gap)
+			gap = lipgloss.NewStyle().Background(theme.ColorSelection).Render(gap)
 		}
 		row := markStyle.Render(mark) + taskStyle.Render(ui.Column(title, taskWidth-ansi.StringWidth(mark))) + gap +
 			scopeStyle.Render(ui.Column(scope, scopeWidth))
 		lines = append(lines, row)
 	}
-	return ui.Panel(width, height, lines, "")
+	return theme.Panel(width, height, lines, "")
 }

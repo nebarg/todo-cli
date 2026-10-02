@@ -9,15 +9,15 @@ import (
 
 // Breadcrumb shows where a panel is, with the last part highlighted and a
 // muted suffix such as a count after it.
-func Breadcrumb(parts []string, suffix string, width int) string {
+func (t Theme) Breadcrumb(parts []string, suffix string, width int) string {
 	last := len(parts) - 1
 	var line strings.Builder
 	for _, part := range parts[:last] {
-		line.WriteString(MutedStyle.Render(part + " › "))
+		line.WriteString(t.MutedStyle.Render(part + " › "))
 	}
-	line.WriteString(TitleStyle.Render(parts[last]))
+	line.WriteString(t.TitleStyle.Render(parts[last]))
 	if suffix != "" {
-		line.WriteString(MutedStyle.Render("  " + suffix))
+		line.WriteString(t.MutedStyle.Render("  " + suffix))
 	}
 	return ansi.Truncate(line.String(), width, "…")
 }
@@ -34,7 +34,7 @@ func ContentHeight(height int, status string) int {
 
 // Panel draws lines in a bordered box, with status in a bar along the
 // bottom when it isn't empty.
-func Panel(width, height int, lines []string, status string) string {
+func (t Theme) Panel(width, height int, lines []string, status string) string {
 	if status != "" {
 		contentHeight := ContentHeight(height, status)
 		lines = lines[:min(len(lines), contentHeight)]
@@ -43,9 +43,9 @@ func Panel(width, height int, lines []string, status string) string {
 		}
 		innerWidth := max(1, width-4)
 		status = ansi.Truncate(status, max(1, innerWidth-2), "…")
-		lines = append(lines, lipgloss.NewStyle().Background(ColorBar).Width(innerWidth).Padding(0, 1).Render(OnBackground(status, ColorBar)))
+		lines = append(lines, lipgloss.NewStyle().Background(t.ColorBar).Width(innerWidth).Padding(0, 1).Render(OnBackground(status, t.ColorBar)))
 	}
 	return lipgloss.NewStyle().Width(width).Height(height).Padding(0, 1).
-		Border(lipgloss.RoundedBorder()).BorderForeground(ColorBorder).
+		Border(lipgloss.RoundedBorder()).BorderForeground(t.ColorBorder).
 		Render(strings.Join(lines, "\n"))
 }

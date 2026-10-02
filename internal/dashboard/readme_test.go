@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/project"
 	"github.com/nebarg/todo-cli/internal/store"
-	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 func pressKey(t *testing.T, m *model, key string) tea.Cmd {
@@ -85,7 +84,7 @@ func TestReadmeTasksOpenFromGeneralAndOnlyToggle(t *testing.T) {
 
 	pressKey(t, m, "right")
 	details := ansi.Strip(m.renderDetailPane(60, 12))
-	if m.focus != detailPane || !strings.Contains(details, "00 Urgent") || strings.Contains(details, "No details yet") || !strings.Contains(ansi.Strip(ui.RenderHints(m.footerHints())), "e open file") {
+	if m.focus != detailPane || !strings.Contains(details, "00 Urgent") || strings.Contains(details, "No details yet") || !strings.Contains(ansi.Strip(m.theme.RenderHints(m.footerHints())), "e open file") {
 		t.Fatalf("README task details:\n%s\nhints %v", details, m.footerHints())
 	}
 	for _, key := range []string{"p", "c", "X"} {

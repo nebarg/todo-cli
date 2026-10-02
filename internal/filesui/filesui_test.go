@@ -74,6 +74,7 @@ func TestCategoriesOpenLikeGeneral(t *testing.T) {
 }
 
 func TestDetailPageOpensAndCloses(t *testing.T) {
+	theme := ui.NewTheme(true)
 	m := scanned(
 		scan.Match{Path: "a.go", Line: 1, Note: "first"},
 		scan.Match{Path: "b.go", Line: 2, Note: "second", Category: "ui"},
@@ -84,7 +85,7 @@ func TestDetailPageOpensAndCloses(t *testing.T) {
 	if !m.Details() || !slices.Equal(m.breadcrumb(), []string{"Files", "@ui", "Details"}) {
 		t.Fatalf("right did not open details: %v", m.breadcrumb())
 	}
-	if hints := ansi.Strip(ui.RenderHints(m.Hints())); hints != "← back  e open file" {
+	if hints := ansi.Strip(theme.RenderHints(m.Hints())); hints != "← back  e open file" {
 		t.Fatalf("detail hints = %q", hints)
 	}
 	press(&m, "down")
@@ -100,18 +101,19 @@ func TestDetailPageOpensAndCloses(t *testing.T) {
 	if cmd := press(&m, "left"); m.Details() || cmd == nil {
 		t.Fatal("left did not return to the list with a preview")
 	}
-	if hints := ansi.Strip(ui.RenderHints(m.Hints())); hints != "e open file  → details  ← back" {
+	if hints := ansi.Strip(theme.RenderHints(m.Hints())); hints != "e open file  → details  ← back" {
 		t.Fatalf("list hints = %q", hints)
 	}
 	m.Top()
-	if hints := ansi.Strip(ui.RenderHints(m.Hints())); hints != "→ open" {
+	if hints := ansi.Strip(theme.RenderHints(m.Hints())); hints != "→ open" {
 		t.Fatalf("category row hints = %q", hints)
 	}
 }
 
 func TestEmptyListOpensNothing(t *testing.T) {
+	theme := ui.NewTheme(true)
 	m := New("/nowhere", scan.Exclude{}, nil)
-	if !m.Loading() || !strings.Contains(ansi.Strip(m.View(60, 10)), "Scanning…") {
+	if !m.Loading() || !strings.Contains(ansi.Strip(m.View(theme, 60, 10)), "Scanning…") {
 		t.Fatal("a list before its first scan should say it's scanning")
 	}
 	if m.Hints() != nil {
@@ -128,7 +130,7 @@ func TestEmptyListOpensNothing(t *testing.T) {
 		t.Fatal("e opened an editor without a TODO")
 	}
 	m.Update(ScannedMsg{Err: fmt.Errorf("permission denied")})
-	if m.Err() != "permission denied" || !strings.Contains(ansi.Strip(m.View(60, 10)), "Scan failed") {
+	if m.Err() != "permission denied" || !strings.Contains(ansi.Strip(m.View(theme, 60, 10)), "Scan failed") {
 		t.Fatalf("scan error not shown: %q", m.Err())
 	}
 }
@@ -155,22 +157,25 @@ func TestRescanReplacesARunningScan(t *testing.T) {
 }
 
 func TestScanErrorVisibleInDetails(t *testing.T) {
+	theme := ui.NewTheme(true)
 	m := Model{err: "permission denied"}
-	got := strings.Join(m.detailLines(60, 20), "\n")
+	got := strings.Join(m.detailLines(theme, 60, 20), "\n")
 	if !strings.Contains(got, "permission denied") {
 		t.Fatalf("scan error missing from detail pane: %s", got)
 	}
 }
 
 func TestLongZeroLevelsAreShortened(t *testing.T) {
+	theme := ui.NewTheme(true)
 	m := scanned(scan.Match{Path: "a.go", Line: 1, Note: "urgent", Level: "000000"}, scan.Match{Path: "b.go", Line: 1, Note: "next", Level: "1"})
-	pane := ansi.Strip(m.View(80, 8))
+	pane := ansi.Strip(m.View(theme, 80, 8))
 	if !strings.Contains(pane, "0x6 urgent") || !strings.Contains(pane, "1   next") {
 		t.Fatalf("long level was not shortened:\n%s", pane)
 	}
 }
 
 func TestListShowsTheTodoBeforeItsFile(t *testing.T) {
+	theme := ui.NewTheme(true)
 	long := "ebuyer_site/private/common/classes/Blocks/BlockPage.class.php"
 	m := scanned(
 		scan.Match{Path: "retry.go", Line: 8, Note: "solve first", Level: "000"},
@@ -178,7 +183,7 @@ func TestListShowsTheTodoBeforeItsFile(t *testing.T) {
 		scan.Match{Path: long, Line: 30, Note: "Remove these once the new layout ships"},
 		scan.Match{Path: "mobile.css", Line: 3, Note: "Hide on mobile", Category: "responsive"},
 	)
-	pane := ansi.Strip(m.View(100, 12))
+	pane := ansi.Strip(m.View(theme, 100, 12))
 	rows := strings.Split(pane, "\n")
 	for i, want := range []string{
 		"▸ responsive",
@@ -199,19 +204,19 @@ func TestListShowsTheTodoBeforeItsFile(t *testing.T) {
 			t.Fatalf("row is %d wide: %q", ansi.StringWidth(row), row)
 		}
 	}
-	if status := ansi.Strip(m.status()); status != "1 TODO" {
+	if status := ansi.Strip(m.status(theme)); status != "1 TODO" {
 		t.Fatalf("category status = %q", status)
 	}
-	styled := m.View(100, 12)
-	if !strings.Contains(styled, lipgloss.NewStyle().Foreground(ui.ColorHigh).Render("000 ")) || !strings.Contains(styled, lipgloss.NewStyle().Foreground(ui.ColorMedium).Render("1   ")) {
+	styled := m.View(theme, 100, 12)
+	if !strings.Contains(styled, lipgloss.NewStyle().Foreground(theme.ColorHigh).Render("000 ")) || !strings.Contains(styled, lipgloss.NewStyle().Foreground(theme.ColorMedium).Render("1   ")) {
 		t.Error("zero levels are not red, or numbered levels not yellow")
 	}
 	m.cursor = 3
-	if status := ansi.Strip(m.status()); status != long+":30" {
+	if status := ansi.Strip(m.status(theme)); status != long+":30" {
 		t.Fatalf("status = %q", status)
 	}
 	m.category = "responsive"
-	if row := strings.Split(ansi.Strip(m.View(100, 12)), "\n")[3]; !strings.HasPrefix(strings.Trim(row, "│ "), "Hide on mobile") {
+	if row := strings.Split(ansi.Strip(m.View(theme, 100, 12)), "\n")[3]; !strings.HasPrefix(strings.Trim(row, "│ "), "Hide on mobile") {
 		t.Fatalf("a list without levels kept the level column: %q", row)
 	}
 	for _, c := range []struct {
@@ -225,6 +230,7 @@ func TestListShowsTheTodoBeforeItsFile(t *testing.T) {
 }
 
 func TestDetailsFillThePageAroundTheTodo(t *testing.T) {
+	theme := ui.NewTheme(true)
 	var preview []scan.ContextLine
 	for n := 1; n <= 60; n++ {
 		preview = append(preview, scan.ContextLine{Number: n, Text: fmt.Sprintf("\tline %d", n)})
@@ -233,7 +239,7 @@ func TestDetailsFillThePageAroundTheTodo(t *testing.T) {
 	item := scan.Match{Path: "classes copy/Clients.class.php", Line: 30, Note: "this is urgent", Level: "00000000000"}
 	m := scanned(item)
 	m.Update(previewMsg{path: item.Path, line: item.Line, lines: preview})
-	lines := m.detailLines(60, 12)
+	lines := m.detailLines(theme, 60, 12)
 	plain := make([]string, len(lines))
 	for i, line := range lines {
 		plain[i] = ansi.Strip(line)
@@ -251,7 +257,7 @@ func TestDetailsFillThePageAroundTheTodo(t *testing.T) {
 		t.Fatalf("context is not centred on the TODO, or wrapped:\n%s", strings.Join(plain, "\n"))
 	}
 	m.matches[0].Line, m.previewLine, preview[1].Text = 2, 2, "// TODO near the top"
-	if lines := m.detailLines(60, 12); !strings.HasPrefix(ansi.Strip(lines[2]), "   1 │") {
+	if lines := m.detailLines(theme, 60, 12); !strings.HasPrefix(ansi.Strip(lines[2]), "   1 │") {
 		t.Fatalf("a TODO near the top of the file did not start at line 1: %q", ansi.Strip(lines[2]))
 	}
 }

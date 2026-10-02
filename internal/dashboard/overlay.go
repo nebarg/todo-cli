@@ -1,11 +1,14 @@
 package dashboard
 
-import tea "charm.land/bubbletea/v2"
+import (
+	tea "charm.land/bubbletea/v2"
+	"github.com/nebarg/todo-cli/internal/ui"
+)
 
 // overlay takes the keyboard while it is open over the dashboard: the help,
 // a clear confirmation, the task form or the category prompt.
 type overlay interface {
-	// update handles a key, paste or resize. It returns the overlay to keep
+	// update handles a key or a paste. It returns the overlay to keep
 	// open, or nil once it has closed, and anything the model should act
 	// on, such as a saved task.
 	update(msg tea.Msg) (next overlay, outcome tea.Msg, cmd tea.Cmd)
@@ -14,7 +17,7 @@ type overlay interface {
 // dialog is an overlay drawn in a box over the middle of the dashboard.
 type dialog interface {
 	overlay
-	view(width, height int) string // in a terminal of width by height cells
+	view(theme ui.Theme, width, height int) string // in a terminal of width by height cells
 }
 
 // updateOverlay passes msg to the open overlay, then acts on its outcome

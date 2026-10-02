@@ -104,13 +104,13 @@ func (p *categoryPrompt) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 
 // footer takes the dashboard's footer while the prompt is open, with a
 // failed save's error in place of the key hints.
-func (p *categoryPrompt) footer(width int) string {
+func (p *categoryPrompt) footer(theme ui.Theme, width int) string {
 	input := p.input.View()
 	rest := width - ansi.StringWidth(input) - 2
 	if p.err != "" {
-		return input + "  " + errorText(p.err, rest)
+		return input + "  " + errorText(theme, p.err, rest)
 	}
-	return input + "  " + ui.FitHints([]ui.KeyHint{{Key: "enter", Label: "save"}, {Key: "esc", Label: "cancel"}}, rest)
+	return input + "  " + theme.FitHints([]ui.KeyHint{{Key: "enter", Label: "save"}, {Key: "esc", Label: "cancel"}}, rest)
 }
 
 func stripCategorySpaces(value string) string {

@@ -20,16 +20,16 @@ type GroupRow struct {
 }
 
 // Render draws the row in width cells.
-func (g GroupRow) Render(width int, selected bool) string {
+func (g GroupRow) Render(theme Theme, width int, selected bool) string {
 	nameStyle, noteStyle := g.NameStyle, g.NoteStyle
-	countStyle, fillStyle := MutedStyle, lipgloss.NewStyle()
+	countStyle, fillStyle := theme.MutedStyle, lipgloss.NewStyle()
 	if selected {
 		if !g.KeepColour {
-			nameStyle = nameStyle.Foreground(ColorStrong)
+			nameStyle = nameStyle.Foreground(theme.ColorStrong)
 		}
-		nameStyle = nameStyle.Background(ColorSelection)
-		noteStyle = noteStyle.Background(ColorSelection)
-		countStyle, fillStyle = SelectedDoneStyle, SelectedStyle
+		nameStyle = nameStyle.Background(theme.ColorSelection)
+		noteStyle = noteStyle.Background(theme.ColorSelection)
+		countStyle, fillStyle = theme.SelectedDoneStyle, theme.SelectedStyle
 	}
 	note := g.Note
 	if note != "" {
@@ -43,14 +43,14 @@ func (g GroupRow) Render(width int, selected bool) string {
 
 // LevelMark is a todo-system level's label and colour: red for levels of
 // zeros, yellow for the rest, and a dim dot without a level.
-func LevelMark(l string) (string, lipgloss.Style) {
+func (t Theme) LevelMark(l string) (string, lipgloss.Style) {
 	switch {
 	case l == "":
-		return "·", MutedStyle
+		return "·", t.MutedStyle
 	case level.Zeros(l):
-		return LevelLabel(l), lipgloss.NewStyle().Foreground(ColorHigh)
+		return LevelLabel(l), lipgloss.NewStyle().Foreground(t.ColorHigh)
 	}
-	return LevelLabel(l), lipgloss.NewStyle().Foreground(ColorMedium)
+	return LevelLabel(l), lipgloss.NewStyle().Foreground(t.ColorMedium)
 }
 
 // LevelLabel keeps a level short: four or more zeros are written as 0x4 up
@@ -66,11 +66,11 @@ func LevelLabel(l string) string {
 }
 
 // LeveledTitle is a detail page's title, led by its todo-system level.
-func LeveledTitle(text, level string) string {
-	title := TaskTitleStyle.Render(CleanDisplay(text))
+func (t Theme) LeveledTitle(text, level string) string {
+	title := t.TaskTitleStyle.Render(CleanDisplay(text))
 	if level == "" {
 		return title
 	}
-	label, style := LevelMark(level)
+	label, style := t.LevelMark(level)
 	return style.Bold(true).Render(label) + " " + title
 }

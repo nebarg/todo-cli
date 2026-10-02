@@ -104,7 +104,7 @@ func (c *clearConfirmation) update(msg tea.Msg) (overlay, tea.Msg, tea.Cmd) {
 	return nil, nil, nil
 }
 
-func (c *clearConfirmation) view(int, int) string { return c.render() }
+func (c *clearConfirmation) view(theme ui.Theme, _, _ int) string { return c.render(theme) }
 
 // applyClear removes a confirmed clear's tasks, keeping the removal so u can
 // undo it.
@@ -154,7 +154,7 @@ func (m *model) undoClear() {
 
 func taskCount(n int) string { return ui.Plural(n, "task", "tasks") }
 
-func (c clearConfirmation) render() string {
+func (c clearConfirmation) render(theme ui.Theme) string {
 	const width = 48
 	var title, reason string
 	missingTasks := len(c.targets.Tasks) - c.targets.Done
@@ -175,9 +175,9 @@ func (c clearConfirmation) render() string {
 	default:
 		title = fmt.Sprintf("Remove %s from %s?", c.targets.Summary(), c.scope)
 	}
-	lines := []string{ui.TitleStyle.Render(ansi.Wrap(title, width, ""))}
+	lines := []string{theme.TitleStyle.Render(ansi.Wrap(title, width, ""))}
 	if reason != "" {
-		lines = append(lines, ui.MutedStyle.Render(ansi.Wrap(reason, width, "")))
+		lines = append(lines, theme.MutedStyle.Render(ansi.Wrap(reason, width, "")))
 	}
 	var headings []string
 	for _, category := range c.removal.Categories {
@@ -193,12 +193,12 @@ func (c clearConfirmation) render() string {
 		if len(headings) > 1 {
 			noun = "headings"
 		}
-		lines = append(lines, ui.MutedStyle.Render(ansi.Wrap(fmt.Sprintf("The %s %s will be empty and removed too.", joinNames(headings), noun), width, "")))
+		lines = append(lines, theme.MutedStyle.Render(ansi.Wrap(fmt.Sprintf("The %s %s will be empty and removed too.", joinNames(headings), noun), width, "")))
 	}
-	lines = append(lines, "", ui.RenderHints([]ui.KeyHint{{Key: "y", Label: "remove"}, {Key: "esc", Label: "cancel"}}))
+	lines = append(lines, "", theme.RenderHints([]ui.KeyHint{{Key: "y", Label: "remove"}, {Key: "esc", Label: "cancel"}}))
 	return lipgloss.NewStyle().Padding(0, 2).
-		Border(lipgloss.RoundedBorder()).BorderForeground(ui.ColorHigh).BorderBackground(ui.ColorModal).
-		Background(ui.ColorModal).Render(ui.OnBackground(strings.Join(lines, "\n"), ui.ColorModal))
+		Border(lipgloss.RoundedBorder()).BorderForeground(theme.ColorHigh).BorderBackground(theme.ColorModal).
+		Background(theme.ColorModal).Render(ui.OnBackground(strings.Join(lines, "\n"), theme.ColorModal))
 }
 
 // joinNames lists names as "a", "a and b" or "a, b and c".

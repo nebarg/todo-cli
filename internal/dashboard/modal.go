@@ -82,13 +82,13 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 		modal.target = selected.Section
 	}
 	modal.title = textarea.New()
-	modal.title.SetStyles(fieldAreaStyles())
+	modal.scope = textinput.New()
+	modal.details = textarea.New()
+	modal.setTheme(m.theme)
 	modal.title.Prompt = ""
 	modal.title.ShowLineNumbers = false
 	modal.title.Placeholder = "What needs doing?"
 	modal.title.SetHeight(2)
-	modal.scope = textinput.New()
-	modal.scope.SetStyles(fieldInputStyles())
 	modal.scope.Prompt = ""
 	if modal.branchScope() {
 		modal.scope.Placeholder = "Search local branches"
@@ -97,8 +97,6 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 		modal.scope.Placeholder = "Optional category"
 		modal.scope.SetValue(modal.target.Category)
 	}
-	modal.details = textarea.New()
-	modal.details.SetStyles(fieldAreaStyles())
 	modal.details.Prompt = ""
 	modal.details.ShowLineNumbers = false
 	modal.details.Placeholder = "Add context, steps, or links…"
@@ -106,7 +104,7 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 		modal.title.SetValue(modal.selected.Text)
 		modal.details.SetValue(modal.selected.Details)
 	}
-	modal.resize(m.width, m.height)
+	modal.resize(m.theme, m.width, m.height)
 	m.overlay = modal
 	m.status = ""
 	return tea.Batch(modal.title.Focus(), check)
@@ -145,8 +143,6 @@ func (m *model) taskSaved(msg taskSavedMsg) (tea.Model, tea.Cmd) {
 
 func (f *taskModal) update(msg tea.Msg) (overlay, tea.Msg, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		f.resize(msg.Width, msg.Height)
 	case tea.PasteMsg:
 		return f, nil, f.paste(msg)
 	case tea.KeyPressMsg:
@@ -155,8 +151,9 @@ func (f *taskModal) update(msg tea.Msg) (overlay, tea.Msg, tea.Cmd) {
 	return f, nil, nil
 }
 
-func (f *taskModal) view(width, height int) string {
-	return f.render(f.dimensions(width, height))
+func (f *taskModal) view(theme ui.Theme, width, height int) string {
+	width, height = f.dimensions(width, height)
+	return f.render(theme, width, height)
 }
 
 func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
@@ -399,7 +396,7 @@ func (f *taskModal) acceptBranch() {
 	}
 }
 
-func (f *taskModal) branchSuggestions(width int) []string {
+func (f *taskModal) branchSuggestions(theme ui.Theme, width int) []string {
 	rows := 2
 	matches := f.matchingBranches()
 	lines := make([]string, 0, rows)
@@ -408,17 +405,17 @@ func (f *taskModal) branchSuggestions(width int) []string {
 		if len(f.branches) == 0 {
 			message = "No local Git branches"
 		}
-		lines = append(lines, ui.MutedStyle.Render(ansi.Truncate(message, width, "…")))
+		lines = append(lines, theme.MutedStyle.Render(ansi.Truncate(message, width, "…")))
 	} else {
 		start := max(0, f.branchCursor-rows+1)
 		for i := start; i < len(matches) && len(lines) < rows; i++ {
 			mark := "  "
-			style := ui.MutedStyle
+			style := theme.MutedStyle
 			if i == f.branchCursor {
 				mark = "› "
-				style = lipgloss.NewStyle().Foreground(ui.ColorGreen)
+				style = lipgloss.NewStyle().Foreground(theme.ColorGreen)
 				if f.field == scopeField {
-					style = style.Background(ui.ColorSelection)
+					style = style.Background(theme.ColorSelection)
 				}
 			}
 			lineWidth := width
@@ -433,7 +430,7 @@ func (f *taskModal) branchSuggestions(width int) []string {
 				if i-start == thumb {
 					bar = "┃"
 				}
-				lines = append(lines, style.Render(line)+ui.MutedStyle.Render(" "+bar))
+				lines = append(lines, style.Render(line)+theme.MutedStyle.Render(" "+bar))
 			} else {
 				lines = append(lines, style.Render(line))
 			}
@@ -458,7 +455,7 @@ func (f *taskModal) isCompact(height int) bool {
 	return height < 15 || f.branchScope() && height < 18
 }
 
-func (f *taskModal) resize(width, height int) {
+func (f *taskModal) resize(theme ui.Theme, width, height int) {
 	modalWidth, modalHeight := f.dimensions(width, height)
 	innerWidth := max(1, modalWidth-6)
 	f.title.SetWidth(innerWidth)
@@ -468,42 +465,42 @@ func (f *taskModal) resize(width, height int) {
 	// Details takes whatever height the rest of the layout leaves, measured
 	// from the real content so the two can never drift apart.
 	f.details.SetHeight(1)
-	otherLines := lipgloss.Height(strings.Join(f.contentLines(modalWidth, modalHeight), "\n")) - 1
+	otherLines := lipgloss.Height(strings.Join(f.contentLines(theme, modalWidth, modalHeight), "\n")) - 1
 	f.details.SetHeight(max(2, modalHeight-2*modalBorder-otherLines))
 }
 
 const modalBorder = 1
 
-func (f *taskModal) render(width, height int) string {
+func (f *taskModal) render(theme ui.Theme, width, height int) string {
 	return lipgloss.NewStyle().Width(width).Height(height).Padding(0, 2, 0, 1).
-		Border(lipgloss.RoundedBorder()).BorderForeground(ui.ColorFocus).BorderBackground(ui.ColorModal).
-		Background(ui.ColorModal).Render(strings.Join(f.contentLines(width, height), "\n"))
+		Border(lipgloss.RoundedBorder()).BorderForeground(theme.ColorFocus).BorderBackground(theme.ColorModal).
+		Background(theme.ColorModal).Render(strings.Join(f.contentLines(theme, width, height), "\n"))
 }
 
 // contentLines lays out the form. Every line starts with a one-cell gutter
 // that holds the focus bar beside the active field.
-func (f *taskModal) contentLines(width, height int) []string {
+func (f *taskModal) contentLines(theme ui.Theme, width, height int) []string {
 	innerWidth := max(1, width-6)
 	compact := f.isCompact(height)
 	var lines []string
 	add := func(focused bool, blocks ...string) {
 		gutter := " "
 		if focused {
-			gutter = lipgloss.NewStyle().Foreground(ui.ColorFocus).Render("┃")
+			gutter = lipgloss.NewStyle().Foreground(theme.ColorFocus).Render("┃")
 		}
 		for _, block := range blocks {
 			for line := range strings.SplitSeq(block, "\n") {
-				lines = append(lines, ui.OnBackground(gutter+line, ui.ColorModal))
+				lines = append(lines, ui.OnBackground(gutter+line, theme.ColorModal))
 			}
 		}
 	}
 	gap := func() { lines = append(lines, "") }
 
-	add(false, ui.Breadcrumb(f.breadcrumb(), "", innerWidth))
+	add(false, theme.Breadcrumb(f.breadcrumb(), "", innerWidth))
 	if !compact {
 		gap()
 	}
-	add(f.field == titleField, ui.OnBackground(f.title.View(), ui.ColorField))
+	add(f.field == titleField, ui.OnBackground(f.title.View(), theme.ColorField))
 	if !f.branchScope() || !compact {
 		gap()
 	}
@@ -511,18 +508,18 @@ func (f *taskModal) contentLines(width, height int) []string {
 	if f.branchScope() {
 		scopeName = "Branch"
 	}
-	add(f.field == scopeField, f.label(scopeName, scopeField), ui.OnBackground(fieldStyle().Width(innerWidth).Render(f.scope.View()), ui.ColorField))
+	add(f.field == scopeField, f.label(theme, scopeName, scopeField), ui.OnBackground(fieldStyle(theme).Width(innerWidth).Render(f.scope.View()), theme.ColorField))
 	if f.branchScope() {
-		add(f.field == scopeField, f.branchSuggestions(innerWidth)...)
+		add(f.field == scopeField, f.branchSuggestions(theme, innerWidth)...)
 	}
 	if !compact {
 		gap()
 	}
-	add(f.field == detailsField, f.label("Details", detailsField), ui.OnBackground(f.details.View(), ui.ColorField))
+	add(f.field == detailsField, f.label(theme, "Details", detailsField), ui.OnBackground(f.details.View(), theme.ColorField))
 	if !compact {
 		gap()
 	}
-	add(false, f.footer(innerWidth))
+	add(false, f.footer(theme, innerWidth))
 	return lines
 }
 
@@ -540,65 +537,72 @@ func (f *taskModal) breadcrumb() []string {
 	return []string{"General", "Edit task"}
 }
 
-func (f *taskModal) label(name string, field int) string {
+func (f *taskModal) label(theme ui.Theme, name string, field int) string {
 	if f.field == field {
-		return ui.TitleStyle.Render(name)
+		return theme.TitleStyle.Render(name)
 	}
-	return ui.MutedStyle.Render(name)
+	return theme.MutedStyle.Render(name)
 }
 
-func (f *taskModal) footer(width int) string {
+func (f *taskModal) footer(theme ui.Theme, width int) string {
 	if f.err != "" {
-		return errorText(f.err, width)
+		return errorText(theme, f.err, width)
 	}
 	hints := []ui.KeyHint{{Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}, {Key: "tab", Label: "next field"}}
 	if f.branchScope() && f.field == scopeField {
 		hints = []ui.KeyHint{{Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}, {Key: "↑↓", Label: "choose"}, {Key: "tab", Label: "accept"}}
 	}
-	return ui.FitHints(hints, width)
+	return theme.FitHints(hints, width)
 }
 
 // errorText shows a failed save's error where the key hints would be.
-func errorText(err string, width int) string {
-	return lipgloss.NewStyle().Bold(true).Foreground(ui.ColorHigh).Render(ansi.Truncate(err, width, "…"))
+func errorText(theme ui.Theme, err string, width int) string {
+	return lipgloss.NewStyle().Bold(true).Foreground(theme.ColorHigh).Render(ansi.Truncate(err, width, "…"))
 }
 
-func fieldStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Background(ui.ColorField)
+// setTheme restyles the form's fields for theme.
+func (f *taskModal) setTheme(theme ui.Theme) {
+	f.title.SetStyles(fieldAreaStyles(theme))
+	f.scope.SetStyles(fieldInputStyles(theme))
+	f.details.SetStyles(fieldAreaStyles(theme))
+}
+
+func fieldStyle(theme ui.Theme) lipgloss.Style {
+	return lipgloss.NewStyle().Background(theme.ColorField)
 }
 
 // fieldAreaStyles fills a textarea with the field colour, without the default
 // cursor-line highlight, so every field reads as one block.
-func fieldAreaStyles() textarea.Styles {
+func fieldAreaStyles(theme ui.Theme) textarea.Styles {
 	styles := textarea.DefaultStyles(true)
 	state := textarea.StyleState{
-		Base:        fieldStyle(),
-		Text:        fieldStyle().Foreground(ui.ColorStrong),
-		CursorLine:  fieldStyle().Foreground(ui.ColorStrong),
-		Placeholder: fieldStyle().Foreground(ui.ColorMuted),
-		EndOfBuffer: fieldStyle().Foreground(ui.ColorField),
-		Prompt:      fieldStyle(),
-		Selection:   fieldStyle().Background(ui.ColorSelection),
+		Base:        fieldStyle(theme),
+		Text:        fieldStyle(theme).Foreground(theme.ColorStrong),
+		CursorLine:  fieldStyle(theme).Foreground(theme.ColorStrong),
+		Placeholder: fieldStyle(theme).Foreground(theme.ColorMuted),
+		EndOfBuffer: fieldStyle(theme).Foreground(theme.ColorField),
+		Prompt:      fieldStyle(theme),
+		Selection:   fieldStyle(theme).Background(theme.ColorSelection),
 	}
 	styles.Focused = state
 	styles.Blurred = state
-	styles.Blurred.Text = fieldStyle().Foreground(ui.ColorText)
+	styles.Blurred.Text = fieldStyle(theme).Foreground(theme.ColorText)
 	styles.Blurred.CursorLine = styles.Blurred.Text
-	styles.Cursor.Color = ui.ColorFocus
+	styles.Cursor.Color = theme.ColorFocus
 	return styles
 }
 
-func fieldInputStyles() textinput.Styles {
+func fieldInputStyles(theme ui.Theme) textinput.Styles {
 	styles := textinput.DefaultStyles(true)
 	state := textinput.StyleState{
-		Text:        fieldStyle().Foreground(ui.ColorStrong),
-		Placeholder: fieldStyle().Foreground(ui.ColorMuted),
-		Suggestion:  fieldStyle().Foreground(ui.ColorMuted),
-		Prompt:      fieldStyle(),
+		Text:        fieldStyle(theme).Foreground(theme.ColorStrong),
+		Placeholder: fieldStyle(theme).Foreground(theme.ColorMuted),
+		Suggestion:  fieldStyle(theme).Foreground(theme.ColorMuted),
+		Prompt:      fieldStyle(theme),
 	}
 	styles.Focused = state
 	styles.Blurred = state
-	styles.Blurred.Text = fieldStyle().Foreground(ui.ColorText)
-	styles.Cursor.Color = ui.ColorFocus
+	styles.Blurred.Text = fieldStyle(theme).Foreground(theme.ColorText)
+	styles.Cursor.Color = theme.ColorFocus
 	return styles
 }

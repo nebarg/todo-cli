@@ -14,6 +14,7 @@ import (
 	"github.com/nebarg/todo-cli/internal/project"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
+	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 // testFiles is a Files tab that tests fill with filesui.ScannedMsg rather
@@ -388,7 +389,7 @@ func TestOnlyCOpensCategoryInput(t *testing.T) {
 			t.Fatalf("c did not open the category input (index=%v)", index)
 		}
 	}
-	if help := ansi.Strip(renderHelp()); strings.Contains(help, "c l") {
+	if help := ansi.Strip(renderHelp(ui.NewTheme(true))); strings.Contains(help, "c l") {
 		t.Fatalf("help still lists l: %s", help)
 	}
 }
