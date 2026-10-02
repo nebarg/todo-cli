@@ -172,7 +172,7 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		m.files = filesui.New(cwd, exclude)
+		m.files = filesui.New(cwd, exclude, nil)
 		if _, err := tea.NewProgram(m).Run(); err != nil {
 			fail(err)
 		}

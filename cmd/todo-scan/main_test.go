@@ -36,6 +36,8 @@ func TestParseArgs(t *testing.T) {
 		{"--list --level 0 --level 1", options{dir: cwd, exclude: defaults, list: true, level: []string{"0", "1"}}},
 		{"--check --level 00,9", options{dir: cwd, exclude: defaults, check: true, level: []string{"00", "9"}}},
 		{"--list --level 0+,1", options{dir: cwd, exclude: defaults, list: true, level: []string{"0+", "1"}}},
+		{"--levels web", options{dir: sub, exclude: defaults, levels: true}},
+		{"--level 1", options{dir: cwd, exclude: defaults, level: []string{"1"}}},
 	} {
 		t.Run(c.argv, func(t *testing.T) {
 			got, err := parseArgs(cwd, strings.Fields(c.argv))
@@ -44,7 +46,7 @@ func TestParseArgs(t *testing.T) {
 			}
 		})
 	}
-	for _, argv := range []string{"a b", "--wat", "missing", "notes.txt", "--levels", "--check=soon", "--level 1", "--list --level 12", "--list --level x", "--list --level=", "--list --level 1+", "--list --level 0*", "--list --level +"} {
+	for _, argv := range []string{"a b", "--wat", "missing", "notes.txt", "--check=soon", "--list --level 12", "--list --level x", "--list --level=", "--list --level 1+", "--list --level 0*", "--list --level +"} {
 		if _, err := parseArgs(cwd, strings.Fields(argv)); err == nil {
 			t.Errorf("parseArgs(%q) was accepted", argv)
 		}

@@ -26,6 +26,7 @@ const previewRadius = 40
 type Model struct {
 	dir     string
 	exclude scan.Exclude
+	keep    func(scan.Match) bool
 
 	matches    []scan.Match
 	loading    bool
@@ -42,10 +43,11 @@ type Model struct {
 	previewErr  string
 }
 
-// New browses dir, skipping exclude. It shows as loading until the first
-// scan, started by Scan, comes back.
-func New(dir string, exclude scan.Exclude) Model {
-	return Model{dir: dir, exclude: exclude, loading: true}
+// New browses dir, skipping exclude, and lists only the TODOs keep accepts,
+// or all of them when keep is nil. It shows as loading until the first scan,
+// started by Scan, comes back.
+func New(dir string, exclude scan.Exclude, keep func(scan.Match) bool) Model {
+	return Model{dir: dir, exclude: exclude, keep: keep, loading: true}
 }
 
 // ScannedMsg carries a scan's results.
@@ -64,10 +66,15 @@ type previewMsg struct {
 // Scan rescans in the background.
 func (m *Model) Scan() tea.Cmd {
 	m.loading = true
-	dir, exclude := m.dir, m.exclude
+	dir, exclude, keep := m.dir, m.exclude, m.keep
 	return func() tea.Msg {
-		matches, err := scan.Source(dir, scanLimit, false, exclude)
-		return ScannedMsg{Matches: matches, Err: err}
+		if keep == nil {
+			matches, err := scan.Source(dir, scanLimit, false, exclude)
+			return ScannedMsg{Matches: matches, Err: err}
+		}
+		matches, err := scan.Source(dir, 0, false, exclude)
+		matches = slices.DeleteFunc(matches, func(match scan.Match) bool { return !keep(match) })
+		return ScannedMsg{Matches: matches[:min(len(matches), scanLimit)], Err: err}
 	}
 }
 

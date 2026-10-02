@@ -18,7 +18,7 @@ import (
 
 func scannedModel(t *testing.T) *model {
 	t.Helper()
-	m := newModel(t.TempDir(), scan.Exclude{})
+	m := newModel(t.TempDir(), scan.Exclude{}, nil)
 	m.Update(filesui.ScannedMsg{Matches: []scan.Match{
 		{Path: "app.go", Line: 6, Note: "fix the race", Level: "0"},
 		{Path: "app.go", Line: 3, Note: "retry the request"},
@@ -71,7 +71,7 @@ func TestScreensFitTheTerminal(t *testing.T) {
 }
 
 func TestHeaderShortensTheDirectory(t *testing.T) {
-	m := newModel("/srv/"+strings.Repeat("deep/", 20)+"project", scan.Exclude{})
+	m := newModel("/srv/"+strings.Repeat("deep/", 20)+"project", scan.Exclude{}, nil)
 	header := ansi.Strip(m.renderHeader(60))
 	if ansi.StringWidth(header) != 60 || !strings.Contains(header, "…") || !strings.Contains(header, "/project") || !strings.HasSuffix(header, "scanning… ") {
 		t.Fatalf("header = %q", header)
@@ -107,5 +107,17 @@ func TestKeys(t *testing.T) {
 	m.Update(key("right"))
 	if !strings.Contains(ansi.Strip(m.View().Content), "Files › @boundary") {
 		t.Fatalf("right did not reach the browser:\n%s", ansi.Strip(m.View().Content))
+	}
+}
+
+func TestHeaderCountsLevelledTodos(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("// TODO: plain\n// todo0 urgent\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(dir, scan.Exclude{}, scan.LevelFilter(true, nil))
+	m.Update(m.files.Scan()())
+	if header := ansi.Strip(m.renderHeader(80)); !strings.HasSuffix(header, "1 levelled TODO ") {
+		t.Fatalf("header = %q", header)
 	}
 }

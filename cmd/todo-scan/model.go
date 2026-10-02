@@ -17,15 +17,18 @@ import (
 // model runs the file TODO browser full screen, with a header naming the
 // directory and a footer of keys.
 type model struct {
-	dir    string
-	files  filesui.Model
-	status string
-	width  int
-	height int
+	dir      string
+	levelled bool
+	files    filesui.Model
+	status   string
+	width    int
+	height   int
 }
 
-func newModel(dir string, exclude scan.Exclude) *model {
-	return &model{dir: dir, files: filesui.New(dir, exclude), width: 100, height: 30}
+// newModel browses dir, listing only the TODOs keep accepts when it isn't
+// nil.
+func newModel(dir string, exclude scan.Exclude, keep func(scan.Match) bool) *model {
+	return &model{dir: dir, levelled: keep != nil, files: filesui.New(dir, exclude, keep), width: 100, height: 30}
 }
 
 func (m *model) Init() tea.Cmd { return tea.Batch(m.files.Scan(), tea.RequestBackgroundColor) }
@@ -88,7 +91,11 @@ func (m *model) View() tea.View {
 func (m *model) renderHeader(width int) string {
 	bar := lipgloss.NewStyle().Background(ui.ColorBar)
 	title := ui.TitleStyle.Background(ui.ColorBar).Render(" todo-scan ")
-	count := ui.Plural(m.files.Total(), "TODO", "TODOs")
+	one, many := "TODO", "TODOs"
+	if m.levelled {
+		one, many = "levelled TODO", "levelled TODOs"
+	}
+	count := ui.Plural(m.files.Total(), one, many)
 	if m.files.Loading() {
 		count = "scanning…"
 	}

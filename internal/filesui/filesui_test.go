@@ -2,6 +2,8 @@ package filesui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -108,7 +110,7 @@ func TestDetailPageOpensAndCloses(t *testing.T) {
 }
 
 func TestEmptyListOpensNothing(t *testing.T) {
-	m := New("/nowhere", scan.Exclude{})
+	m := New("/nowhere", scan.Exclude{}, nil)
 	if !m.Loading() || !strings.Contains(ansi.Strip(m.View(60, 10)), "Scanning…") {
 		t.Fatal("a list before its first scan should say it's scanning")
 	}
@@ -224,5 +226,26 @@ func TestDetailsFillThePageAroundTheTodo(t *testing.T) {
 	m.matches[0].Line, m.previewLine, preview[1].Text = 2, 2, "// TODO near the top"
 	if lines := m.detailLines(60, 12); !strings.HasPrefix(ansi.Strip(lines[2]), "   1 │") {
 		t.Fatalf("a TODO near the top of the file did not start at line 1: %q", ansi.Strip(lines[2]))
+	}
+}
+
+func TestScanKeepsOnlyWhatTheFilterAccepts(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("// TODO: plain\n// todo0 urgent\n// todo1 later\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		keep func(scan.Match) bool
+		want int
+	}{
+		{nil, 3},
+		{scan.LevelFilter(true, nil), 2},
+		{scan.LevelFilter(false, []string{"0"}), 1},
+	} {
+		m := New(dir, scan.Exclude{}, c.keep)
+		m.Update(m.Scan()())
+		if m.Err() != "" || m.Total() != c.want {
+			t.Errorf("scan kept %d (%s), want %d", m.Total(), m.Err(), c.want)
+		}
 	}
 }

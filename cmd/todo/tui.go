@@ -92,7 +92,7 @@ func newModel(file string, project projectContext) (*model, error) {
 	if err != nil {
 		cwd = "."
 	}
-	m := &model{file: file, project: project, input: input, width: 100, height: 30, indexSort: sortPriority, files: filesui.New(cwd, scan.Exclude{})}
+	m := &model{file: file, project: project, input: input, width: 100, height: 30, indexSort: sortPriority, files: filesui.New(cwd, scan.Exclude{}, nil)}
 	if err := m.reload(); err != nil {
 		return nil, err
 	}
