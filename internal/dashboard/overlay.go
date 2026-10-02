@@ -1,4 +1,4 @@
-package main
+package dashboard
 
 import tea "charm.land/bubbletea/v2"
 

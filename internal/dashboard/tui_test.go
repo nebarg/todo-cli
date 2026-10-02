@@ -1,4 +1,4 @@
-package main
+package dashboard
 
 import (
 	"fmt"
@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/filesui"
+	"github.com/nebarg/todo-cli/internal/project"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
 )
@@ -87,7 +88,7 @@ func TestChangingCategoryKeepsTaskSelected(t *testing.T) {
 	if err := os.WriteFile(path, []byte("## General\n\n### @auth\n\n- [ ] Fix login\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +115,7 @@ func TestCategoryPromptShowsAFailedSave(t *testing.T) {
 	if err := os.WriteFile(path, []byte("- [ ] Task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +138,7 @@ func TestCategoryInputBlocksSpaces(t *testing.T) {
 	if err := os.WriteFile(path, []byte("- [ ] Task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +166,7 @@ func TestEnterEditsAndDoneOrSpaceTogglesTasks(t *testing.T) {
 	if err := os.WriteFile(path, []byte("- [ ] First task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +218,7 @@ func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +294,7 @@ func TestPriorityChangeKeepsMovedBranchTaskSelected(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{branch: "main"}, testFiles())
+	m, err := newModel(path, project.Context{Branch: "main"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +315,7 @@ func TestPriorityChangeKeepsCategoryTaskWithDetailsSelected(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +337,7 @@ func TestPrioritySortHappensOnLoadAndReload(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +372,7 @@ func TestOnlyCOpensCategoryInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, index := range []bool{false, true} {
-		m, err := newModel(path, projectContext{}, testFiles())
+		m, err := newModel(path, project.Context{}, testFiles())
 		if err != nil {
 			t.Fatal(err)
 		}

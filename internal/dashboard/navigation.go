@@ -1,4 +1,4 @@
-package main
+package dashboard
 
 import (
 	"cmp"
@@ -404,15 +404,15 @@ func (m *model) leaveGroup() {
 // openCurrentBranch opens the current Git branch's tasks, if it has any,
 // reporting whether it did.
 func (m *model) openCurrentBranch() bool {
-	if m.project.branch == "" || m.branch.open != (group{}) {
+	if m.project.Branch == "" || m.branch.open != (group{}) {
 		return false
 	}
-	i := slices.IndexFunc(m.rows(branchPane), branchGroup(m.project.branch).openedBy)
+	i := slices.IndexFunc(m.rows(branchPane), branchGroup(m.project.Branch).openedBy)
 	if i < 0 {
 		return false
 	}
 	m.branch.cursor = i
-	m.branch.enter(branchGroup(m.project.branch))
+	m.branch.enter(branchGroup(m.project.Branch))
 	m.detailScroll = 0
 	m.status = ""
 	return true

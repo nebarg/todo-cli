@@ -14,7 +14,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/nebarg/todo-cli/internal/dashboard"
 	"github.com/nebarg/todo-cli/internal/filesui"
+	"github.com/nebarg/todo-cli/internal/project"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
 	"github.com/nebarg/todo-cli/internal/ui"
@@ -129,26 +131,26 @@ func runCommand(argv []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	project := currentProject()
-	file := cmp.Or(o.file, defaultFile(project))
+	repo := project.Current()
+	file := cmp.Or(o.file, repo.DefaultFile())
 	switch cmd {
 	case commandClear:
 		var missing func(string) bool
 		if o.clearMissing {
-			if missing, err = missingBranches(project); err != nil {
+			if missing, err = missingBranches(repo); err != nil {
 				return err
 			}
 		}
 		return clearTasks(out, file, o.clearDone, missing)
 	case commandAdd:
-		return addTask(out, file, project, o, args)
+		return addTask(out, file, repo, o, args)
 	}
-	return runDashboard(out, file, project, o.excludes)
+	return runDashboard(out, file, repo, o.excludes)
 }
 
 // runDashboard opens the dashboard on out, which must be a terminal, with the
 // Files tab scanning the working directory.
-func runDashboard(out io.Writer, file string, project projectContext, excludes []string) error {
+func runDashboard(out io.Writer, file string, repo project.Context, excludes []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -157,7 +159,7 @@ func runDashboard(out io.Writer, file string, project projectContext, excludes [
 	if err != nil {
 		return usageError(err.Error())
 	}
-	m, err := newModel(file, project, filesui.New(cwd, exclude, nil))
+	m, err := dashboard.New(file, repo, filesui.New(cwd, exclude, nil))
 	if err != nil {
 		return err
 	}
@@ -170,7 +172,7 @@ func runDashboard(out io.Writer, file string, project projectContext, excludes [
 
 // addTask files the task in args under the category or branch the flags
 // name, and reports where it went on out.
-func addTask(out io.Writer, file string, project projectContext, o options, args []string) error {
+func addTask(out io.Writer, file string, repo project.Context, o options, args []string) error {
 	category, args := splitCategoryArg(args)
 	if len(args) == 0 {
 		return usageError("usage: todo [flags] [@category] task")
@@ -183,12 +185,12 @@ func addTask(out io.Writer, file string, project projectContext, o options, args
 	}
 	branch := o.branch
 	if branch == currentBranch {
-		branch = project.currentBranch()
+		branch = repo.CurrentBranch()
 		if branch == "" {
 			return errors.New("no current Git branch")
 		}
 	}
-	if branch != "" && !project.hasLocalBranch(branch) {
+	if branch != "" && !repo.HasLocalBranch(branch) {
 		return fmt.Errorf("branch %q does not exist locally", branch)
 	}
 	p, err := store.ParsePriority(o.priority)
@@ -218,12 +220,12 @@ func clearTasks(out io.Writer, file string, done bool, missing func(string) bool
 	if !done {
 		tasks = slices.DeleteFunc(tasks, func(t store.Task) bool { return !missing(t.Branch) })
 	}
-	targets := pickClearTargets(tasks, missing)
-	if len(targets.tasks) == 0 {
+	targets := store.PickClearTargets(tasks, missing)
+	if len(targets.Tasks) == 0 {
 		_, err := fmt.Fprintf(out, "No %s in %s\n", nothingToClear(done, clearMissing), file)
 		return err
 	}
-	removal, err := store.PlanRemove(file, targets.tasks)
+	removal, err := store.PlanRemove(file, targets.Tasks)
 	if err != nil {
 		return err
 	}
@@ -231,19 +233,19 @@ func clearTasks(out io.Writer, file string, done bool, missing func(string) bool
 		return err
 	}
 	var report strings.Builder
-	fmt.Fprintf(&report, "Removed %s from %s:\n", targets.summary(), file)
+	fmt.Fprintf(&report, "Removed %s from %s:\n", targets.Summary(), file)
 	for _, t := range slices.Backward(removal.Tasks) {
 		fmt.Fprintf(&report, "  %s\n", t.Text)
 	}
-	if len(targets.branches) > 0 {
-		fmt.Fprintf(&report, "Branches no longer in Git: %s\n", strings.Join(targets.branches, ", "))
+	if len(targets.Branches) > 0 {
+		fmt.Fprintf(&report, "Branches no longer in Git: %s\n", strings.Join(targets.Branches, ", "))
 	}
 	var headings []string
 	for _, category := range removal.Categories {
 		headings = append(headings, "@"+category)
 	}
 	for _, branch := range removal.Branches {
-		if !slices.Contains(targets.branches, branch) {
+		if !slices.Contains(targets.Branches, branch) {
 			headings = append(headings, branch)
 		}
 	}
@@ -266,8 +268,8 @@ func nothingToClear(done, missing bool) string {
 
 // missingBranches reports branches Git no longer has. Without Git to ask,
 // it fails rather than treat every branch as present.
-func missingBranches(project projectContext) (func(string) bool, error) {
-	branches, _, verified := project.localBranchState()
+func missingBranches(repo project.Context) (func(string) bool, error) {
+	branches, _, verified := repo.LocalBranchState()
 	if !verified {
 		return nil, errors.New("--clear-missing needs a Git repository to check branches against")
 	}

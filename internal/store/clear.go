@@ -3,6 +3,7 @@ package store
 import (
 	"cmp"
 	"errors"
+	"fmt"
 	"os"
 	"slices"
 	"strings"
@@ -11,6 +12,63 @@ import (
 // ErrFileChanged means the file is no longer the one a removal was planned
 // from, or undone to, so it was left alone.
 var ErrFileChanged = errors.New("file changed on disk")
+
+// ClearTargets is what a clear removes: every done task, and every task of a
+// branch that no longer exists in Git.
+type ClearTargets struct {
+	// Tasks are the tasks to remove, in the order given.
+	Tasks []Task
+	// Done is how many of Tasks are done tasks of branches that still exist.
+	Done int
+	// Branches are the missing branches whose tasks are removed, sorted.
+	Branches []string
+}
+
+// PickClearTargets picks out of tasks the done tasks, and every task of a
+// branch missing reports gone.
+func PickClearTargets(tasks []Task, missing func(branch string) bool) ClearTargets {
+	var c ClearTargets
+	for _, t := range tasks {
+		switch {
+		case missing(t.Branch):
+			c.Tasks = append(c.Tasks, t)
+			if !slices.Contains(c.Branches, t.Branch) {
+				c.Branches = append(c.Branches, t.Branch)
+			}
+		case t.Done:
+			c.Tasks = append(c.Tasks, t)
+			c.Done++
+		}
+	}
+	slices.Sort(c.Branches)
+	return c
+}
+
+// Summary reads like "3 done tasks and 2 tasks of missing branches".
+func (c ClearTargets) Summary() string {
+	var parts []string
+	if c.Done > 0 {
+		parts = append(parts, doneTaskCount(c.Done))
+	}
+	if len(c.Branches) > 0 {
+		parts = append(parts, missingTaskCount(len(c.Tasks)-c.Done))
+	}
+	return strings.Join(parts, " and ")
+}
+
+func doneTaskCount(n int) string { return plural(n, "done task", "done tasks") }
+
+func missingTaskCount(n int) string {
+	return plural(n, "task of a missing branch", "tasks of missing branches")
+}
+
+// plural reads like "1 task" or "3 tasks".
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
 
 // Removal is a planned deletion of tasks. Apply writes it, and Undo puts
 // the file back as long as nothing else has changed it in between.

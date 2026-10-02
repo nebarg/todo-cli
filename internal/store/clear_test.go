@@ -183,3 +183,62 @@ func TestRemoveDoneRefusesChangedFiles(t *testing.T) {
 		t.Fatalf("refused undo still wrote the file: %q", got)
 	}
 }
+
+func TestPickClearTargets(t *testing.T) {
+	_, tasks := writeAndLoad(t, "- [x] Loose done\n\n- [ ] Loose open\n\n# Branches\n\n## feature/gone\n\n- [ ] Gone open\n\n- [x] Gone done\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n\n## feature/also-gone\n\n- [ ] Also gone\n")
+	for _, item := range []struct {
+		name     string
+		missing  func(branch string) bool
+		texts    string
+		done     int
+		branches string
+	}{
+		{"done tasks only", func(string) bool { return false }, "Loose done,Gone done,Live done", 3, ""},
+		{
+			"every task of a missing branch, sorted by branch",
+			func(branch string) bool { return branch == "feature/gone" || branch == "feature/also-gone" },
+			"Loose done,Gone open,Gone done,Live done,Also gone", 2, "feature/also-gone,feature/gone",
+		},
+		{
+			"all branches missing leaves only the general done task counted as done",
+			func(branch string) bool { return branch != "" },
+			"Loose done,Gone open,Gone done,Live open,Live done,Also gone", 1, "feature/also-gone,feature/gone,feature/live",
+		},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			got := PickClearTargets(tasks, item.missing)
+			var texts []string
+			for _, task := range got.Tasks {
+				texts = append(texts, task.Text)
+			}
+			if strings.Join(texts, ",") != item.texts || got.Done != item.done || strings.Join(got.Branches, ",") != item.branches {
+				t.Fatalf("tasks %q, done %d, branches %q; want %q, %d, %q", texts, got.Done, got.Branches, item.texts, item.done, item.branches)
+			}
+		})
+	}
+	if got := PickClearTargets(nil, func(string) bool { return false }); got.Tasks != nil || got.Done != 0 || got.Branches != nil {
+		t.Fatalf("no tasks gave %+v", got)
+	}
+}
+
+func TestClearTargetsSummary(t *testing.T) {
+	for _, item := range []struct {
+		name    string
+		targets ClearTargets
+		want    string
+	}{
+		{"nothing", ClearTargets{}, ""},
+		{"one done task", ClearTargets{Tasks: make([]Task, 1), Done: 1}, "1 done task"},
+		{"done tasks", ClearTargets{Tasks: make([]Task, 3), Done: 3}, "3 done tasks"},
+		{"one task of a missing branch", ClearTargets{Tasks: make([]Task, 1), Branches: []string{"a"}}, "1 task of a missing branch"},
+		{"tasks of missing branches", ClearTargets{Tasks: make([]Task, 2), Branches: []string{"a", "b"}}, "2 tasks of missing branches"},
+		{"both", ClearTargets{Tasks: make([]Task, 5), Done: 3, Branches: []string{"a", "b"}}, "3 done tasks and 2 tasks of missing branches"},
+		{"one of each", ClearTargets{Tasks: make([]Task, 2), Done: 1, Branches: []string{"a"}}, "1 done task and 1 task of a missing branch"},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			if got := item.targets.Summary(); got != item.want {
+				t.Fatalf("Summary() = %q, want %q", got, item.want)
+			}
+		})
+	}
+}

@@ -1,4 +1,4 @@
-package main
+package dashboard
 
 import (
 	"fmt"
@@ -12,6 +12,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/filesui"
+	"github.com/nebarg/todo-cli/internal/project"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
 	"github.com/nebarg/todo-cli/internal/ui"
@@ -23,7 +24,7 @@ func TestDashboardFitsTerminal(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{root: filepath.Dir(path), branch: "feature/login"}, testFiles())
+	m, err := newModel(path, project.Context{Root: filepath.Dir(path), Branch: "feature/login"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +182,7 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{branch: "main"}, testFiles())
+	m, err := newModel(path, project.Context{Branch: "main"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,11 +190,11 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 	if header := ansi.Strip(m.renderHeader(100)); !strings.HasSuffix(header, " "+gitIcon+" main  ") || strings.Contains(header, "To Do") || strings.Contains(header, ".") {
 		t.Fatalf("header without a repository root = %q", header)
 	}
-	m.project.branch = ""
+	m.project.Branch = ""
 	if header := ansi.Strip(m.renderHeader(100)); ansi.StringWidth(header) != 100 || !strings.HasSuffix(strings.TrimRight(header, " "), "3 Files 0") || strings.Contains(header, gitIcon) {
 		t.Fatalf("header outside Git = %q", header)
 	}
-	m.project.branch = "main"
+	m.project.Branch = "main"
 	if tabs := ansi.Strip(m.renderHeader(100)); !strings.Contains(tabs, " 1 General 2/4 ") || !strings.Contains(tabs, " 2 Branches 1/2 ") || !strings.Contains(tabs, " 3 Files 0 ") {
 		t.Fatalf("tab counts = %q", tabs)
 	}
@@ -225,7 +226,7 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 }
 
 func TestHeaderShowsRepositoryAndBranch(t *testing.T) {
-	m := &model{project: projectContext{root: "/src/todo-cli", branch: "feature/login"}}
+	m := &model{project: project.Context{Root: "/src/todo-cli", Branch: "feature/login"}}
 	header := m.renderHeader(80)
 	if plain := ansi.Strip(header); ansi.StringWidth(header) != 80 || !strings.HasPrefix(plain, " 1 General") || !strings.HasSuffix(plain, "todo-cli  "+gitIcon+" feature/login  ") {
 		t.Fatalf("header = %q", plain)
@@ -233,7 +234,7 @@ func TestHeaderShowsRepositoryAndBranch(t *testing.T) {
 	if !strings.Contains(header, lipgloss.NewStyle().Foreground(ui.ColorGit).Background(ui.ColorBar).Render(gitIcon+" ")) {
 		t.Fatalf("git icon is not coloured: %q", header)
 	}
-	m.project.branch = strings.Repeat("b", 100)
+	m.project.Branch = strings.Repeat("b", 100)
 	header = m.renderHeader(60)
 	if plain := ansi.Strip(header); ansi.StringWidth(header) != 60 || !strings.Contains(plain, "3 Files") || strings.Contains(plain, "todo-cli") || !strings.HasSuffix(plain, "…  ") {
 		t.Fatalf("long branch should drop the repo and shorten before the tabs: %q", plain)

@@ -1,4 +1,4 @@
-package main
+package dashboard
 
 import (
 	"fmt"
@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/project"
 	"github.com/nebarg/todo-cli/internal/store"
 	"github.com/nebarg/todo-cli/internal/ui"
 )
@@ -22,7 +23,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +112,7 @@ func TestIndexEditShowsTaskLocation(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +153,7 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	if err := os.WriteFile(path, []byte("## General\n\n- [ ] First !high\n\n- [ ] Second !low\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-package main
+package dashboard
 
 import (
 	"fmt"
@@ -10,6 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/project"
+	"github.com/nebarg/todo-cli/internal/project/projecttest"
 	"github.com/nebarg/todo-cli/internal/store"
 	"github.com/nebarg/todo-cli/internal/ui"
 )
@@ -17,12 +19,12 @@ import (
 func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "todo.md")
-	project := testGitProject(t, dir, "main", "feature/login")
+	repo := projecttest.Repo(t, dir, "main", "feature/login")
 	content := "# auth\n\n- [ ] Existing\n\n# Branches\n\n## feature/login\n\n- [ ] Branch task\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project, testFiles())
+	m, err := newModel(path, repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +73,7 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# test\n\n- [ ] Existing test task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,12 +116,12 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "todo.md")
-	project := testGitProject(t, dir, "main", "feature/a")
+	repo := projecttest.Repo(t, dir, "main", "feature/a")
 	content := "# Branches\n\n## feature/a\n\n- [ ] Existing feature task\n\n## main\n\n- [ ] Existing main task\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project, testFiles())
+	m, err := newModel(path, repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,21 +162,19 @@ func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 }
 
 func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
-	repo := t.TempDir()
-	project := testGitProject(t, repo, "feature/old", "feature/new")
-	path := filepath.Join(repo, "todo.md")
+	dir := t.TempDir()
+	repo := projecttest.Repo(t, dir, "feature/old", "feature/new")
+	path := filepath.Join(dir, "todo.md")
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/old\n\n- [ ] Existing task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project, testFiles())
+	m, err := newModel(path, repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.focus = branchPane
 	m.leaveGroup()
-	if _, err := gitOutput(repo, "symbolic-ref", "HEAD", "refs/heads/feature/new"); err != nil {
-		t.Fatal(err)
-	}
+	projecttest.Git(t, dir, "symbolic-ref", "HEAD", "refs/heads/feature/new")
 	m = pressAndRun(t, m, "a")
 	if !isOpen[*taskModal](m) || form(t, m).target.Branch != "feature/new" || form(t, m).scope.Value() != "feature/new" {
 		t.Fatalf("branch list used a cached or selected branch: %+v", m.overlay)
@@ -201,7 +201,7 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 
 func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	if isOpen[*taskModal](m) || !ok || selected.Category != "newarea" || m.general.open.name != "newarea" {
 		t.Fatalf("new category was not created and opened: %+v", m.rows(generalPane))
 	}
-	m.project = testGitProject(t, filepath.Dir(path), "feature/new", "feature/index")
+	m.project = projecttest.Repo(t, filepath.Dir(path), "feature/new", "feature/index")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: '2', Text: "2"})
 	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
@@ -294,7 +294,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 
 func TestAddFormAcceptsSymbolCategory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,8 +311,8 @@ func TestAddFormAcceptsSymbolCategory(t *testing.T) {
 
 func TestBranchPickerSearchAndSelection(t *testing.T) {
 	dir := t.TempDir()
-	project := testGitProject(t, dir, "main", "feature/auth", "fix/auth", "feature/ui", "main2")
-	m, err := newModel(filepath.Join(dir, "todo.md"), project, testFiles())
+	repo := projecttest.Repo(t, dir, "main", "feature/auth", "fix/auth", "feature/ui", "main2")
+	m, err := newModel(filepath.Join(dir, "todo.md"), repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,14 +371,12 @@ func TestBranchPickerSearchAndSelection(t *testing.T) {
 
 func TestBranchCreatedAfterStartupIsNotMissing(t *testing.T) {
 	dir := t.TempDir()
-	project := testGitProject(t, dir, "main")
-	m, err := newModel(filepath.Join(dir, "todo.md"), project, testFiles())
+	repo := projecttest.Repo(t, dir, "main")
+	m, err := newModel(filepath.Join(dir, "todo.md"), repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := gitOutput(dir, "branch", "feature/new"); err != nil {
-		t.Fatal(err)
-	}
+	projecttest.Git(t, dir, "branch", "feature/new")
 	runCmd(t, m, m.startTaskModal(modalAddBranch))
 	form(t, m).title.SetValue("Late branch task")
 	form(t, m).scope.SetValue("new")
@@ -399,20 +397,18 @@ func TestBranchCreatedAfterStartupIsNotMissing(t *testing.T) {
 
 func TestEditModalRefreshesBranchState(t *testing.T) {
 	dir := t.TempDir()
-	project := testGitProject(t, dir, "main", "feature/x")
+	repo := projecttest.Repo(t, dir, "main", "feature/x")
 	path := filepath.Join(dir, "todo.md")
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/x\n\n- [ ] Branch task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project, testFiles())
+	m, err := newModel(path, repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.focus = branchPane
 	m.branch.open = branchGroup("feature/x")
-	if _, err := gitOutput(dir, "branch", "-D", "feature/x"); err != nil {
-		t.Fatal(err)
-	}
+	projecttest.Git(t, dir, "branch", "-D", "feature/x")
 	// The branch was there when Git last answered, so the form opens, and
 	// closes when Git answers that it has gone.
 	cmd := m.startTaskModal(modalEdit)
@@ -423,9 +419,7 @@ func TestEditModalRefreshesBranchState(t *testing.T) {
 	if isOpen[*taskModal](m) || m.status != missingBranchStatus {
 		t.Fatalf("edit stayed open for a branch deleted after startup: status %q", m.status)
 	}
-	if _, err := gitOutput(dir, "branch", "feature/x"); err != nil {
-		t.Fatal(err)
-	}
+	projecttest.Git(t, dir, "branch", "feature/x")
 	// A blocked edit asks Git again, so the next one opens.
 	runCmd(t, m, m.startTaskModal(modalEdit))
 	if isOpen[*taskModal](m) || m.branchMissing("feature/x") {
@@ -438,7 +432,7 @@ func TestEditModalRefreshesBranchState(t *testing.T) {
 }
 
 func TestGitAnswerUpdatesAnOpenBranchForm(t *testing.T) {
-	m := &model{project: projectContext{branch: "main"}, localBranches: []string{"feature/b", "main"}, width: 100, height: 30}
+	m := &model{project: project.Context{Branch: "main"}, localBranches: []string{"feature/b", "main"}, width: 100, height: 30}
 	m.startTaskModal(modalAddBranch)
 	f := form(t, m)
 	f.scope.SetValue("feature")
@@ -467,18 +461,16 @@ func TestGitAnswerUpdatesAnOpenBranchForm(t *testing.T) {
 
 func TestBranchPickerRejectsDeletedBranch(t *testing.T) {
 	dir := t.TempDir()
-	project := testGitProject(t, dir, "main", "feature/old")
+	repo := projecttest.Repo(t, dir, "main", "feature/old")
 	path := filepath.Join(dir, "todo.md")
-	m, err := newModel(path, project, testFiles())
+	m, err := newModel(path, repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.startTaskModal(modalAddBranch)
 	form(t, m).title.SetValue("Do not save")
 	form(t, m).scope.SetValue("feature/old")
-	if _, err := gitOutput(dir, "branch", "-D", "feature/old"); err != nil {
-		t.Fatal(err)
-	}
+	projecttest.Git(t, dir, "branch", "-D", "feature/old")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
 	if !isOpen[*taskModal](m) || form(t, m).err != "branch \"feature/old\" no longer exists locally" {
@@ -491,8 +483,8 @@ func TestBranchPickerRejectsDeletedBranch(t *testing.T) {
 
 func TestBranchPickerFitsCompactAndRegularModals(t *testing.T) {
 	dir := t.TempDir()
-	project := testGitProject(t, dir, "main", "feature/auth", "feature/ui", "fix/search")
-	m, err := newModel(filepath.Join(dir, "todo.md"), project, testFiles())
+	repo := projecttest.Repo(t, dir, "main", "feature/auth", "feature/ui", "fix/search")
+	m, err := newModel(filepath.Join(dir, "todo.md"), repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,7 +526,7 @@ func TestBranchPickerFitsCompactAndRegularModals(t *testing.T) {
 
 func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -654,7 +646,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 
 func TestTwoLineTaskInputStaysOneMarkdownTask(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -711,7 +703,7 @@ func TestOnBackgroundSurvivesNestedResets(t *testing.T) {
 }
 
 func TestTaskModalFieldsAndFocus(t *testing.T) {
-	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), projectContext{}, testFiles())
+	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -752,7 +744,7 @@ func TestTaskModalFieldsAndFocus(t *testing.T) {
 }
 
 func TestBranchFieldHintsDescribePicker(t *testing.T) {
-	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), projectContext{branch: "main"}, testFiles())
+	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), project.Context{Branch: "main"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -771,7 +763,7 @@ func TestEditFormMovesTaskToAnotherCategory(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# auth\n\n- [ ] Login task\n\n# docs\n\n- [ ] Write guide\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -808,12 +800,12 @@ func TestEditFormMovesTaskToAnotherCategory(t *testing.T) {
 
 func TestEditFormMovesTaskToAnotherBranch(t *testing.T) {
 	dir := t.TempDir()
-	project := testGitProject(t, dir, "main", "feature/a", "feature/b")
+	repo := projecttest.Repo(t, dir, "main", "feature/a", "feature/b")
 	path := filepath.Join(dir, "todo.md")
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/a\n\n- [ ] Branch task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project, testFiles())
+	m, err := newModel(path, repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -843,7 +835,7 @@ func TestEditFormKeepsBranchWithoutGit(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/a\n\n- [ ] Branch task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

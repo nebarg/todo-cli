@@ -2,11 +2,15 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nebarg/todo-cli/internal/project"
+	"github.com/nebarg/todo-cli/internal/project/projecttest"
 )
 
 func TestSplitCategoryArg(t *testing.T) {
@@ -91,21 +95,21 @@ func TestFlagsStopAtTheTask(t *testing.T) {
 
 func TestAddTaskOnBranches(t *testing.T) {
 	dir := t.TempDir()
-	project := testGitProject(t, dir, "main", "feature/x")
+	repo := projecttest.Repo(t, dir, "main", "feature/x")
 	path := filepath.Join(dir, "todo.md")
-	if err := addTask(io.Discard, path, project, options{branch: ".", priority: "h"}, []string{"Current", "task"}); err != nil {
+	if err := addTask(io.Discard, path, repo, options{branch: ".", priority: "h"}, []string{"Current", "task"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := addTask(io.Discard, path, project, options{branch: "feature/x"}, []string{"Other", "task"}); err != nil {
+	if err := addTask(io.Discard, path, repo, options{branch: "feature/x"}, []string{"Other", "task"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := addTask(io.Discard, path, project, options{branch: "gone"}, []string{"Lost"}); err == nil || !strings.Contains(err.Error(), `branch "gone" does not exist locally`) {
+	if err := addTask(io.Discard, path, repo, options{branch: "gone"}, []string{"Lost"}); err == nil || !strings.Contains(err.Error(), `branch "gone" does not exist locally`) {
 		t.Fatalf("missing branch error = %v", err)
 	}
-	if err := addTask(io.Discard, path, project, options{branch: "."}, []string{"@tests", "Both"}); err == nil {
+	if err := addTask(io.Discard, path, repo, options{branch: "."}, []string{"@tests", "Both"}); err == nil {
 		t.Fatal("a branch task was given a category")
 	}
-	if err := addTask(io.Discard, path, projectContext{}, options{branch: "."}, []string{"No", "Git"}); err == nil || err.Error() != "no current Git branch" {
+	if err := addTask(io.Discard, path, project.Context{}, options{branch: "."}, []string{"No", "Git"}); err == nil || err.Error() != "no current Git branch" {
 		t.Fatalf("-b . outside Git = %v", err)
 	}
 	data, err := os.ReadFile(path)
@@ -162,5 +166,134 @@ func TestRun(t *testing.T) {
 	var out, errOut strings.Builder
 	if status := run([]string{"--help"}, &out, &errOut); status != 0 || !strings.HasPrefix(out.String(), "Usage:") || errOut.Len() > 0 {
 		t.Fatalf("--help = %d, %q, %q", status, out.String(), errOut.String())
+	}
+}
+
+const clearContent = "- [x] Loose done\n\n- [ ] Loose open\n\n# docs\n\n- [x] Doc done\n\n# auth\n\n- [x] Auth done\n\n- [ ] Auth open\n\n# Branches\n\n## feature/x\n\n- [x] Branch done\n"
+
+const missingContent = "- [x] Loose done\n\n# Branches\n\n## feature/gone\n\n- [ ] Gone open\n\n- [x] Gone done\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n"
+
+func fileContent(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func goneMissing(branch string) bool { return branch == "feature/gone" }
+
+func TestClearDoneCommand(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte(clearContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := clearTasks(&out, path, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	want := "Removed 4 done tasks from " + path + ":\n  Loose done\n  Doc done\n  Auth done\n  Branch done\nRemoved empty headings: @docs, feature/x\n"
+	if out.String() != want {
+		t.Fatalf("output = %q, want %q", out.String(), want)
+	}
+	if got := fileContent(t, path); got != "- [ ] Loose open\n\n# auth\n\n- [ ] Auth open\n" {
+		t.Fatalf("file = %q", got)
+	}
+	out.Reset()
+	if err := clearTasks(&out, path, true, nil); err != nil || out.String() != "No done tasks in "+path+"\n" {
+		t.Fatalf("second clear = %q, %v", out.String(), err)
+	}
+	out.Reset()
+	if err := clearTasks(&out, filepath.Join(t.TempDir(), "missing.md"), true, nil); err != nil || !strings.HasPrefix(out.String(), "No done tasks") {
+		t.Fatalf("missing file = %q, %v", out.String(), err)
+	}
+}
+
+func TestClearDoneAndMissingTogether(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte(missingContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := clearTasks(&out, path, true, goneMissing); err != nil {
+		t.Fatal(err)
+	}
+	want := "Removed 2 done tasks and 2 tasks of missing branches from " + path + ":\n  Loose done\n  Gone open\n  Gone done\n  Live done\nBranches no longer in Git: feature/gone\n"
+	if out.String() != want {
+		t.Fatalf("output = %q, want %q", out.String(), want)
+	}
+	if got := fileContent(t, path); got != "# Branches\n\n## feature/live\n\n- [ ] Live open\n" {
+		t.Fatalf("file = %q", got)
+	}
+}
+
+func TestClearDoneOrMissingAlone(t *testing.T) {
+	for _, item := range []struct {
+		name    string
+		done    bool
+		missing func(string) bool
+		output  string
+		file    string
+	}{
+		{
+			"done only keeps open tasks of missing branches", true, nil,
+			"Removed 3 done tasks from %s:\n  Loose done\n  Gone done\n  Live done\n",
+			"# Branches\n\n## feature/gone\n\n- [ ] Gone open\n\n## feature/live\n\n- [ ] Live open\n",
+		},
+		{
+			"missing only keeps done tasks elsewhere", false, goneMissing,
+			"Removed 2 tasks of missing branches from %s:\n  Gone open\n  Gone done\nBranches no longer in Git: feature/gone\n",
+			"- [x] Loose done\n\n# Branches\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n",
+		},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "todo.md")
+			if err := os.WriteFile(path, []byte(missingContent), 0644); err != nil {
+				t.Fatal(err)
+			}
+			var out strings.Builder
+			if err := clearTasks(&out, path, item.done, item.missing); err != nil {
+				t.Fatal(err)
+			}
+			if want := fmt.Sprintf(item.output, path); out.String() != want {
+				t.Fatalf("output = %q, want %q", out.String(), want)
+			}
+			if got := fileContent(t, path); got != item.file {
+				t.Fatalf("file = %q, want %q", got, item.file)
+			}
+		})
+	}
+}
+
+func TestClearSaysWhatThereWasNothingOf(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("- [ ] Open\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct {
+		done    bool
+		missing func(string) bool
+		want    string
+	}{
+		{true, nil, "No done tasks in "},
+		{false, goneMissing, "No branches missing from Git in "},
+		{true, goneMissing, "No done tasks or branches missing from Git in "},
+	} {
+		var out strings.Builder
+		if err := clearTasks(&out, path, item.done, item.missing); err != nil || out.String() != item.want+path+"\n" {
+			t.Fatalf("clear = %q, %v; want %q", out.String(), err, item.want)
+		}
+	}
+}
+
+func TestClearMissingNeedsGit(t *testing.T) {
+	if _, err := missingBranches(project.Context{}); err == nil {
+		t.Fatal("missing branches were checked without Git")
+	}
+	repo := projecttest.Repo(t, t.TempDir(), "main", "feature/live")
+	missing, err := missingBranches(repo)
+	if err != nil || !missing("feature/gone") || missing("feature/live") || missing("") {
+		t.Fatalf("missingBranches = %v", err)
 	}
 }

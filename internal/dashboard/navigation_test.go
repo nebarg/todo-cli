@@ -1,4 +1,4 @@
-package main
+package dashboard
 
 import (
 	"os"
@@ -11,19 +11,21 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/filesui"
+	"github.com/nebarg/todo-cli/internal/project"
+	"github.com/nebarg/todo-cli/internal/project/projecttest"
 	"github.com/nebarg/todo-cli/internal/scan"
 	"github.com/nebarg/todo-cli/internal/store"
 )
 
 func TestBranchListMarksMissingGitBranches(t *testing.T) {
 	dir := t.TempDir()
-	project := testGitProject(t, dir, "main", "feature/live", "feature/gone")
+	repo := projecttest.Repo(t, dir, "main", "feature/live", "feature/gone")
 	path := filepath.Join(dir, "todo.md")
 	content := "# Branches\n\n## feature/gone\n\n- [ ] Keep this task\n\n## feature/live\n\n- [ ] Active task\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project, testFiles())
+	m, err := newModel(path, repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,9 +33,7 @@ func TestBranchListMarksMissingGitBranches(t *testing.T) {
 	if rows := m.rows(branchPane); len(rows) != 2 || rows[0].missingGitBranch || rows[1].missingGitBranch {
 		t.Fatalf("existing branches were marked missing: %+v", rows)
 	}
-	if _, err := gitOutput(dir, "branch", "-D", "feature/gone"); err != nil {
-		t.Fatal(err)
-	}
+	projecttest.Git(t, dir, "branch", "-D", "feature/gone")
 	runCmd(t, m, m.checkBranches())
 	rows := m.rows(branchPane)
 	if len(rows) != 2 || !rows[0].missingGitBranch || rows[1].missingGitBranch || rows[0].count != 1 {
@@ -47,9 +47,7 @@ func TestBranchListMarksMissingGitBranches(t *testing.T) {
 	if got := ansi.Strip(renderGroupRow(long, 28, true, false)); !strings.HasPrefix(got, "⚠ feature/") || !strings.HasSuffix(got, "…  missing  1/4") || ansi.StringWidth(got) != 28 {
 		t.Fatalf("long branch hid its missing marker: %q", got)
 	}
-	if _, err := gitOutput(dir, "branch", "feature/gone"); err != nil {
-		t.Fatal(err)
-	}
+	projecttest.Git(t, dir, "branch", "feature/gone")
 	runCmd(t, m, m.checkBranches())
 	if m.rows(branchPane)[0].missingGitBranch {
 		t.Fatal("restored Git branch still marked missing")
@@ -58,16 +56,14 @@ func TestBranchListMarksMissingGitBranches(t *testing.T) {
 
 func TestMissingBranchTasksAreReadOnly(t *testing.T) {
 	dir := t.TempDir()
-	project := testGitProject(t, dir, "main", "feature/gone")
+	repo := projecttest.Repo(t, dir, "main", "feature/gone")
 	path := filepath.Join(dir, "todo.md")
 	content := "# Branches\n\n## feature/gone\n\n- [ ] Keep this task\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := gitOutput(dir, "branch", "-D", "feature/gone"); err != nil {
-		t.Fatal(err)
-	}
-	m, err := newModel(path, project, testFiles())
+	projecttest.Git(t, dir, "branch", "-D", "feature/gone")
+	m, err := newModel(path, repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +105,7 @@ func TestBranchesOutsideGitAreNotMarkedMissing(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/x\n\n- [ ] Branch task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +120,7 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{branch: "fix/api"}, testFiles())
+	m, err := newModel(path, project.Context{Branch: "fix/api"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +226,7 @@ func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,19 +275,17 @@ func assertNoEditHints(t *testing.T, m *model) {
 
 func TestEnteringBranchRechecksIt(t *testing.T) {
 	dir := t.TempDir()
-	project := testGitProject(t, dir, "main", "feature/x")
+	repo := projecttest.Repo(t, dir, "main", "feature/x")
 	path := filepath.Join(dir, "todo.md")
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/x\n\n- [ ] Branch task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project, testFiles())
+	m, err := newModel(path, repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.focus = branchPane
-	if _, err := gitOutput(dir, "branch", "-D", "feature/x"); err != nil {
-		t.Fatal(err)
-	}
+	projecttest.Git(t, dir, "branch", "-D", "feature/x")
 	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
 	if strings.Contains(ansi.Strip(m.panelStatus()), missingBranchStatus) {
@@ -308,9 +302,7 @@ func TestEnteringBranchRechecksIt(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	m = updated.(*model)
-	if _, err := gitOutput(dir, "branch", "feature/x"); err != nil {
-		t.Fatal(err)
-	}
+	projecttest.Git(t, dir, "branch", "feature/x")
 	updated, cmd = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
 	runCmd(t, m, cmd)
@@ -330,7 +322,7 @@ func TestPressingATabAgainReturnsToItsTopLevel(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +357,7 @@ func TestTwoTogglesBetweenBranchListAndCurrentBranch(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{branch: "main"}, testFiles())
+	m, err := newModel(path, project.Context{Branch: "main"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,7 +387,7 @@ func TestTwoTogglesBetweenBranchListAndCurrentBranch(t *testing.T) {
 		t.Fatal("leaving a branch lost its row")
 	}
 
-	m, err = newModel(path, projectContext{branch: "fix/none"}, testFiles())
+	m, err = newModel(path, project.Context{Branch: "fix/none"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,13 +438,13 @@ func TestFilesTabKeysReachTheBrowser(t *testing.T) {
 func TestReloadFollowsASwitchedGitBranch(t *testing.T) {
 	setup := func(t *testing.T) (*model, string) {
 		dir := t.TempDir()
-		project := testGitProject(t, dir, "main", "feature/x", "feature/empty")
+		repo := projecttest.Repo(t, dir, "main", "feature/x", "feature/empty")
 		path := filepath.Join(dir, "todo.md")
 		if err := os.WriteFile(path, []byte("# Branches\n\n## main\n\n- [ ] Main task\n\n## feature/x\n\n- [ ] Feature task\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
 		t.Chdir(dir) // reload reads the Git context from the working directory.
-		m, err := newModel(path, project, testFiles())
+		m, err := newModel(path, repo, testFiles())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -461,9 +453,7 @@ func TestReloadFollowsASwitchedGitBranch(t *testing.T) {
 	}
 	checkout := func(t *testing.T, dir, branch string) {
 		t.Helper()
-		if _, err := gitOutput(dir, "checkout", "-q", branch); err != nil {
-			t.Fatal(err)
-		}
+		projecttest.Git(t, dir, "checkout", "-q", branch)
 	}
 
 	t.Run("follows from the old current branch", func(t *testing.T) {
@@ -471,8 +461,8 @@ func TestReloadFollowsASwitchedGitBranch(t *testing.T) {
 		m = press(m, "right") // details of the old branch's task
 		checkout(t, dir, "feature/x")
 		m = pressAndRun(t, m, "r")
-		if m.project.branch != "feature/x" || m.branch.open.name != "feature/x" || m.focus != branchPane {
-			t.Fatalf("after switching: branch %q, open %q, focus %v", m.project.branch, m.branch.open.name, m.focus)
+		if m.project.Branch != "feature/x" || m.branch.open.name != "feature/x" || m.focus != branchPane {
+			t.Fatalf("after switching: branch %q, open %q, focus %v", m.project.Branch, m.branch.open.name, m.focus)
 		}
 	})
 	t.Run("keeps a branch opened by hand", func(t *testing.T) {
@@ -493,7 +483,7 @@ func TestReloadFollowsASwitchedGitBranch(t *testing.T) {
 		m, dir := setup(t)
 		checkout(t, dir, "feature/empty")
 		m = pressAndRun(t, m, "r")
-		if m.project.branch != "feature/empty" || m.branch.open.name != "" {
+		if m.project.Branch != "feature/empty" || m.branch.open.name != "" {
 			t.Fatalf("after switching to a branch without tasks: open %q", m.branch.open.name)
 		}
 	})

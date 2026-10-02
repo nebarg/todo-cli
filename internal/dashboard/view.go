@@ -1,4 +1,4 @@
-package main
+package dashboard
 
 import (
 	"fmt"
@@ -81,25 +81,25 @@ func (m *model) renderHeader(width int) string {
 // dropping the repository name before shortening the branch below minBranch.
 func (m *model) renderProject(width int) string {
 	const minBranch = 8
-	if m.project.branch == "" {
+	if m.project.Branch == "" {
 		return ""
 	}
 	bar := lipgloss.NewStyle().Background(ui.ColorBar)
 	icon := gitIcon + " "
 	repo := ""
-	if m.project.root != "" {
-		repo = filepath.Base(m.project.root) + "  "
+	if m.project.Root != "" {
+		repo = filepath.Base(m.project.Root) + "  "
 	}
 	fixed := ansi.StringWidth(icon) + 2
-	if width-fixed-ansi.StringWidth(repo) < min(minBranch, ansi.StringWidth(m.project.branch)) {
+	if width-fixed-ansi.StringWidth(repo) < min(minBranch, ansi.StringWidth(m.project.Branch)) {
 		repo = ""
 	}
 	branchWidth := width - fixed - ansi.StringWidth(repo)
-	if branchWidth < min(minBranch, ansi.StringWidth(m.project.branch)) {
+	if branchWidth < min(minBranch, ansi.StringWidth(m.project.Branch)) {
 		return ""
 	}
 	return bar.Foreground(ui.ColorText).Render(repo) + bar.Foreground(ui.ColorGit).Render(icon) +
-		bar.Foreground(ui.ColorGreen).Render(ansi.Truncate(m.project.branch, branchWidth, "…")+"  ")
+		bar.Foreground(ui.ColorGreen).Render(ansi.Truncate(m.project.Branch, branchWidth, "…")+"  ")
 }
 
 func (m *model) renderTabs() string {
@@ -325,7 +325,7 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 		case rowReadmeTask:
 			lines = append(lines, renderReadmeTaskRow(item.readme, innerWidth, levelWidth, selected))
 		default:
-			lines = append(lines, renderGroupRow(item, innerWidth, selected, item.kind == rowBranch && item.name == m.project.branch))
+			lines = append(lines, renderGroupRow(item, innerWidth, selected, item.kind == rowBranch && item.name == m.project.Branch))
 		}
 	}
 	return m.renderPanel(width, height, lines)

@@ -1,4 +1,6 @@
-package main
+// Package project finds the Git repository a command runs in, and asks Git
+// about its branches.
+package project
 
 import (
 	"context"
@@ -12,40 +14,45 @@ import (
 	"time"
 )
 
-type projectContext struct {
-	root   string
-	branch string
+// Context is the Git repository a command runs in: its root and its current
+// branch. The zero Context is outside Git.
+type Context struct {
+	Root   string
+	Branch string
 }
 
-func currentProject() projectContext {
+// Current is the Context of the working directory.
+func Current() Context {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return projectContext{}
+		return Context{}
 	}
 	root, err := gitOutput(cwd, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return projectContext{}
+		return Context{}
 	}
 	branch, _ := gitOutput(root, "branch", "--show-current")
-	return projectContext{root: root, branch: branch}
+	return Context{Root: root, Branch: branch}
 }
 
-func (project projectContext) currentBranch() string {
-	if project.root == "" {
+// CurrentBranch asks Git for the current branch, which is empty outside Git
+// and on a detached HEAD.
+func (c Context) CurrentBranch() string {
+	if c.Root == "" {
 		return ""
 	}
-	branch, _ := gitOutput(project.root, "branch", "--show-current")
+	branch, _ := gitOutput(c.Root, "branch", "--show-current")
 	return branch
 }
 
-// localBranchState lists local branches, sorted, and the current branch in
+// LocalBranchState lists local branches, sorted, and the current branch in
 // one pass. verified is false when there is no Git repository to check
 // against.
-func (project projectContext) localBranchState() (branches []string, current string, verified bool) {
-	if project.root == "" {
+func (c Context) LocalBranchState() (branches []string, current string, verified bool) {
+	if c.Root == "" {
 		return nil, "", false
 	}
-	output, err := gitOutput(project.root, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+	output, err := gitOutput(c.Root, "for-each-ref", "--format=%(refname:short)", "refs/heads")
 	if err != nil {
 		return nil, "", false
 	}
@@ -54,7 +61,7 @@ func (project projectContext) localBranchState() (branches []string, current str
 			branches = append(branches, branch)
 		}
 	}
-	current = project.currentBranch()
+	current = c.CurrentBranch()
 	// An unborn current branch has no ref yet, but is still the active branch.
 	if current != "" && !slices.Contains(branches, current) {
 		branches = append(branches, current)
@@ -63,21 +70,22 @@ func (project projectContext) localBranchState() (branches []string, current str
 	return branches, current, true
 }
 
-func (project projectContext) hasLocalBranch(name string) bool {
-	exists, _ := project.branchExists(name)
+// HasLocalBranch reports whether Git has a local branch called name.
+func (c Context) HasLocalBranch(name string) bool {
+	exists, _ := c.branchExists(name)
 	return exists
 }
 
 // branchExists checks one branch with a single git call, which is cheaper than
-// localBranchState. verified is false when Git could not answer.
-func (project projectContext) branchExists(name string) (exists, verified bool) {
+// LocalBranchState. verified is false when Git could not answer.
+func (c Context) branchExists(name string) (exists, verified bool) {
 	if name == "" {
 		return false, true
 	}
-	if project.root == "" {
+	if c.Root == "" {
 		return false, false
 	}
-	_, err := gitOutput(project.root, "show-ref", "--verify", "--quiet", "refs/heads/"+name)
+	_, err := gitOutput(c.Root, "show-ref", "--verify", "--quiet", "refs/heads/"+name)
 	if err == nil {
 		return true, true
 	}
@@ -86,7 +94,7 @@ func (project projectContext) branchExists(name string) (exists, verified bool) 
 		return false, false
 	}
 	// An unborn current branch has no ref yet, but is still the active branch.
-	return project.currentBranch() == name, true
+	return c.CurrentBranch() == name, true
 }
 
 const gitTimeout = 5 * time.Second
@@ -107,9 +115,11 @@ func gitOutput(dir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func defaultFile(project projectContext) string {
-	if project.root != "" {
-		return filepath.Join(project.root, "todo.md")
+// DefaultFile is the task file when none is given: todo.md at the repository
+// root, or in the working directory outside Git.
+func (c Context) DefaultFile() string {
+	if c.Root != "" {
+		return filepath.Join(c.Root, "todo.md")
 	}
 	return "todo.md"
 }

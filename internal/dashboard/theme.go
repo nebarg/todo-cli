@@ -1,4 +1,4 @@
-package main
+package dashboard
 
 // Nerd Font glyphs: the Octicons branch and the Git logo.
 const (

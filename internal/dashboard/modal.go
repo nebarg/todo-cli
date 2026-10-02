@@ -1,4 +1,4 @@
-package main
+package dashboard
 
 import (
 	"cmp"
@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/project"
 	"github.com/nebarg/todo-cli/internal/store"
 	"github.com/nebarg/todo-cli/internal/ui"
 )
@@ -28,7 +29,7 @@ type taskModal struct {
 	mode         modalMode
 	selected     store.Task
 	file         string
-	project      projectContext
+	project      project.Context
 	target       store.Section
 	onCurrent    bool // target is the current Git branch, which Git's answer may update
 	branches     []string
@@ -56,7 +57,7 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 		modal.target.Category = m.general.open.name
 	}
 	if mode == modalAddBranch {
-		modal.branches, modal.target.Branch, check = m.localBranches, m.project.branch, m.checkBranches()
+		modal.branches, modal.target.Branch, check = m.localBranches, m.project.Branch, m.checkBranches()
 		modal.onCurrent = true
 		if m.all == nil && m.activePane() == branchPane && m.branch.open != (group{}) {
 			modal.target.Branch, modal.onCurrent = m.branch.open.name, false
@@ -304,7 +305,7 @@ func (f *taskModal) save() error {
 			return errors.New("choose an existing local Git branch")
 		}
 		// The task's own branch was checked when the form opened.
-		if f.target.Branch != f.selected.Branch && !f.project.hasLocalBranch(f.target.Branch) {
+		if f.target.Branch != f.selected.Branch && !f.project.HasLocalBranch(f.target.Branch) {
 			return fmt.Errorf("branch %q no longer exists locally", f.target.Branch)
 		}
 	} else {

@@ -1,4 +1,4 @@
-package main
+package dashboard
 
 import (
 	"errors"
@@ -16,47 +16,9 @@ import (
 // clearConfirmation is a planned clear waiting for the user to confirm it.
 type clearConfirmation struct {
 	removal     store.Removal
-	targets     clearTargets
+	targets     store.ClearTargets
 	scope       string
 	wholeBranch bool
-}
-
-// clearTargets is what a clear removes: every done task, and every task of a
-// branch that no longer exists in Git.
-type clearTargets struct {
-	tasks    []store.Task
-	done     int
-	branches []string
-}
-
-func pickClearTargets(tasks []store.Task, missing func(string) bool) clearTargets {
-	var c clearTargets
-	for _, t := range tasks {
-		switch {
-		case missing(t.Branch):
-			c.tasks = append(c.tasks, t)
-			if !slices.Contains(c.branches, t.Branch) {
-				c.branches = append(c.branches, t.Branch)
-			}
-		case t.Done:
-			c.tasks = append(c.tasks, t)
-			c.done++
-		}
-	}
-	slices.Sort(c.branches)
-	return c
-}
-
-// summary reads like "3 done tasks and 2 tasks of missing branches".
-func (c clearTargets) summary() string {
-	var parts []string
-	if c.done > 0 {
-		parts = append(parts, doneTaskCount(c.done))
-	}
-	if len(c.branches) > 0 {
-		parts = append(parts, missingTaskCount(len(c.tasks)-c.done))
-	}
-	return strings.Join(parts, " and ")
 }
 
 // clearScope is the tasks X clears from where the user is, and a name for
@@ -86,16 +48,16 @@ func (m *model) clearScope() ([]store.Task, string) {
 // clearHint offers X only when there is something for it to clear.
 func (m *model) clearHint() []ui.KeyHint {
 	tasks, _ := m.clearScope()
-	targets := pickClearTargets(tasks, m.branchMissing)
+	targets := store.PickClearTargets(tasks, m.branchMissing)
 	var parts []string
-	if targets.done > 0 {
-		parts = append(parts, fmt.Sprintf("%d done", targets.done))
+	if targets.Done > 0 {
+		parts = append(parts, fmt.Sprintf("%d done", targets.Done))
 	}
 	switch {
 	case m.viewingMissingBranch():
 		return []ui.KeyHint{{Key: "X", Label: "remove its tasks"}}
-	case len(targets.branches) > 0:
-		parts = append(parts, fmt.Sprintf("%d missing", len(targets.branches)))
+	case len(targets.Branches) > 0:
+		parts = append(parts, fmt.Sprintf("%d missing", len(targets.Branches)))
 	case len(parts) == 0:
 		return nil
 	}
@@ -112,12 +74,12 @@ func (m *model) startClearDone() {
 		return
 	}
 	tasks, scope := m.clearScope()
-	targets := pickClearTargets(tasks, m.branchMissing)
-	if len(targets.tasks) == 0 {
+	targets := store.PickClearTargets(tasks, m.branchMissing)
+	if len(targets.Tasks) == 0 {
 		m.status = "No done tasks to clear"
 		return
 	}
-	removal, err := store.PlanRemove(m.file, targets.tasks)
+	removal, err := store.PlanRemove(m.file, targets.Tasks)
 	if err != nil {
 		m.status = errorStatus(err)
 		return
@@ -161,9 +123,9 @@ func (m *model) applyClear(msg clearConfirmedMsg) (tea.Model, tea.Cmd) {
 	}
 	m.lastClear = &confirmation.removal
 	if confirmation.wholeBranch {
-		m.status = "Removed the tasks of " + confirmation.targets.branches[0]
+		m.status = "Removed the tasks of " + confirmation.targets.Branches[0]
 	} else {
-		m.status = "Removed " + confirmation.targets.summary()
+		m.status = "Removed " + confirmation.targets.Summary()
 	}
 	return m, nil
 }
@@ -190,20 +152,14 @@ func (m *model) undoClear() {
 	m.status = "Restored " + taskCount(len(removal.Tasks))
 }
 
-func doneTaskCount(n int) string { return ui.Plural(n, "done task", "done tasks") }
-
 func taskCount(n int) string { return ui.Plural(n, "task", "tasks") }
-
-func missingTaskCount(n int) string {
-	return ui.Plural(n, "task of a missing branch", "tasks of missing branches")
-}
 
 func (c clearConfirmation) render() string {
 	const width = 48
 	var title, reason string
-	missingTasks := len(c.targets.tasks) - c.targets.done
-	missing := make([]string, len(c.targets.branches))
-	for i, branch := range c.targets.branches {
+	missingTasks := len(c.targets.Tasks) - c.targets.Done
+	missing := make([]string, len(c.targets.Branches))
+	for i, branch := range c.targets.Branches {
 		missing[i] = branchIcon + " " + branch
 	}
 	switch {
@@ -211,13 +167,13 @@ func (c clearConfirmation) render() string {
 		title = fmt.Sprintf("Remove the %s of %s?", taskCount(missingTasks), missing[0])
 		reason = "The branch no longer exists in Git."
 	case len(missing) == 1:
-		title = fmt.Sprintf("Remove %s from %s?", c.targets.summary(), c.scope)
+		title = fmt.Sprintf("Remove %s from %s?", c.targets.Summary(), c.scope)
 		reason = fmt.Sprintf("%s no longer exists in Git, so all of its %s go too.", missing[0], taskCount(missingTasks))
 	case len(missing) > 1:
-		title = fmt.Sprintf("Remove %s from %s?", c.targets.summary(), c.scope)
+		title = fmt.Sprintf("Remove %s from %s?", c.targets.Summary(), c.scope)
 		reason = fmt.Sprintf("%s no longer exist in Git, so all of their %s go too.", joinNames(missing), taskCount(missingTasks))
 	default:
-		title = fmt.Sprintf("Remove %s from %s?", c.targets.summary(), c.scope)
+		title = fmt.Sprintf("Remove %s from %s?", c.targets.Summary(), c.scope)
 	}
 	lines := []string{ui.TitleStyle.Render(ansi.Wrap(title, width, ""))}
 	if reason != "" {
@@ -228,7 +184,7 @@ func (c clearConfirmation) render() string {
 		headings = append(headings, "@"+category)
 	}
 	for _, branch := range c.removal.Branches {
-		if !slices.Contains(c.targets.branches, branch) {
+		if !slices.Contains(c.targets.Branches, branch) {
 			headings = append(headings, branchIcon+" "+branch)
 		}
 	}

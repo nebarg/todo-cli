@@ -1,4 +1,4 @@
-package main
+package dashboard
 
 import (
 	"os"
@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/project"
 	"github.com/nebarg/todo-cli/internal/store"
 	"github.com/nebarg/todo-cli/internal/ui"
 )
@@ -55,7 +56,7 @@ func TestReadmeTasksOpenFromGeneralAndOnlyToggle(t *testing.T) {
 	if err := os.WriteFile(readme, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +128,7 @@ func TestReadmeGroupClosesWhenItsTasksGo(t *testing.T) {
 	if err := os.WriteFile(readme, []byte("## Todo:\n\n- Only task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +154,7 @@ func TestAddingFromTheReadmeGroupShowsTheNewTask(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("## Todo:\n\n- Only task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(filepath.Join(dir, "todo.md"), projectContext{}, testFiles())
+	m, err := newModel(filepath.Join(dir, "todo.md"), project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +176,7 @@ func TestBranchTaskStatusIgnoresTheReadmeGroupInGeneral(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Branches\n\n## main\n\n- [ ] Branch task !high\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, projectContext{}, testFiles())
+	m, err := newModel(path, project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +193,7 @@ func TestReadmeTasksWithoutLevelsKeepTheOpenBullet(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("## TODOs\n\n- Open task\n- [x] Done task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(filepath.Join(dir, "todo.md"), projectContext{}, testFiles())
+	m, err := newModel(filepath.Join(dir, "todo.md"), project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

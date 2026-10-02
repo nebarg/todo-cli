@@ -1,4 +1,7 @@
-package main
+// Package dashboard is the terminal dashboard of todo. Its tabs show the
+// general tasks, the tasks of each Git branch and the TODO comments in source
+// files, and tasks can be added, edited, marked done and cleared from it.
+package dashboard
 
 import (
 	"cmp"
@@ -12,6 +15,7 @@ import (
 	"github.com/nebarg/todo-cli/internal/editor"
 	"github.com/nebarg/todo-cli/internal/filesui"
 	"github.com/nebarg/todo-cli/internal/level"
+	"github.com/nebarg/todo-cli/internal/project"
 	"github.com/nebarg/todo-cli/internal/store"
 	"github.com/nebarg/todo-cli/internal/ui"
 )
@@ -27,7 +31,7 @@ const (
 
 type model struct {
 	file             string
-	project          projectContext
+	project          project.Context
 	tasks            taskSet
 	all              *allTasksView // nil unless the All tasks view is open
 	general          groupList
@@ -45,10 +49,20 @@ type model struct {
 	height           int
 }
 
-func newModel(file string, project projectContext, files filesui.Model) (*model, error) {
-	m := &model{file: file, project: project, width: 100, height: 30, files: files}
+// New makes the dashboard for the task file in the Git context repo, its Files
+// tab showing files. It fails if the task file or README.md can't be read.
+func New(file string, repo project.Context, files filesui.Model) (tea.Model, error) {
+	m, err := newModel(file, repo, files)
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func newModel(file string, repo project.Context, files filesui.Model) (*model, error) {
+	m := &model{file: file, project: repo, width: 100, height: 30, files: files}
 	// Before the dashboard is drawn, Git is asked directly.
-	m.setBranches(project.branchState())
+	m.setBranches(branchState(repo))
 	if err := m.readTasks(true); err != nil {
 		return nil, err
 	}
@@ -402,16 +416,16 @@ type branchStateMsg struct {
 	verified bool
 }
 
-func (project projectContext) branchState() branchStateMsg {
-	branches, current, verified := project.localBranchState()
+func branchState(repo project.Context) branchStateMsg {
+	branches, current, verified := repo.LocalBranchState()
 	return branchStateMsg{branches: branches, current: current, verified: verified}
 }
 
 // checkBranches asks Git for the local branches in the background, so the
 // dashboard doesn't wait on it.
 func (m *model) checkBranches() tea.Cmd {
-	project := m.project
-	return func() tea.Msg { return project.branchState() }
+	repo := m.project
+	return func() tea.Msg { return branchState(repo) }
 }
 
 // setBranches takes the local branches Git listed, passing them on to an
@@ -433,7 +447,7 @@ func (m *model) setBranches(msg branchStateMsg) {
 // projectStateMsg is the repository, current branch and local branches as
 // Git reported them when r reloaded.
 type projectStateMsg struct {
-	project  projectContext
+	project  project.Context
 	branches branchStateMsg
 }
 
@@ -441,8 +455,8 @@ type projectStateMsg struct {
 // branch and its local branches.
 func reloadProject() tea.Cmd {
 	return func() tea.Msg {
-		project := currentProject()
-		return projectStateMsg{project: project, branches: project.branchState()}
+		repo := project.Current()
+		return projectStateMsg{project: repo, branches: branchState(repo)}
 	}
 }
 
@@ -450,10 +464,10 @@ func reloadProject() tea.Cmd {
 // showing the current branch and Git has since switched, it follows to the
 // new current branch, as at startup; a branch opened by hand stays open.
 func (m *model) setProject(msg projectStateMsg) {
-	previous := m.project.branch
+	previous := m.project.Branch
 	m.project = msg.project
 	m.setBranches(msg.branches)
-	if m.project.branch != previous && previous != "" && m.branch.open == branchGroup(previous) {
+	if m.project.Branch != previous && previous != "" && m.branch.open == branchGroup(previous) {
 		m.branch.leave()
 		if m.focus == detailPane && m.detailFrom == branchPane {
 			m.focus = branchPane
