@@ -176,7 +176,9 @@ As in todo-system, the dashboard reads the TODO list in the `README.md` beside t
 The dashboard's Files tab and [`todo-scan`](#todo-scan) show the same results, up to 1,000 matches, with the comment text first and a shortened path beside it. The status bar shows the full path of the highlighted TODO. `→` opens a detail page with the TODO's text and as much of the surrounding code as fits, and `e` opens the file in your editor.
 
 - The dashboard scans the working directory and below, and `todo-scan` the directory you give it. Both use ripgrep (`rg`) if it's installed.
-- It skips gitignored, hidden, binary and Markdown files. `todo --all-files --scan` includes them, apart from binaries.
+- It skips gitignored, hidden, binary and Markdown files. `todo --all-files --scan` includes them, apart from binaries, and still only counts comments.
+- Only comments count. Each file is read with its language's comment syntax, picked by its extension, so code such as `class Todo {`, strings, CSS's `#todo` and C's `#define TODO` are ignored, and comments that span lines are followed to their end.
+- A file with PHP in it is read as PHP whatever its extension, and HTML and template files also count `//` and `/* */` comments in their scripts and styles. Files of an unknown type are read a line at a time, guessing where each line's comment starts.
 - Directories starting with `.` are always skipped, as are `node_modules` and `vendor` by default.
 
 ### Skipping directories

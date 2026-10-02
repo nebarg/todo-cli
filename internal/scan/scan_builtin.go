@@ -1,10 +1,8 @@
 package scan
 
 import (
-	"bufio"
 	"bytes"
 	"context"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,8 +17,13 @@ func scanBuiltIn(ctx context.Context, dir string, limit int, allFiles bool, excl
 	if err != nil {
 		return nil, err
 	}
+	return scanFiles(ctx, dir, files, limit)
+}
+
+// scanFiles reads files, relative to dir, in parallel for their to-dos.
+func scanFiles(ctx context.Context, dir string, files []string, limit int) ([]Match, error) {
 	jobs := make(chan string, 128)
-	found := make(chan Match, 128)
+	found := make(chan []Match, 128)
 	var wg sync.WaitGroup
 	for range min(runtime.GOMAXPROCS(0), 8) {
 		wg.Go(func() {
@@ -28,7 +31,9 @@ func scanBuiltIn(ctx context.Context, dir string, limit int, allFiles bool, excl
 				if ctx.Err() != nil {
 					return
 				}
-				scanFile(ctx, dir, path, allFiles, found)
+				if matches := scanFile(dir, path); len(matches) > 0 {
+					found <- matches
+				}
 			}
 		})
 	}
@@ -45,8 +50,8 @@ func scanBuiltIn(ctx context.Context, dir string, limit int, allFiles bool, excl
 	go func() { wg.Wait(); close(found) }()
 
 	var matches []Match
-	for match := range found {
-		matches = append(matches, match)
+	for fileMatches := range found {
+		matches = append(matches, fileMatches...)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -116,40 +121,17 @@ func shouldScanPath(path string, allFiles bool) bool {
 	return extension != ".md" && extension != ".markdown"
 }
 
-func scanFile(ctx context.Context, dir, relative string, allFiles bool, found chan<- Match) {
+// scanFile finds the to-dos in one file, skipping anything that isn't a
+// regular text file.
+func scanFile(dir, relative string) []Match {
 	path := filepath.Join(dir, relative)
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() {
-		return
+		return nil
 	}
-	f, err := os.Open(path)
-	if err != nil {
-		return
+	content, err := os.ReadFile(path)
+	if err != nil || bytes.IndexByte(content[:min(len(content), 8192)], 0) >= 0 {
+		return nil
 	}
-	defer func() { _ = f.Close() }() // Read-only, so a close error cannot lose data.
-	probe := make([]byte, 8192)
-	n, _ := f.Read(probe)
-	if bytes.IndexByte(probe[:n], 0) >= 0 {
-		return
-	}
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return
-	}
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
-	for line := 1; scanner.Scan(); line++ {
-		if ctx.Err() != nil {
-			return
-		}
-		text := scanner.Text()
-		if !todoMarker.MatchString(text) || (!allFiles && !hasTodoComment(text)) {
-			continue
-		}
-		match := newMatch(filepath.ToSlash(relative), line, text)
-		select {
-		case found <- match:
-		case <-ctx.Done():
-			return
-		}
-	}
+	return fileTodos(filepath.ToSlash(relative), string(content))
 }

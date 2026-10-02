@@ -16,6 +16,7 @@ func TestScanSource(t *testing.T) {
 	files := map[string]string{
 		"code.go":               "// @todo fix this\nconst name = \"todo scan\"\n// TODO: test it\n",
 		"TODO.md":               "- [ ] TODO: stored task\n",
+		"notes.md":              "Plain text TODO: not a comment\n<!-- TODO: in a comment -->\n",
 		".hidden.go":            "// TODO: hidden file\n",
 		"binary.dat":            "TODO\x00x",
 		".cache/cached.go":      "// TODO: dot directory\n",
@@ -37,8 +38,8 @@ func TestScanSource(t *testing.T) {
 	}{
 		{"defaults skip dependencies, dot directories and Markdown", false, defaultExclude,
 			[]string{"sys.php:2", "code.go:1", "code.go:3", "dist/out.js:1", "odd[1]/x.go:1", "pkg/dist/out.js:1", "pkg/gen/gen.go:1", "sys.php:1", "sys.php:3"}},
-		{"all files still skips excluded and dot directories", true, defaultExclude,
-			[]string{"sys.php:2", ".hidden.go:1", "TODO.md:1", "code.go:1", "code.go:2", "code.go:3", "dist/out.js:1", "odd[1]/x.go:1", "pkg/dist/out.js:1", "pkg/gen/gen.go:1", "sys.php:1", "sys.php:3"}},
+		{"all files adds hidden files and Markdown comments, but still only comments", true, defaultExclude,
+			[]string{"sys.php:2", ".hidden.go:1", "code.go:1", "code.go:3", "dist/out.js:1", "notes.md:2", "odd[1]/x.go:1", "pkg/dist/out.js:1", "pkg/gen/gen.go:1", "sys.php:1", "sys.php:3"}},
 		{"custom excludes replace the defaults", false, Exclude{Names: []string{"gen", "odd[1]"}, Paths: []string{"pkg/dist"}},
 			[]string{"sys.php:2", "code.go:1", "code.go:3", "dist/out.js:1", "node_modules/dep.js:1", "sys.php:1", "sys.php:3", "vendor/lib.go:1", "web/node_modules/d.js:1"}},
 	}
@@ -148,6 +149,8 @@ func TestTodoComments(t *testing.T) {
 		{"<!-- todo: tidy -->", "tidy", "", "", true},
 		{"# TODO(gb): rename", "rename", "", "", true},
 		{"// TODO - later", "later", "", "", true},
+		{"// TODO! fix this", "fix this", "", "", true},
+		{"x(); //TODO!", "", "", "", true},
 		{"/** TODO document */", "document", "", "", true},
 		{"$x = load(); // TODO: cache", "cache", "", "", true},
 		{"// ported from the old code, TODO: remove", "remove", "", "", true},
@@ -172,7 +175,7 @@ func TestTodoComments(t *testing.T) {
 			t.Errorf("commentTodo(%q) = %+v, %v; want %+v, %v", c.line, got, found, want, c.found)
 		}
 	}
-	if m := newMatch("a.go", 1, "  // TODO  "); m.Note != "// TODO" {
+	if m := newMatch("a.go", 1, "  // TODO  ", todoComment{}); m.Note != "// TODO" {
 		t.Errorf("empty note = %q", m.Note)
 	}
 }

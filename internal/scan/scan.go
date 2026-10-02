@@ -2,23 +2,20 @@
 package scan
 
 import (
-	"bufio"
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 )
-
-var todoMarker = regexp.MustCompile(`(?i)(?:^|[^[:alnum:]_-])@?todo(?:[0-9]*@[[:alnum:]_-]+|[0-9]+)?(?:$|[[:space:]:({])`)
 
 // Match is a to-do marker comment found in a source file, with its path relative
 // to the scanned directory. Category and Level come from todo-system markers:
@@ -33,16 +30,12 @@ type Match struct {
 	Level    string
 }
 
-// newMatch reads the to-do out of a matched line. Note is its text without
+// newMatch records the to-do c found on a line. Note is its text without
 // the comment syntax and marker, or the whole line when that leaves nothing.
-func newMatch(path string, line int, text string) Match {
-	m := Match{Path: path, Line: line, Text: strings.TrimSpace(text)}
-	m.Note = m.Text
-	if c, ok := commentTodo(m.Text); ok {
-		m.Category, m.Level = c.category, c.level
-		if c.note != "" {
-			m.Note = c.note
-		}
+func newMatch(path string, line int, text string, c todoComment) Match {
+	m := Match{Path: path, Line: line, Text: strings.TrimSpace(text), Note: c.note, Category: c.category, Level: c.level}
+	if m.Note == "" {
+		m.Note = m.Text
 	}
 	return m
 }
@@ -63,23 +56,12 @@ func LevelRank(level string) int {
 	return n
 }
 
-type ripgrepEvent struct {
-	Type string `json:"type"`
-	Data struct {
-		Path struct {
-			Text string `json:"text"`
-		} `json:"path"`
-		Lines struct {
-			Text string `json:"text"`
-		} `json:"lines"`
-		LineNumber int `json:"line_number"`
-	} `json:"data"`
-}
-
-// Source finds to-do marker comments under dir, using ripgrep when it is installed.
-// Results are sorted by path and line; limit caps them, and 0 means no limit.
-// allFiles also searches Markdown, hidden and ignored files. Directories
-// in exclude, and those starting with a dot, are always skipped.
+// Source finds to-do marker comments under dir. ripgrep, when it is
+// installed, quickly lists the files that might hold one; each is then read
+// to tell its comments from its code. Results are sorted most urgent first,
+// then by path and line; limit caps them, and 0 means no limit. allFiles
+// also searches Markdown, hidden and ignored files. Directories in exclude,
+// and those starting with a dot, are always skipped.
 func Source(dir string, limit int, allFiles bool, exclude Exclude) ([]Match, error) {
 	info, err := os.Stat(dir)
 	if err != nil {
@@ -103,57 +85,38 @@ func Source(dir string, limit int, allFiles bool, exclude Exclude) ([]Match, err
 }
 
 func scanWithRipgrep(ctx context.Context, dir string, limit int, allFiles bool, exclude Exclude) ([]Match, error) {
-	args := append([]string{"--json", "--line-number"}, exclude.ripgrepGlobs()...)
+	args := append([]string{"--files-with-matches", "--null"}, exclude.ripgrepGlobs()...)
 	if allFiles {
 		args = append(args, "--hidden", "--no-ignore")
 	} else {
 		// The default code view honors ignore rules and leaves out Markdown.
 		args = append(args, "--glob", "!*.md", "--glob", "!*.markdown")
 	}
-	args = append(args, todoMarker.String(), ".")
+	// ripgrep only narrows the files down. Its pattern is as loose as
+	// containsTodo, so both scanners read exactly the same files.
+	args = append(args, "--ignore-case", "--fixed-strings", "todo", ".")
 	cmd := exec.CommandContext(ctx, "rg", args...)
 	cmd.Dir = dir
-	pipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	var matches []Match
-	scanner := bufio.NewScanner(pipe)
-	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
-	for scanner.Scan() {
-		var event ripgrepEvent
-		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
-			continue
-		}
-		if event.Type != "match" || event.Data.Path.Text == "" {
-			continue
-		}
-		if !allFiles && !hasTodoComment(event.Data.Lines.Text) {
-			continue
-		}
-		matches = append(matches, newMatch(strings.TrimPrefix(event.Data.Path.Text, "./"), event.Data.LineNumber, event.Data.Lines.Text))
-	}
-	scanErr := scanner.Err()
-	waitErr := cmd.Wait()
+	output, err := cmd.Output()
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	if scanErr != nil {
-		return nil, scanErr
-	}
-	if waitErr != nil {
+	if err != nil {
 		var exitErr *exec.ExitError
-		if errors.As(waitErr, &exitErr) && exitErr.ExitCode() == 1 {
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("ripgrep: %s", strings.TrimSpace(stderr.String()))
 	}
-	return sortedMatches(matches, limit), nil
+	var files []string
+	for path := range strings.SplitSeq(string(output), "\x00") {
+		if path != "" {
+			files = append(files, filepath.Clean(path))
+		}
+	}
+	return scanFiles(ctx, dir, files, limit)
 }
 
 // sortedMatches orders matches by level, then file and line, before applying
@@ -171,27 +134,31 @@ func sortedMatches(matches []Match, limit int) []Match {
 
 var (
 	commentMarker = regexp.MustCompile(`(?i)(^|[^[:alnum:]_-])(@?todo([0-9]*@[[:alnum:]_-]+|[0-9]+)?)($|[^[:alnum:]_-])`)
-	markerEnd     = regexp.MustCompile(`^(?:\([^)]*\))?[\s:\-–—]*`)
+	markerEnd     = regexp.MustCompile(`^(?:\([^)]*\))?[\s:!\-–—]*`)
 )
 
 type todoComment struct {
 	note, category, level string
 }
 
-func hasTodoComment(line string) bool {
-	_, ok := commentTodo(line)
-	return ok
-}
-
-// commentTodo finds a to-do marker in the line's comment. It counts when it
-// opens the comment, carries a todo-system level or category, or is followed
-// by ':' or '(', so prose that merely mentions a todo is skipped.
+// commentTodo finds a to-do in a line of a file whose comment syntax is
+// unknown, guessing where the line's comment starts.
 func commentTodo(line string) (todoComment, bool) {
 	start, ok := commentStart(line)
 	if !ok {
 		return todoComment{}, false
 	}
-	body := strings.TrimLeft(line[start:], "/*#;%!-<> \t")
+	return todoInComment(line[start:])
+}
+
+// todoInComment finds a to-do marker in a comment's text. It counts when it
+// opens the comment, carries a todo-system level or category, or is followed
+// by ':' or '(', so prose that merely mentions a todo is skipped.
+func todoInComment(comment string) (todoComment, bool) {
+	if !containsTodo(comment) {
+		return todoComment{}, false
+	}
+	body := strings.TrimLeft(comment, "/*#;%!-<> \t")
 	for _, loc := range commentMarker.FindAllStringSubmatchIndex(body, -1) {
 		markerStart, end, tagStart := loc[4], loc[5], loc[6]
 		next := body[end:]
