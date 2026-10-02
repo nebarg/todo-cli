@@ -211,7 +211,7 @@ The directory defaults to the current one. `-e` / `--exclude` works as above, wi
 | `todo-scan --check` | How many there are, such as `3 TODOs` | 1 if there are any, 0 if not |
 | `todo-scan --list --check` | The list on stdout, the count on stderr | 1 if there are any, 0 if not |
 
-Given a directory, `--list` starts each path with it as typed: `todo-scan --list ../api` prints paths such as `../api/main.go`.
+Given a directory, `--list` starts each path with it in its shortest form: `todo-scan --list ../api` prints paths such as `../api/main.go`, and `todo-scan --list ./api/` paths such as `api/main.go`.
 
 `--levels` limits the browser, `--list` and `--check` to levelled TODOs, `todo0` to `todo9`. `--level` limits them to the levels given: `--level 0` matches `todo0` only, `--level 00` matches `todo00`, and `--level 0+` matches any number of zeros. Repeat it, or separate levels with commas:
 
