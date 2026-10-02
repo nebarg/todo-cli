@@ -12,16 +12,16 @@ import (
 )
 
 // scanBuiltIn keeps file TODOs usable when ripgrep is not installed.
-func scanBuiltIn(ctx context.Context, dir string, limit int, allFiles bool, exclude Exclude) ([]Match, error) {
+func scanBuiltIn(ctx context.Context, dir string, allFiles bool, exclude Exclude) ([]Match, error) {
 	files, err := sourceFiles(ctx, dir, allFiles, exclude)
 	if err != nil {
 		return nil, err
 	}
-	return scanFiles(ctx, dir, files, limit)
+	return scanFiles(ctx, dir, files)
 }
 
 // scanFiles reads files, relative to dir, in parallel for their to-dos.
-func scanFiles(ctx context.Context, dir string, files []string, limit int) ([]Match, error) {
+func scanFiles(ctx context.Context, dir string, files []string) ([]Match, error) {
 	jobs := make(chan string, 128)
 	found := make(chan []Match, 128)
 	var wg sync.WaitGroup
@@ -56,7 +56,7 @@ func scanFiles(ctx context.Context, dir string, files []string, limit int) ([]Ma
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return sortedMatches(matches, limit), nil
+	return sortedMatches(matches), nil
 }
 
 func sourceFiles(ctx context.Context, dir string, allFiles bool, exclude Exclude) ([]string, error) {

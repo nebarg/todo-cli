@@ -105,7 +105,7 @@ func TestFileTodosReadOnlyComments(t *testing.T) {
 	} {
 		t.Run(c.path, func(t *testing.T) {
 			var got []string
-			for _, m := range sortedMatches(fileTodos(c.path, strings.Join(c.content, "\n")), 0) {
+			for _, m := range sortedMatches(fileTodos(c.path, strings.Join(c.content, "\n"))) {
 				got = append(got, fmt.Sprintf("%d: %s", m.Line, m.Note))
 			}
 			if !slices.Equal(got, c.want) {

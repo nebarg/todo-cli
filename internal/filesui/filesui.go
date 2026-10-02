@@ -14,9 +14,6 @@ import (
 	"github.com/nebarg/todo-cli/internal/scan"
 )
 
-// scanLimit caps the list, so a huge tree stays quick to browse.
-const scanLimit = 1000
-
 // previewRadius is how many lines either side of a TODO are read, enough
 // to fill the detail page of a tall terminal.
 const previewRadius = 40
@@ -68,13 +65,11 @@ func (m *Model) Scan() tea.Cmd {
 	m.loading = true
 	dir, exclude, keep := m.dir, m.exclude, m.keep
 	return func() tea.Msg {
-		if keep == nil {
-			matches, err := scan.Source(dir, scanLimit, false, exclude)
-			return ScannedMsg{Matches: matches, Err: err}
+		matches, err := scan.Source(dir, false, exclude)
+		if keep != nil {
+			matches = slices.DeleteFunc(matches, func(match scan.Match) bool { return !keep(match) })
 		}
-		matches, err := scan.Source(dir, 0, false, exclude)
-		matches = slices.DeleteFunc(matches, func(match scan.Match) bool { return !keep(match) })
-		return ScannedMsg{Matches: matches[:min(len(matches), scanLimit)], Err: err}
+		return ScannedMsg{Matches: matches, Err: err}
 	}
 }
 

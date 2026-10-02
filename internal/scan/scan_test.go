@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -63,7 +64,7 @@ func TestScanSource(t *testing.T) {
 			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull) // A global gitignore would hide test files.
 			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 			for _, c := range cases {
-				matches, err := Source(dir, 0, c.allFiles, c.exclude)
+				matches, err := Source(dir, c.allFiles, c.exclude)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -105,18 +106,18 @@ func scanners(t *testing.T) []scanner {
 	return list
 }
 
-func TestSortedMatchesOrderBeforeLimit(t *testing.T) {
+func TestSortedMatchesByFileAndLine(t *testing.T) {
 	matches := []Match{{Path: "b.go", Line: 1}, {Path: "a.go", Line: 9}, {Path: "a.go", Line: 2}, {Path: "c.go", Line: 1}}
-	got := sortedMatches(matches, 3)
-	if len(got) != 3 || got[0] != (Match{Path: "a.go", Line: 2}) || got[1].Line != 9 || got[2].Path != "b.go" {
-		t.Fatalf("matches were limited before sorting: %+v", got)
+	want := []Match{{Path: "a.go", Line: 2}, {Path: "a.go", Line: 9}, {Path: "b.go", Line: 1}, {Path: "c.go", Line: 1}}
+	if got := sortedMatches(matches); !slices.Equal(got, want) {
+		t.Fatalf("sorted = %+v", got)
 	}
-	if got := sortedMatches(nil, 3); len(got) != 0 {
+	if got := sortedMatches(nil); len(got) != 0 {
 		t.Fatalf("empty scan = %+v", got)
 	}
 }
 
-func TestBuiltInScanLimitIsDeterministic(t *testing.T) {
+func TestBuiltInScanIsDeterministic(t *testing.T) {
 	t.Setenv("PATH", t.TempDir()) // Force the built-in scanner.
 	dir := t.TempDir()
 	for i := range 40 {
@@ -125,12 +126,12 @@ func TestBuiltInScanLimitIsDeterministic(t *testing.T) {
 		}
 	}
 	for range 5 {
-		matches, err := Source(dir, 3, false, Exclude{})
+		matches, err := Source(dir, false, Exclude{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(matches) != 3 || matches[0].Path != "f00.go" || matches[2].Path != "f02.go" {
-			t.Fatalf("limited scan picked arbitrary files: %+v", matches)
+		if len(matches) != 40 || !slices.IsSortedFunc(matches, func(a, b Match) int { return strings.Compare(a.Path, b.Path) }) {
+			t.Fatalf("scan order = %+v", matches)
 		}
 	}
 }
@@ -196,8 +197,8 @@ func TestLevelsSortMostUrgentFirst(t *testing.T) {
 	if want := []string{"000", "00", "0", "1", "2", "9", ""}; !slices.Equal(levels, want) {
 		t.Fatalf("levels = %q, want %q", levels, want)
 	}
-	matches := sortedMatches([]Match{{Path: "a.go", Line: 1}, {Path: "z.go", Line: 9, Level: "0"}, {Path: "b.go", Line: 2, Level: "1"}}, 2)
-	if len(matches) != 2 || matches[0].Path != "z.go" || matches[1].Path != "b.go" {
-		t.Fatalf("limit dropped an urgent to-do: %+v", matches)
+	matches := sortedMatches([]Match{{Path: "a.go", Line: 1}, {Path: "z.go", Line: 9, Level: "0"}, {Path: "b.go", Line: 2, Level: "1"}})
+	if len(matches) != 3 || matches[0].Path != "z.go" || matches[1].Path != "b.go" || matches[2].Path != "a.go" {
+		t.Fatalf("levelled to-dos not first: %+v", matches)
 	}
 }

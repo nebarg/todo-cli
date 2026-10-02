@@ -142,7 +142,7 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		matches, err := scan.Source(dir, 0, o.allFiles, exclude)
+		matches, err := scan.Source(dir, o.allFiles, exclude)
 		if err != nil {
 			fail(err)
 		}

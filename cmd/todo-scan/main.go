@@ -95,7 +95,7 @@ func parseArgs(cwd string, argv []string) (options, error) {
 // returns the exit status. With both, the count goes to errOut, so out stays
 // a list a script can read.
 func report(out, errOut io.Writer, o options) int {
-	matches, err := scan.Source(o.dir, 0, false, o.exclude)
+	matches, err := scan.Source(o.dir, false, o.exclude)
 	if err != nil {
 		_, _ = fmt.Fprintln(errOut, err)
 		return exitError
