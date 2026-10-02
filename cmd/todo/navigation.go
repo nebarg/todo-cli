@@ -17,6 +17,7 @@ const (
 	rowCategory
 	rowBranch
 	rowReadme
+	rowReadmeTask
 )
 
 // readmeGroup names the General group of README.md's tasks.
@@ -28,7 +29,21 @@ type navigationRow struct {
 	count            int
 	completed        int
 	missingGitBranch bool
-	todo             store.Task
+	todo             store.Task       // a rowTask's task
+	readme           store.ReadmeTask // a rowReadmeTask's task
+}
+
+// isTask reports whether row is a task of todo.md or README.md, not a group.
+func (r navigationRow) isTask() bool {
+	return r.kind == rowTask || r.kind == rowReadmeTask
+}
+
+// done reports whether a task row's task is done.
+func (r navigationRow) done() bool {
+	if r.kind == rowReadmeTask {
+		return r.readme.Done
+	}
+	return r.todo.Done
 }
 
 // group is a category, a branch or the README.md group, opened from the top
@@ -117,12 +132,22 @@ func completedCount(tasks []store.Task) int {
 	return count
 }
 
+func completedReadmeCount(tasks []store.ReadmeTask) int {
+	count := 0
+	for _, t := range tasks {
+		if t.Done {
+			count++
+		}
+	}
+	return count
+}
+
 // generalRows lists General: at the top, its categories, the README.md group
 // and its tasks without a category; or the tasks of the group open.
-func generalRows(general, readme []store.Task, open group) []navigationRow {
+func generalRows(general []store.Task, readme []store.ReadmeTask, open group) []navigationRow {
 	switch open.kind {
 	case rowReadme:
-		return taskRows(readme, func(store.Task) bool { return true })
+		return readmeRows(readme)
 	case rowCategory:
 		return taskRows(general, func(t store.Task) bool { return taskInCategory(t, open.name) })
 	}
@@ -147,7 +172,7 @@ func generalRows(general, readme []store.Task, open group) []navigationRow {
 		rows = append(rows, navigationRow{kind: rowCategory, name: display[key], count: counts[key], completed: completed[key]})
 	}
 	if len(readme) > 0 {
-		rows = append(rows, navigationRow{kind: rowReadme, name: readmeGroup, count: len(readme), completed: completedCount(readme)})
+		rows = append(rows, navigationRow{kind: rowReadme, name: readmeGroup, count: len(readme), completed: completedReadmeCount(readme)})
 	}
 	return append(rows, taskRows(general, func(t store.Task) bool { return t.Category == "" })...)
 }
@@ -185,21 +210,31 @@ func taskRows(tasks []store.Task, keep func(store.Task) bool) []navigationRow {
 	return rows
 }
 
+// readmeRows is a row for each README task, open tasks first.
+func readmeRows(tasks []store.ReadmeTask) []navigationRow {
+	rows := make([]navigationRow, len(tasks))
+	for i, t := range tasks {
+		rows[i] = navigationRow{kind: rowReadmeTask, readme: t}
+	}
+	openTasksFirst(rows)
+	return rows
+}
+
 func (m *model) branchMissing(name string) bool {
 	_, listed := slices.BinarySearch(m.localBranches, name)
 	return name != "" && m.branchesVerified && !listed
 }
 
 func openTasksFirst(rows []navigationRow) {
-	slices.SortStableFunc(rows, func(a, b navigationRow) int { return compareDone(a.todo, b.todo) })
+	slices.SortStableFunc(rows, func(a, b navigationRow) int { return compareDone(a.done(), b.done()) })
 }
 
 // compareDone orders open tasks before done ones.
-func compareDone(a, b store.Task) int {
+func compareDone(a, b bool) int {
 	switch {
-	case a.Done == b.Done:
+	case a == b:
 		return 0
-	case a.Done:
+	case a:
 		return 1
 	}
 	return -1
@@ -211,6 +246,23 @@ func (m *model) selectNavigationTask(selected store.Task) {
 		if i := nearestTask(rowTasks(m.rows(p)), selected); i >= 0 {
 			l.cursor = i
 		}
+	}
+}
+
+// selectReadmeTask puts the cursor on t after a write, which can move it in
+// the open README.md group: the task with its text nearest its old line.
+func (m *model) selectReadmeTask(t store.ReadmeTask) {
+	best, distance := -1, math.MaxInt
+	for i, row := range m.rows(generalPane) {
+		if row.kind != rowReadmeTask || row.readme.Text != t.Text {
+			continue
+		}
+		if d := abs(row.readme.Line - t.Line); d < distance {
+			best, distance = i, d
+		}
+	}
+	if best >= 0 {
+		m.general.cursor = best
 	}
 }
 
@@ -244,7 +296,8 @@ func nearestTask(tasks []store.Task, t store.Task) int {
 	return best
 }
 
-// rowTasks is each row's task; a group row's is empty, so it matches none.
+// rowTasks is each row's todo.md task; a group or README task row's is empty,
+// so it matches none.
 func rowTasks(rows []navigationRow) []store.Task {
 	tasks := make([]store.Task, len(rows))
 	for i, row := range rows {
@@ -301,7 +354,7 @@ func (m *model) enterSelectedGroup() (tea.Cmd, bool) {
 		return nil, false
 	}
 	row, ok := m.selectedNavigationRow()
-	if !ok || row.kind == rowTask {
+	if !ok || row.isTask() {
 		return nil, false
 	}
 	var cmd tea.Cmd

@@ -144,32 +144,32 @@ func TestTaskRowsColourPriorityOnTheBullet(t *testing.T) {
 		foreground, mark := want.foreground, want.mark
 		t.Run(string(p), func(t *testing.T) {
 			task := store.Task{Text: "Highlighted title", Priority: p, Details: "Extra context"}
-			selected := renderTaskRow(task, 30, 0, true)
+			selected := renderTaskRow(task, 30, true)
 			if ansi.StringWidth(selected) != 30 || !strings.HasPrefix(ansi.Strip(selected), mark+" Highlighted title") || !strings.HasSuffix(ansi.Strip(selected), "⋯") {
 				t.Fatalf("%s selected task is not full width with a right-aligned details marker: %q", p, ansi.Strip(selected))
 			}
 			if !strings.Contains(selected, "38;2;"+foreground+";48;2;36;87;166m"+mark) || strings.Contains(selected, foreground+";48;2;36;87;166mHighlighted") {
 				t.Fatalf("%s selected task should colour only its bullet: %q", p, selected)
 			}
-			unselected := renderTaskRow(task, 30, 0, false)
+			unselected := renderTaskRow(task, 30, false)
 			if ansi.StringWidth(unselected) != 30 || !strings.HasSuffix(ansi.Strip(unselected), "⋯") {
 				t.Fatalf("%s details marker is not right-aligned: %q", p, ansi.Strip(unselected))
 			}
 			if !strings.Contains(unselected, "38;2;"+foreground+"m"+mark) || strings.Contains(unselected, foreground+"mHighlighted") {
 				t.Fatalf("%s unselected task should colour only its bullet: %q", p, unselected)
 			}
-			done := renderTaskRow(store.Task{Text: "Highlighted title", Priority: p, Done: true}, 30, 0, false)
+			done := renderTaskRow(store.Task{Text: "Highlighted title", Priority: p, Done: true}, 30, false)
 			if ansi.Strip(done) != "✓ Highlighted title" || strings.Contains(done, "38;2;"+foreground) {
 				t.Fatalf("%s done task is not muted: %q", p, done)
 			}
 		})
 	}
-	open := ansi.Strip(renderTaskRow(store.Task{Text: "Same title"}, 24, 0, false))
-	done := ansi.Strip(renderTaskRow(store.Task{Text: "Same title", Done: true}, 24, 0, false))
+	open := ansi.Strip(renderTaskRow(store.Task{Text: "Same title"}, 24, false))
+	done := ansi.Strip(renderTaskRow(store.Task{Text: "Same title", Done: true}, 24, false))
 	if strings.Index(open, "Same title") != strings.Index(done, "Same title") || strings.Contains(open, "⋯") || strings.Contains(done, "⋯") {
 		t.Fatalf("completion changed title alignment or added details marker: %q / %q", open, done)
 	}
-	truncated := ansi.Strip(renderTaskRow(store.Task{Text: strings.Repeat("x", 50), Details: "More"}, 24, 0, false))
+	truncated := ansi.Strip(renderTaskRow(store.Task{Text: strings.Repeat("x", 50), Details: "More"}, 24, false))
 	if ansi.StringWidth(truncated) != 24 || !strings.HasSuffix(truncated, "…  ⋯") {
 		t.Fatalf("long task lost its details marker: %q", truncated)
 	}

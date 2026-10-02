@@ -22,14 +22,13 @@ var ErrTaskChanged = errors.New("task changed on disk")
 // Task is one Markdown checklist item. The unexported fields record exactly
 // what was read, so writes can refuse to touch a task that changed on disk.
 type Task struct {
+	// Line is the index of the task's line in the file, so the first line is 0.
 	Line int
 	Text string
 	Done bool
 	Section
 	Priority Priority
 	Details  string
-	// Level is a README task's todo-system level, such as "0" for todo0.
-	Level string
 
 	raw          string
 	categoryLine int

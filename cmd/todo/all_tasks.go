@@ -99,7 +99,7 @@ func (v *allTasksView) sorted(tasks []store.Task) []store.Task {
 				}
 			}
 		}
-		if c := compareDone(a, b); c != 0 {
+		if c := compareDone(a.Done, b.Done); c != 0 {
 			return c
 		}
 		if v.sort == sortPriority && v.byPriority {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -153,5 +154,55 @@ func TestToggleReadmeRefusesAChangedLine(t *testing.T) {
 	}
 	if err := ToggleReadme(path, tasks[0]); !errors.Is(err, ErrTaskChanged) {
 		t.Fatalf("toggle of a changed line = %v, want ErrTaskChanged", err)
+	}
+}
+
+func TestReadmeTaskRoundTripsThroughToggle(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "README.md")
+	original := "# Project\n\n## TODO\n\n- todo0 Fix it\n- [x] Shipped\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	read, err := LoadReadme(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ReadmeTask{
+		{Line: 4, Text: "Fix it", Level: "0", raw: "- todo0 Fix it"},
+		{Line: 5, Text: "Shipped", Done: true, raw: "- [x] Shipped"},
+	}
+	if !reflect.DeepEqual(read, want) {
+		t.Fatalf("read %+v, want %+v", read, want)
+	}
+
+	if err := ToggleReadme(path, read[0]); err != nil {
+		t.Fatal(err)
+	}
+	done, err := LoadReadme(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want[0].Done, want[0].raw = true, "- [x] todo0 Fix it"
+	if !reflect.DeepEqual(done, want) {
+		t.Fatalf("after done %+v, want %+v", done, want)
+	}
+	if err := ToggleReadme(path, read[0]); !errors.Is(err, ErrTaskChanged) {
+		t.Fatalf("toggle of a task read before its line changed = %v, want ErrTaskChanged", err)
+	}
+
+	if err := ToggleReadme(path, done[0]); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := LoadReadme(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reopening leaves the checkbox that marking it done added.
+	want[0].Done, want[0].raw = false, "- [ ] todo0 Fix it"
+	if !reflect.DeepEqual(reopened, want) {
+		t.Fatalf("after reopening %+v, want %+v", reopened, want)
+	}
+	if got := readFile(t, path); got != "# Project\n\n## TODO\n\n- [ ] todo0 Fix it\n- [x] Shipped\n" {
+		t.Fatalf("README = %q", got)
 	}
 }

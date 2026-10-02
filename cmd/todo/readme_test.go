@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nebarg/todo-cli/internal/store"
 	"github.com/nebarg/todo-cli/internal/ui"
 )
 
@@ -32,6 +33,14 @@ func readFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+func readmeTitles(tasks []store.ReadmeTask) string {
+	names := make([]string, len(tasks))
+	for i, t := range tasks {
+		names[i] = t.Text
+	}
+	return strings.Join(names, ",")
 }
 
 func TestReadmeTasksOpenFromGeneralAndOnlyToggle(t *testing.T) {
@@ -60,7 +69,7 @@ func TestReadmeTasksOpenFromGeneralAndOnlyToggle(t *testing.T) {
 	}
 	m.general.cursor = 1
 	pressKey(t, m, "right")
-	if got := indexTitles(m.tasks.readme); got != "Urgent,Later,Finished,Write docs" {
+	if got := readmeTitles(m.tasks.readme); got != "Urgent,Later,Finished,Write docs" {
 		t.Fatalf("README tasks are not in level order: %q", got)
 	}
 	view := ansi.Strip(m.renderNavigationPane(m.rows(generalPane), m.general.cursor, generalPane, 60, 20))
@@ -175,5 +184,23 @@ func TestBranchTaskStatusIgnoresTheReadmeGroupInGeneral(t *testing.T) {
 	pressKey(t, m, "right")
 	if status := ansi.Strip(m.panelStatus()); !strings.Contains(status, "High priority") || strings.Contains(status, readmeGroup) {
 		t.Fatalf("branch task status = %q", status)
+	}
+}
+
+func TestReadmeTasksWithoutLevelsKeepTheOpenBullet(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("## TODOs\n\n- Open task\n- [x] Done task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(filepath.Join(dir, "todo.md"), projectContext{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pressKey(t, m, "right")
+	view := ansi.Strip(m.renderNavigationPane(m.rows(generalPane), m.general.cursor, generalPane, 60, 20))
+	for _, want := range []string{`\n│ ○ Open task`, `\n│ ✓ Done task`} {
+		if !regexp.MustCompile(want).MatchString(view) {
+			t.Fatalf("README list is missing %q:\n%s", want, view)
+		}
 	}
 }

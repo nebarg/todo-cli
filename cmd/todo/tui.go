@@ -210,7 +210,7 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if cmd, entered := m.enterSelectedGroup(); entered {
 			return cmd, true
 		}
-		if _, ok := m.selectedTask(); ok && m.focus != detailPane {
+		if row, ok := m.selectedNavigationRow(); ok && row.isTask() && m.focus != detailPane {
 			m.detailFrom = m.focus
 			m.focus = detailPane
 			m.detailScroll = 0
@@ -262,6 +262,7 @@ func (m *model) moveCursor(delta int) {
 	}
 }
 
+// selectedTask is the selected task of todo.md; a README task is not one.
 func (m *model) selectedTask() (store.Task, bool) {
 	if m.all != nil {
 		tasks := m.all.sorted(m.tasks.all)
@@ -275,6 +276,18 @@ func (m *model) selectedTask() (store.Task, bool) {
 		return row.todo, true
 	}
 	return store.Task{}, false
+}
+
+// selectedReadmeTask is the selected task while the README.md group is open.
+func (m *model) selectedReadmeTask() (store.ReadmeTask, bool) {
+	if m.all != nil {
+		return store.ReadmeTask{}, false
+	}
+	row, ok := m.selectedNavigationRow()
+	if ok && row.kind == rowReadmeTask {
+		return row.readme, true
+	}
+	return store.ReadmeTask{}, false
 }
 
 func (m *model) activePane() pane {
@@ -299,7 +312,7 @@ func (m *model) readmeFile() string {
 }
 
 func (m *model) openReadme() tea.Cmd {
-	selected, ok := m.selectedTask()
+	selected, ok := m.selectedReadmeTask()
 	if !ok {
 		return nil
 	}
@@ -307,21 +320,26 @@ func (m *model) openReadme() tea.Cmd {
 }
 
 func (m *model) toggleSelected() {
-	selected, ok := m.selectedTask()
-	if !ok {
-		if m.activePane() == sourcePane {
-			m.status = "File TODOs are read only"
-		} else {
-			m.status = "Open a category or branch to select a task"
+	var toggle func() error
+	var reselect func()
+	if readme, ok := m.selectedReadmeTask(); ok {
+		toggle = func() error { return store.ToggleReadme(m.readmeFile(), readme) }
+		reselect = func() { m.selectReadmeTask(readme) }
+	} else {
+		selected, ok := m.selectedTask()
+		if !ok {
+			if m.activePane() == sourcePane {
+				m.status = "File TODOs are read only"
+			} else {
+				m.status = "Open a category or branch to select a task"
+			}
+			return
 		}
-		return
-	}
-	if m.blockMissingBranch(selected) {
-		return
-	}
-	toggle := func() error { return store.Toggle(m.file, selected) }
-	if m.readmeSelected() {
-		toggle = func() error { return store.ToggleReadme(m.readmeFile(), selected) }
+		if m.blockMissingBranch(selected) {
+			return
+		}
+		toggle = func() error { return store.Toggle(m.file, selected) }
+		reselect = func() { m.selectNavigationTask(selected) }
 	}
 	if err := toggle(); err != nil {
 		m.status = errorStatus(err)
@@ -332,7 +350,7 @@ func (m *model) toggleSelected() {
 		return
 	}
 	if m.all == nil {
-		m.selectNavigationTask(selected)
+		reselect()
 	}
 	m.status = ""
 }
@@ -550,9 +568,9 @@ func preserveTaskOrder(previous, loaded []store.Task) []store.Task {
 
 // loadReadme reads the README's tasks with todo-system levels first, most
 // urgent at the top, as the Files tab lists them.
-func loadReadme(path string) ([]store.Task, error) {
+func loadReadme(path string) ([]store.ReadmeTask, error) {
 	tasks, err := store.LoadReadme(path)
-	slices.SortStableFunc(tasks, func(a, b store.Task) int {
+	slices.SortStableFunc(tasks, func(a, b store.ReadmeTask) int {
 		return cmp.Compare(level.Rank(a.Level), level.Rank(b.Level))
 	})
 	return tasks, err
@@ -560,10 +578,10 @@ func loadReadme(path string) ([]store.Task, error) {
 
 // taskSet is the tasks the dashboard shows, as last read.
 type taskSet struct {
-	all      []store.Task // todo.md's tasks, in the dashboard's order
-	general  []store.Task // all's tasks without a branch
-	branches []store.Task // all's tasks with one
-	readme   []store.Task // README.md's tasks, most urgent first
+	all      []store.Task       // todo.md's tasks, in the dashboard's order
+	general  []store.Task       // all's tasks without a branch
+	branches []store.Task       // all's tasks with one
+	readme   []store.ReadmeTask // README.md's tasks, most urgent first
 }
 
 func (s *taskSet) setAll(tasks []store.Task) {

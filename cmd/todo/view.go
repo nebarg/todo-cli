@@ -112,7 +112,7 @@ func (m *model) renderTabs() string {
 		count string
 		pane  pane
 	}{
-		{"1", "General", fmt.Sprintf("%d/%d", completedCount(m.tasks.general)+completedCount(m.tasks.readme), len(m.tasks.general)+len(m.tasks.readme)), generalPane},
+		{"1", "General", fmt.Sprintf("%d/%d", completedCount(m.tasks.general)+completedReadmeCount(m.tasks.readme), len(m.tasks.general)+len(m.tasks.readme)), generalPane},
 		{"2", "Branches", fmt.Sprintf("%d/%d", completedCount(m.tasks.branches), len(m.tasks.branches)), branchPane},
 		{"3", "Files", m.filesCount(), sourcePane},
 	}
@@ -182,7 +182,7 @@ func (m *model) contextHints() []ui.KeyHint {
 	case m.focus == sourcePane:
 		return append(m.files.Hints(), index, reload)
 	}
-	if row, ok := m.selectedNavigationRow(); ok && row.kind != rowTask {
+	if row, ok := m.selectedNavigationRow(); ok && !row.isTask() {
 		hints := []ui.KeyHint{{Key: "→", Label: "open"}, {Key: "a", Label: "add"}}
 		if m.focus == generalPane {
 			hints = append(hints, ui.KeyHint{Key: "b", Label: "branch task"})
@@ -236,12 +236,13 @@ func (m *model) panelStatus() string {
 	if m.viewingMissingBranch() {
 		return ui.StatusBarStyle.Render(missingBranchStatus)
 	}
+	if readme, ok := m.selectedReadmeTask(); ok {
+		return readmeTaskStatus(readme)
+	}
 	row, ok := m.selectedNavigationRow()
 	switch {
 	case !ok:
 		return ""
-	case row.kind == rowTask && m.readmeSelected():
-		return readmeTaskStatus(row.todo)
 	case row.kind == rowTask:
 		return taskStatus(row.todo)
 	}
@@ -262,7 +263,7 @@ func taskStatus(t store.Task) string {
 
 // readmeTaskStatus names where a README task is, as the Files tab does,
 // since it has no priority.
-func readmeTaskStatus(t store.Task) string {
+func readmeTaskStatus(t store.ReadmeTask) string {
 	status := lipgloss.NewStyle().Foreground(ui.ColorText).Render("Open")
 	if t.Done {
 		status = lipgloss.NewStyle().Foreground(ui.ColorGreen).Render("✓ Done")
@@ -284,9 +285,9 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 	if crumbs := m.breadcrumb(kind); len(crumbs) > 1 {
 		completed, count := 0, 0
 		for _, row := range rows {
-			if row.kind == rowTask {
+			if row.isTask() {
 				count++
-				if row.todo.Done {
+				if row.done() {
 					completed++
 				}
 			}
@@ -301,7 +302,9 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 	start, end := ui.VisibleRange(cursor, len(rows), visible)
 	levelWidth := 0
 	for _, row := range rows {
-		levelWidth = max(levelWidth, len(ui.LevelLabel(row.todo.Level)))
+		if row.kind == rowReadmeTask {
+			levelWidth = max(levelWidth, len(ui.LevelLabel(row.readme.Level)))
+		}
 	}
 	if len(rows) == 0 {
 		empty := "No tasks"
@@ -316,9 +319,12 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 		if i == divider && i > start {
 			lines = append(lines, "")
 		}
-		if item.kind == rowTask {
-			lines = append(lines, renderTaskRow(item.todo, innerWidth, levelWidth, selected))
-		} else {
+		switch item.kind {
+		case rowTask:
+			lines = append(lines, renderTaskRow(item.todo, innerWidth, selected))
+		case rowReadmeTask:
+			lines = append(lines, renderReadmeTaskRow(item.readme, innerWidth, levelWidth, selected))
+		default:
 			lines = append(lines, renderGroupRow(item, innerWidth, selected, item.kind == rowBranch && item.name == m.project.branch))
 		}
 	}
@@ -329,7 +335,7 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 // branches, or -1 when the list is not mixed.
 func firstTaskAfterGroups(rows []navigationRow) int {
 	for i := 1; i < len(rows); i++ {
-		if rows[i].kind == rowTask && rows[i-1].kind != rowTask {
+		if rows[i].isTask() && !rows[i-1].isTask() {
 			return i
 		}
 	}
@@ -354,50 +360,75 @@ func renderGroupRow(item navigationRow, width int, selected, current bool) strin
 	return row.Render(width, selected)
 }
 
-// renderTaskRow shows a task's priority, or with a levelWidth above 0, a
-// column of README levels in its place.
-func renderTaskRow(t store.Task, width, levelWidth int, selected bool) string {
+// renderTaskRow shows a todo.md task with its priority.
+func renderTaskRow(t store.Task, width int, selected bool) string {
 	mark, markStyle := priorityMark(t.Priority), ui.MutedStyle
 	if t.Priority != "" {
 		markStyle = priorityStyle(t.Priority)
 	}
-	if levelWidth > 0 {
-		mark, markStyle = ui.LevelMark(t.Level)
-	}
-	textStyle := lipgloss.NewStyle().Foreground(ui.ColorStrong)
-	if t.Done {
-		mark, markStyle, textStyle = "✓", ui.MutedStyle, ui.MutedStyle
-	}
-	mark += strings.Repeat(" ", max(0, levelWidth-ansi.StringWidth(mark))+1)
 	suffix := ""
 	if strings.TrimSpace(t.Details) != "" {
 		suffix = "⋯"
 	}
-	reserved := ansi.StringWidth(mark)
-	if suffix != "" {
-		reserved += ansi.StringWidth(suffix) + 2
+	return taskRow{mark: mark, markStyle: markStyle, text: t.Text, suffix: suffix, done: t.Done}.Render(width, selected)
+}
+
+// renderReadmeTaskRow shows a README task with its level in a column
+// levelWidth wide. A list without levels has a levelWidth of 0, and shows the
+// open bullet instead.
+func renderReadmeTaskRow(t store.ReadmeTask, width, levelWidth int, selected bool) string {
+	mark, markStyle := priorityMark(store.PriorityNone), ui.MutedStyle
+	if levelWidth > 0 {
+		mark, markStyle = ui.LevelMark(t.Level)
 	}
-	title := ansi.Truncate(ui.CleanDisplay(t.Text), max(0, width-reserved), "…")
+	return taskRow{mark: mark, markStyle: markStyle, markWidth: levelWidth, text: t.Text, done: t.Done}.Render(width, selected)
+}
+
+// taskRow is a row for a task: its mark, then its text, with a suffix at the
+// right edge.
+type taskRow struct {
+	mark      string
+	markStyle lipgloss.Style
+	markWidth int // the width the mark is padded to, to line up a column of marks
+	text      string
+	suffix    string
+	done      bool
+}
+
+// Render draws the row in width cells. A done task shows a check mark and
+// muted text instead of its mark.
+func (r taskRow) Render(width int, selected bool) string {
+	mark, markStyle := r.mark, r.markStyle
+	textStyle := lipgloss.NewStyle().Foreground(ui.ColorStrong)
+	if r.done {
+		mark, markStyle, textStyle = "✓", ui.MutedStyle, ui.MutedStyle
+	}
+	mark += strings.Repeat(" ", max(0, r.markWidth-ansi.StringWidth(mark))+1)
+	reserved := ansi.StringWidth(mark)
+	if r.suffix != "" {
+		reserved += ansi.StringWidth(r.suffix) + 2
+	}
+	title := ansi.Truncate(ui.CleanDisplay(r.text), max(0, width-reserved), "…")
 	suffixStyle, fillStyle := ui.MutedStyle, lipgloss.NewStyle()
 	if selected {
 		markStyle = markStyle.Background(ui.ColorSelection)
 		textStyle = textStyle.Background(ui.ColorSelection)
-		if t.Done {
+		if r.done {
 			textStyle = ui.SelectedDoneStyle
 		}
 		suffixStyle, fillStyle = ui.SelectedDoneStyle, ui.SelectedStyle
 	}
 	fill := ""
-	if selected || suffix != "" {
-		fill = strings.Repeat(" ", max(0, width-ansi.StringWidth(mark)-ansi.StringWidth(title)-ansi.StringWidth(suffix)))
+	if selected || r.suffix != "" {
+		fill = strings.Repeat(" ", max(0, width-ansi.StringWidth(mark)-ansi.StringWidth(title)-ansi.StringWidth(r.suffix)))
 	}
-	return markStyle.Render(mark) + textStyle.Render(title) + fillStyle.Render(fill) + suffixStyle.Render(suffix)
+	return markStyle.Render(mark) + textStyle.Render(title) + fillStyle.Render(fill) + suffixStyle.Render(r.suffix)
 }
 
 func (m *model) renderDetailPane(width, height int) string {
 	innerWidth := max(1, width-4)
 	lines := []string{ui.Breadcrumb(m.breadcrumb(detailPane), "", innerWidth), ""}
-	if row, ok := m.selectedNavigationRow(); ok && row.kind != rowTask {
+	if row, ok := m.selectedNavigationRow(); ok && !row.isTask() {
 		lines = append(lines, m.groupDetails(row, innerWidth)...)
 	} else {
 		lines = append(lines, m.taskDetails(innerWidth)...)
@@ -433,17 +464,17 @@ func (m *model) groupDetails(row navigationRow, width int) []string {
 }
 
 func (m *model) taskDetails(width int) []string {
+	if readme, ok := m.selectedReadmeTask(); ok {
+		return ui.WrapLines([]string{ui.LeveledTitle(readme.Text, readme.Level)}, width)
+	}
 	t, ok := m.selectedTask()
 	if !ok {
 		return []string{"", ui.MutedStyle.Render("Select a Markdown task.")}
 	}
-	result := []string{ui.LeveledTitle(t.Text, t.Level), ""}
-	switch {
-	case m.readmeSelected():
-		result = result[:1]
-	case t.Details == "":
+	result := []string{ui.TaskTitleStyle.Render(ui.CleanDisplay(t.Text)), ""}
+	if t.Details == "" {
 		result = append(result, ui.MutedStyle.Render("No details yet"))
-	default:
+	} else {
 		for line := range strings.SplitSeq(t.Details, "\n") {
 			result = append(result, ui.CleanDisplay(line))
 		}
