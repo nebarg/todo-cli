@@ -126,7 +126,7 @@ func TestReadmeGroupClosesWhenItsTasksGo(t *testing.T) {
 	if m.general.open.kind != rowReadme {
 		t.Fatal("README group did not open")
 	}
-	if cmd := pressKey(t, m, "a"); !isOpen[*taskModal](m) || form(t, m).targetCategory != "" {
+	if cmd := pressKey(t, m, "a"); !isOpen[*taskModal](m) || form(t, m).target.Category != "" {
 		t.Fatalf("a inside README.md should add a general task: %+v %v", m.overlay, cmd)
 	}
 	m.overlay = nil

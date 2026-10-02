@@ -493,7 +493,7 @@ func preserveTaskOrder(previous, loaded []store.Task) []store.Task {
 		}
 		best, distance := -1, math.MaxInt
 		for i, candidate := range loaded {
-			if used[i] || candidate.Branch != old.Branch || !strings.EqualFold(candidate.Category, old.Category) {
+			if used[i] || !candidate.Same(old.Section) {
 				continue
 			}
 			if d := abs(candidate.Line - old.Line); d < distance {

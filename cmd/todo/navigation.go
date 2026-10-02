@@ -232,7 +232,7 @@ func (m *model) reveal(t store.Task) {
 func nearestTask(tasks []store.Task, t store.Task) int {
 	best, distance := -1, math.MaxInt
 	for i, candidate := range tasks {
-		if candidate.Text != t.Text || candidate.Branch != t.Branch || !strings.EqualFold(candidate.Category, t.Category) {
+		if candidate.Text != t.Text || !candidate.Same(t.Section) {
 			continue
 		}
 		if d := abs(candidate.Line - t.Line); d < distance {

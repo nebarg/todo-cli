@@ -22,7 +22,7 @@ func TestMarkdownPreserved(t *testing.T) {
 	if err := Toggle(path, tasks[0]); err != nil {
 		t.Fatal(err)
 	}
-	if err := Add(path, "third", "", PriorityNone, "", ""); err != nil {
+	if err := Add(path, "third", "", PriorityNone, Section{}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(path)
@@ -37,13 +37,13 @@ func TestMarkdownPreserved(t *testing.T) {
 
 func TestBranchesAndMetadata(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	if err := Add(path, "general task", "", PriorityNone, "", ""); err != nil {
+	if err := Add(path, "general task", "", PriorityNone, Section{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Add(path, "branch task", "", "high", "", "feature/login"); err != nil {
+	if err := Add(path, "branch task", "", "high", Section{Branch: "feature/login"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Add(path, "another branch task", "", "", "", "feature/login"); err != nil {
+	if err := Add(path, "another branch task", "", "", Section{Branch: "feature/login"}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)
@@ -63,7 +63,7 @@ func TestBranchesAndMetadata(t *testing.T) {
 	if len(tasks) != 3 || tasks[1].Branch != "feature/login" || tasks[1].Priority != "high" || tasks[1].Category != "" {
 		t.Fatalf("parsed tasks: %+v", tasks)
 	}
-	if err := Add(path, "invalid", "", "", "tests", "feature/login"); err == nil {
+	if err := Add(path, "invalid", "", "", Section{Category: "tests", Branch: "feature/login"}); err == nil {
 		t.Fatal("branch category was accepted")
 	}
 	if err := SetPriority(path, tasks[1], "low"); err != nil {
@@ -90,7 +90,7 @@ func TestCategoriesAllowSymbolsButNotWhitespace(t *testing.T) {
 	for _, category := range []string{"two words", " leading", "trailing ", "tab\tname", "line\nbreak"} {
 		t.Run(category, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "TODO.md")
-			if err := Add(path, "Task", "", "", category, ""); err == nil || !strings.Contains(err.Error(), "category must be a single word without whitespace") {
+			if err := Add(path, "Task", "", "", Section{Category: category}); err == nil || !strings.Contains(err.Error(), "category must be a single word without whitespace") {
 				t.Errorf("category %q was accepted or gave an unclear error: %v", category, err)
 			}
 			if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
@@ -101,7 +101,7 @@ func TestCategoriesAllowSymbolsButNotWhitespace(t *testing.T) {
 	for _, category := range []string{"auth", "A1", "@tests2", "#café3", "+v1", "bug-fix", "under_score", "a?", "emoji🙂", "foo#", "@", "#"} {
 		t.Run(category, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "TODO.md")
-			if err := Add(path, "Task", "", "", category, ""); err != nil {
+			if err := Add(path, "Task", "", "", Section{Category: category}); err != nil {
 				t.Fatalf("valid category %q rejected: %v", category, err)
 			}
 			tasks, err := Load(path)
@@ -123,7 +123,7 @@ func TestHashHeadingIsTheSameCategory(t *testing.T) {
 	if len(tasks) != 1 || tasks[0].Category != "auth" {
 		t.Fatalf("tasks = %+v", tasks)
 	}
-	if err := Add(path, "New", "", PriorityNone, "auth", ""); err != nil {
+	if err := Add(path, "New", "", PriorityNone, Section{Category: "auth"}); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := readFile(t, path), "# #auth\n\n- [ ] Existing\n\n- [ ] New\n"; got != want {
@@ -142,7 +142,7 @@ func TestWritesFollowSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The target doesn't exist yet, so the first task creates it.
-	if err := Add(link, "First", "", PriorityNone, "", ""); err != nil {
+	if err := Add(link, "First", "", PriorityNone, Section{}); err != nil {
 		t.Fatal(err)
 	}
 	tasks, err := Load(link)
@@ -162,7 +162,7 @@ func TestWritesFollowSymlinks(t *testing.T) {
 
 func TestChangingCategoryToSymbolName(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	if err := Add(path, "Task", "", "", "auth", ""); err != nil {
+	if err := Add(path, "Task", "", "", Section{Category: "auth"}); err != nil {
 		t.Fatal(err)
 	}
 	tasks, err := Load(path)
@@ -210,13 +210,13 @@ func TestLegacySpacedCategoryCanBeRenamed(t *testing.T) {
 
 func TestSingleCategoryHeadingsAndMoves(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	if err := Add(path, "Auth task", "Keep this detail.", "high", "auth", ""); err != nil {
+	if err := Add(path, "Auth task", "Keep this detail.", "high", Section{Category: "auth"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Add(path, "General task", "", "", "", ""); err != nil {
+	if err := Add(path, "General task", "", "", Section{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Add(path, "Branch plain", "", "", "", "feature/login"); err != nil {
+	if err := Add(path, "Branch plain", "", "", Section{Branch: "feature/login"}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)
@@ -329,7 +329,7 @@ func TestEditTaskContentPreservesMetadataAndOtherTasks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Edit(path, tasks[0], "Renamed task", "New context.\n\n- [ ] Nested step", tasks[0].Category, tasks[0].Branch); err != nil {
+	if err := Edit(path, tasks[0], "Renamed task", "New context.\n\n- [ ] Nested step", tasks[0].Section); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := os.ReadFile(path)
@@ -345,7 +345,7 @@ func TestEditTaskContentPreservesMetadataAndOtherTasks(t *testing.T) {
 	if err != nil || len(tasks) != 2 || tasks[0].Priority != "high" || tasks[0].Details != "New context.\n\n- [ ] Nested step" {
 		t.Fatalf("reloaded tasks: %v, %+v", err, tasks)
 	}
-	if err := Edit(path, tasks[0], "Renamed task", "", tasks[0].Category, tasks[0].Branch); err != nil {
+	if err := Edit(path, tasks[0], "Renamed task", "", tasks[0].Section); err != nil {
 		t.Fatal(err)
 	}
 	tasks, err = Load(path)
@@ -366,17 +366,17 @@ func TestEditTaskContentRejectsChangedBody(t *testing.T) {
 	if err := os.WriteFile(path, []byte("- [ ] First\n\n  Edited elsewhere.\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Edit(path, tasks[0], "New title", "My edit", tasks[0].Category, tasks[0].Branch); !errors.Is(err, ErrTaskChanged) {
+	if err := Edit(path, tasks[0], "New title", "My edit", tasks[0].Section); !errors.Is(err, ErrTaskChanged) {
 		t.Fatalf("edit error = %v, want errTaskChanged", err)
 	}
 }
 
 func TestGeneralInsertedBeforeExistingBranches(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	if err := Add(path, "branch task", "", "", "", "feature/login"); err != nil {
+	if err := Add(path, "branch task", "", "", Section{Branch: "feature/login"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Add(path, "general task", "", PriorityNone, "", ""); err != nil {
+	if err := Add(path, "general task", "", PriorityNone, Section{}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)
@@ -404,7 +404,7 @@ func TestExternalMarkdownIsReadWithoutChangingIt(t *testing.T) {
 	if got, _ := os.ReadFile(path); string(got) != original {
 		t.Fatalf("reading changed file: %q", got)
 	}
-	if err := Edit(path, tasks[0], "renamed generic", "", tasks[0].Category, tasks[0].Branch); err != nil {
+	if err := Edit(path, tasks[0], "renamed generic", "", tasks[0].Section); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := os.ReadFile(path); !strings.HasPrefix(string(got), "- [ ] renamed generic\n") || !strings.Contains(string(got), "- [ ] malformed priority !urgent\n") {
@@ -426,7 +426,7 @@ func TestAnyNonBranchHeadingDefinesCategory(t *testing.T) {
 
 func TestBranchNamedBranchesRemainsARegularBranch(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	if err := Add(path, "nested name", "", "", "", "Branches"); err != nil {
+	if err := Add(path, "nested name", "", "", Section{Branch: "Branches"}); err != nil {
 		t.Fatal(err)
 	}
 	tasks, err := Load(path)
@@ -472,12 +472,12 @@ func TestBareItemsBecomeCheckboxesOnlyWhenEdited(t *testing.T) {
 
 func TestTasksStaySortedByPriority(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	for _, scope := range []struct{ category, branch string }{{}, {category: "Work"}, {branch: "feature/login"}} {
+	for _, section := range []Section{{}, {Category: "Work"}, {Branch: "feature/login"}} {
 		for _, item := range []struct {
 			title    string
 			priority Priority
 		}{{"none", ""}, {"low", "low"}, {"high", "high"}, {"medium", "medium"}} {
-			if err := Add(path, item.title+scope.category+scope.branch, "", item.priority, scope.category, scope.branch); err != nil {
+			if err := Add(path, item.title+section.Category+section.Branch, "", item.priority, section); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -542,19 +542,19 @@ func TestEditMovesTaskBetweenSections(t *testing.T) {
 		t.Fatalf("task %q not found", text)
 		return Task{}
 	}
-	if err := Edit(path, find("Move me"), "Moved", "New details.", "@docs", ""); err != nil {
+	if err := Edit(path, find("Move me"), "Moved", "New details.", Section{Category: "@docs"}); err != nil {
 		t.Fatal(err)
 	}
 	if moved := find("Moved"); moved.Category != "docs" || moved.Priority != PriorityHigh || moved.Details != "New details." {
 		t.Fatalf("category move lost content: %+v", moved)
 	}
-	if err := Edit(path, find("Moved"), "Moved", "New details.", "", ""); err != nil {
+	if err := Edit(path, find("Moved"), "Moved", "New details.", Section{}); err != nil {
 		t.Fatal(err)
 	}
 	if moved := find("Moved"); moved.Category != "" || moved.Branch != "" {
 		t.Fatalf("blank category did not move the task to General: %+v", moved)
 	}
-	if err := Edit(path, find("Branch move"), "Branch move", "", "", "feature/b"); err != nil {
+	if err := Edit(path, find("Branch move"), "Branch move", "", Section{Branch: "feature/b"}); err != nil {
 		t.Fatal(err)
 	}
 	if moved := find("Branch move"); moved.Branch != "feature/b" {
@@ -572,23 +572,23 @@ func TestEditMovesTaskBetweenSections(t *testing.T) {
 	if !strings.Contains(string(data), "- [ ] Stay") || !strings.Contains(string(data), "- [ ] Other branch") {
 		t.Fatalf("moving changed other tasks: %s", data)
 	}
-	if err := Edit(path, find("Stay"), "Stay", "", "docs", "feature/b"); err == nil {
+	if err := Edit(path, find("Stay"), "Stay", "", Section{Category: "docs", Branch: "feature/b"}); err == nil {
 		t.Fatal("a task was allowed both a category and a branch")
 	}
 }
 
 func TestPriorityIsATrailingToken(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	if err := Add(path, "Typed priority !high", "", PriorityNone, "", ""); err != nil {
+	if err := Add(path, "Typed priority !high", "", PriorityNone, Section{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Add(path, "Flag priority", "", PriorityLow, "", ""); err != nil {
+	if err := Add(path, "Flag priority", "", PriorityLow, Section{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Add(path, "Both agree !low", "", PriorityLow, "", ""); err != nil {
+	if err := Add(path, "Both agree !low", "", PriorityLow, Section{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Add(path, "Conflict !high", "", PriorityLow, "", ""); err == nil {
+	if err := Add(path, "Conflict !high", "", PriorityLow, Section{}); err == nil {
 		t.Fatal("conflicting priorities were accepted")
 	}
 	want := "- [ ] Typed priority !high\n\n- [ ] Flag priority !low\n\n- [ ] Both agree !low\n"
@@ -609,7 +609,7 @@ func TestPriorityIsATrailingToken(t *testing.T) {
 		t.Fatalf("task %q not found", text)
 		return Task{}
 	}
-	if err := Edit(path, find("Typed priority"), "Typed priority !medium", "", "", ""); err != nil {
+	if err := Edit(path, find("Typed priority"), "Typed priority !medium", "", Section{}); err != nil {
 		t.Fatal(err)
 	}
 	if task := find("Typed priority"); task.Priority != PriorityMedium {
@@ -648,10 +648,12 @@ func TestByteOrderMarkIsSetAside(t *testing.T) {
 		name  string
 		write func(path string, tasks []Task) error
 	}{
-		{"add to the first heading", func(path string, _ []Task) error { return Add(path, "New", "", PriorityNone, "work", "") }},
+		{"add to the first heading", func(path string, _ []Task) error {
+			return Add(path, "New", "", PriorityNone, Section{Category: "work"})
+		}},
 		{"toggle", func(path string, tasks []Task) error { return Toggle(path, tasks[0]) }},
 		{"edit", func(path string, tasks []Task) error {
-			return Edit(path, tasks[0], "Renamed !low", "Details", "work", "")
+			return Edit(path, tasks[0], "Renamed !low", "Details", Section{Category: "work"})
 		}},
 		{"set priority", func(path string, tasks []Task) error { return SetPriority(path, tasks[1], PriorityHigh) }},
 		{"set category", func(path string, tasks []Task) error { return SetCategory(path, tasks[0], "other") }},

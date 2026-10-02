@@ -5,15 +5,14 @@ import (
 	"strings"
 )
 
-// sortSection orders the tasks of one section: open tasks by priority, then
-// done tasks, keeping the file's order among equals. A blank category and
-// branch mean the general list. Each task moves with its details; notes
-// above the first task and nested headings stay where they are.
-func sortSection(content, category, branch string) string {
+// sortSection orders the tasks of section s: open tasks by priority, then
+// done tasks, keeping the file's order among equals. Each task moves with its
+// details; notes above the first task and nested headings stay where they are.
+func sortSection(content string, s Section) string {
 	lines := strings.Split(content, "\n")
 	var runs [][]Task
 	for _, t := range parseTasks(lines) {
-		if t.Branch != branch || (branch == "" && !strings.EqualFold(t.Category, category)) {
+		if !t.Same(s) {
 			continue
 		}
 		if n := len(runs); n > 0 && runs[n-1][len(runs[n-1])-1].bodyEnd == t.Line {

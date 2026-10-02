@@ -196,7 +196,7 @@ func addTask(out io.Writer, file string, project projectContext, o options, args
 		return err
 	}
 	title := strings.Join(args, " ")
-	if err := store.Add(file, title, "", p, category, branch); err != nil {
+	if err := store.Add(file, title, "", p, store.Section{Category: category, Branch: branch}); err != nil {
 		return err
 	}
 	_, err = fmt.Fprintf(out, "Added to %s: %s\n", file, title)

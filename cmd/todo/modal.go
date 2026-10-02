@@ -25,20 +25,19 @@ const (
 )
 
 type taskModal struct {
-	mode           modalMode
-	selected       store.Task
-	file           string
-	project        projectContext
-	targetBranch   string
-	targetCategory string
-	branches       []string
-	branchCursor   int
-	branchFresh    bool
-	title          textarea.Model
-	scope          textinput.Model
-	details        textarea.Model
-	field          int // titleField, scopeField or detailsField
-	err            string
+	mode         modalMode
+	selected     store.Task
+	file         string
+	project      projectContext
+	target       store.Section
+	branches     []string
+	branchCursor int
+	branchFresh  bool
+	title        textarea.Model
+	scope        textinput.Model
+	details      textarea.Model
+	field        int // titleField, scopeField or detailsField
+	err          string
 }
 
 const (
@@ -50,14 +49,14 @@ const (
 func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 	modal := &taskModal{mode: mode, file: m.file, project: m.project}
 	if mode == modalAddGeneral && m.all == nil && m.activePane() == generalPane && m.general.open.kind == rowCategory {
-		modal.targetCategory = m.general.open.name
+		modal.target.Category = m.general.open.name
 	}
 	if mode == modalAddBranch {
-		modal.branches, modal.targetBranch = m.checkLocalBranches()
+		modal.branches, modal.target.Branch = m.checkLocalBranches()
 		if m.all == nil && m.activePane() == branchPane && m.branch.open != (group{}) {
-			modal.targetBranch = m.branch.open.name
+			modal.target.Branch = m.branch.open.name
 		}
-		if !slices.Contains(modal.branches, modal.targetBranch) {
+		if !slices.Contains(modal.branches, modal.target.Branch) {
 			modal.branchCursor = -1
 		}
 	}
@@ -74,7 +73,7 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 			return nil
 		}
 		modal.selected = selected
-		modal.targetCategory, modal.targetBranch = selected.Category, selected.Branch
+		modal.target = selected.Section
 	}
 	modal.title = textarea.New()
 	modal.title.SetStyles(fieldAreaStyles())
@@ -87,10 +86,10 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 	modal.scope.Prompt = ""
 	if modal.branchScope() {
 		modal.scope.Placeholder = "Search local branches"
-		modal.scope.SetValue(modal.targetBranch)
+		modal.scope.SetValue(modal.target.Branch)
 	} else {
 		modal.scope.Placeholder = "Optional category"
-		modal.scope.SetValue(modal.targetCategory)
+		modal.scope.SetValue(modal.target.Category)
 	}
 	modal.details = textarea.New()
 	modal.details.SetStyles(fieldAreaStyles())
@@ -289,33 +288,33 @@ func (f *taskModal) focusField(field int) tea.Cmd {
 
 func (f *taskModal) save() error {
 	if f.branchScope() {
-		f.targetBranch = f.chosenBranch()
-		if f.targetBranch == "" && f.mode == modalEdit && strings.TrimSpace(f.scope.Value()) == f.selected.Branch {
-			f.targetBranch = f.selected.Branch
+		f.target.Branch = f.chosenBranch()
+		if f.target.Branch == "" && f.mode == modalEdit && strings.TrimSpace(f.scope.Value()) == f.selected.Branch {
+			f.target.Branch = f.selected.Branch
 		}
-		if f.targetBranch == "" {
+		if f.target.Branch == "" {
 			if len(f.branches) == 0 {
 				return errors.New("no local Git branches found")
 			}
 			return errors.New("choose an existing local Git branch")
 		}
 		// The task's own branch was checked when the form opened.
-		if f.targetBranch != f.selected.Branch && !f.project.hasLocalBranch(f.targetBranch) {
-			return fmt.Errorf("branch %q no longer exists locally", f.targetBranch)
+		if f.target.Branch != f.selected.Branch && !f.project.hasLocalBranch(f.target.Branch) {
+			return fmt.Errorf("branch %q no longer exists locally", f.target.Branch)
 		}
 	} else {
-		f.targetCategory = store.NormalizeCategory(f.scope.Value())
+		f.target.Category = store.NormalizeCategory(f.scope.Value())
 	}
 	if f.mode == modalEdit {
-		return store.Edit(f.file, f.selected, f.taskTitle(), f.details.Value(), f.targetCategory, f.targetBranch)
+		return store.Edit(f.file, f.selected, f.taskTitle(), f.details.Value(), f.target)
 	}
-	return store.Add(f.file, f.taskTitle(), f.details.Value(), store.PriorityNone, f.targetCategory, f.targetBranch)
+	return store.Add(f.file, f.taskTitle(), f.details.Value(), store.PriorityNone, f.target)
 }
 
 // saved describes the task save wrote, for the model to follow.
 func (f *taskModal) saved() taskSavedMsg {
-	task := store.Task{Text: f.taskTitle(), Category: f.targetCategory, Branch: f.targetBranch, Line: f.selected.Line}
-	moved := f.mode == modalEdit && (f.targetBranch != f.selected.Branch || !strings.EqualFold(f.targetCategory, f.selected.Category))
+	task := store.Task{Text: f.taskTitle(), Section: f.target, Line: f.selected.Line}
+	moved := f.mode == modalEdit && !f.target.Same(f.selected.Section)
 	return taskSavedMsg{task: task, added: f.mode != modalEdit, moved: moved}
 }
 

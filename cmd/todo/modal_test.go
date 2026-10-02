@@ -28,7 +28,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	}
 	m.enterSelectedGroup()
 	m.startTaskModal(modalAddGeneral)
-	if form(t, m).targetCategory != "auth" {
+	if form(t, m).target.Category != "auth" {
 		t.Fatal("add form did not inherit selected category")
 	}
 	form(t, m).title.SetValue("New auth task")
@@ -40,8 +40,8 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 	m.focus = branchPane
 	m.enterSelectedGroup()
 	m.startTaskModal(modalAddBranch)
-	if form(t, m).targetBranch != "feature/login" {
-		t.Fatalf("add form chose %q instead of selected branch", form(t, m).targetBranch)
+	if form(t, m).target.Branch != "feature/login" {
+		t.Fatalf("add form chose %q instead of selected branch", form(t, m).target.Branch)
 	}
 	form(t, m).title.SetValue("New branch task")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
@@ -50,7 +50,7 @@ func TestAddingWithinGroupsKeepsScope(t *testing.T) {
 		t.Fatalf("new task was not added to branch: %+v", m.rows(branchPane))
 	}
 	m.startTaskModal(modalAddBranch)
-	if form(t, m).targetCategory != "" {
+	if form(t, m).target.Category != "" {
 		t.Fatal("branch add form unexpectedly inherited a category")
 	}
 	form(t, m).title.SetValue("Another branch task")
@@ -80,7 +80,7 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
-	if !isOpen[*taskModal](m) || form(t, m).targetCategory != "" {
+	if !isOpen[*taskModal](m) || form(t, m).target.Category != "" {
 		t.Fatalf("root add inherited selected category: %+v", m.overlay)
 	}
 	form(t, m).title.SetValue("General task")
@@ -99,7 +99,7 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
-	if !isOpen[*taskModal](m) || form(t, m).targetCategory != "test" {
+	if !isOpen[*taskModal](m) || form(t, m).target.Category != "test" {
 		t.Fatalf("category add did not inherit opened category: %+v", m.overlay)
 	}
 	form(t, m).title.SetValue("Another test task")
@@ -127,7 +127,7 @@ func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 	m.branch.cursor = 0 // feature/a is selected; main is the current Git branch.
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
-	if !isOpen[*taskModal](m) || form(t, m).mode != modalAddBranch || form(t, m).targetBranch != "main" {
+	if !isOpen[*taskModal](m) || form(t, m).mode != modalAddBranch || form(t, m).target.Branch != "main" {
 		t.Fatalf("a did not target the current branch from the branch list: %+v", m.overlay)
 	}
 	form(t, m).title.SetValue("First main task")
@@ -141,7 +141,7 @@ func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 	m.enterSelectedGroup()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
-	if !isOpen[*taskModal](m) || form(t, m).targetBranch != "feature/a" {
+	if !isOpen[*taskModal](m) || form(t, m).target.Branch != "feature/a" {
 		t.Fatalf("a did not target the opened branch: %+v", m.overlay)
 	}
 	form(t, m).title.SetValue("Second feature task")
@@ -154,7 +154,7 @@ func TestAddShortcutUsesCurrentBranchAtRootAndOpenedBranch(t *testing.T) {
 	m.focus = generalPane
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
 	m = updated.(*model)
-	if !isOpen[*taskModal](m) || form(t, m).mode != modalAddBranch || form(t, m).targetBranch != "main" {
+	if !isOpen[*taskModal](m) || form(t, m).mode != modalAddBranch || form(t, m).target.Branch != "main" {
 		t.Fatalf("b no longer explicitly targets the current Git branch: %+v", m.overlay)
 	}
 }
@@ -177,7 +177,7 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
-	if !isOpen[*taskModal](m) || form(t, m).targetBranch != "feature/new" || form(t, m).scope.Value() != "feature/new" {
+	if !isOpen[*taskModal](m) || form(t, m).target.Branch != "feature/new" || form(t, m).scope.Value() != "feature/new" {
 		t.Fatalf("branch list used a cached or selected branch: %+v", m.overlay)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -185,7 +185,7 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 	m.branch.open = branchGroup("feature/old")
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)
-	if !isOpen[*taskModal](m) || form(t, m).targetBranch != "feature/old" {
+	if !isOpen[*taskModal](m) || form(t, m).target.Branch != "feature/old" {
 		t.Fatalf("opened branch did not override current Git branch: %+v", m.overlay)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -193,7 +193,7 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 	m.openAllTasks()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
 	m = updated.(*model)
-	if !isOpen[*taskModal](m) || form(t, m).targetBranch != "feature/new" {
+	if !isOpen[*taskModal](m) || form(t, m).target.Branch != "feature/new" {
 		t.Fatalf("All Tasks inherited a hidden branch filter: %+v", m.overlay)
 	}
 }
