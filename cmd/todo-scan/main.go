@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 
@@ -35,6 +36,7 @@ const (
 
 type options struct {
 	dir     string
+	given   string // the directory as the command line gave it, which starts each --list path
 	exclude scan.Exclude
 	list    bool
 	check   bool
@@ -42,8 +44,8 @@ type options struct {
 	level   []string
 }
 
-// parseArgs reads the command line: the directory to scan, made absolute,
-// what to skip in it, and whether to print rather than browse.
+// parseArgs reads the command line: the directory to scan, as given and made
+// absolute, what to skip in it, and whether to print rather than browse.
 func parseArgs(cwd string, argv []string) (options, error) {
 	var o options
 	var excludes []string
@@ -74,7 +76,7 @@ func parseArgs(cwd string, argv []string) (options, error) {
 	switch args := flags.Args(); len(args) {
 	case 0:
 	case 1:
-		o.dir = args[0]
+		o.dir, o.given = args[0], args[0]
 		if !filepath.IsAbs(o.dir) {
 			o.dir = filepath.Join(cwd, o.dir)
 		}
@@ -105,7 +107,7 @@ func report(ctx context.Context, out, errOut io.Writer, o options) int {
 	}
 	if o.list {
 		for _, match := range matches {
-			_, _ = fmt.Fprintf(out, "%s:%d: %s\n", match.Path, match.Line, match.Text)
+			_, _ = fmt.Fprintf(out, "%s:%d: %s\n", path.Join(filepath.ToSlash(o.given), match.Path), match.Line, match.Text)
 		}
 	}
 	if !o.check {

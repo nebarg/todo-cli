@@ -27,16 +27,18 @@ func TestParseArgs(t *testing.T) {
 		want options
 	}{
 		{"", options{dir: cwd, exclude: defaults}},
-		{"web", options{dir: sub, exclude: defaults}},
-		{"-e dist --exclude web/gen web", options{dir: sub, exclude: scan.Exclude{Names: []string{"dist"}, Paths: []string{"gen"}}}},
-		{sub, options{dir: sub, exclude: defaults}},
+		{"web", options{dir: sub, given: "web", exclude: defaults}},
+		{"./web/", options{dir: sub, given: "./web/", exclude: defaults}},
+		{".", options{dir: cwd, given: ".", exclude: defaults}},
+		{"-e dist --exclude web/gen web", options{dir: sub, given: "web", exclude: scan.Exclude{Names: []string{"dist"}, Paths: []string{"gen"}}}},
+		{sub, options{dir: sub, given: sub, exclude: defaults}},
 		{"--list", options{dir: cwd, exclude: defaults, list: true}},
-		{"--check web", options{dir: sub, exclude: defaults, check: true}},
+		{"--check web", options{dir: sub, given: "web", exclude: defaults, check: true}},
 		{"--list --check --levels", options{dir: cwd, exclude: defaults, list: true, check: true, levels: true}},
 		{"--list --level 0 --level 1", options{dir: cwd, exclude: defaults, list: true, level: []string{"0", "1"}}},
 		{"--check --level 00,9", options{dir: cwd, exclude: defaults, check: true, level: []string{"00", "9"}}},
 		{"--list --level 0+,1", options{dir: cwd, exclude: defaults, list: true, level: []string{"0+", "1"}}},
-		{"--levels web", options{dir: sub, exclude: defaults, levels: true}},
+		{"--levels web", options{dir: sub, given: "web", exclude: defaults, levels: true}},
 		{"--level 1", options{dir: cwd, exclude: defaults, level: []string{"1"}}},
 	} {
 		t.Run(c.argv, func(t *testing.T) {
@@ -99,6 +101,10 @@ func TestReport(t *testing.T) {
 		{"check any zeros and todo1", options{dir: dir, check: true, level: []string{"0+", "1"}}, "3 levelled TODOs\n", "", exitFound},
 		{"check a level nobody used", options{dir: dir, check: true, level: []string{"5"}}, "0 levelled TODOs\n", "", exitClean},
 		{"check with exclusions", options{dir: dir, check: true, exclude: scan.Exclude{Names: []string{"web"}}}, "4 TODOs\n", "", exitFound},
+		{"list from a directory given as a relative path", options{dir: dir, given: "../proj/", list: true, levels: true}, "../proj/a.go:3: y := 2 // todo00 fix before that\n../proj/a.go:2: x := 1 // todo0 fix first\n../proj/web/app.js:1: /* todo1 later */\n", "", exitClean},
+		{"list from a directory given as an absolute path", options{dir: dir, given: dir, list: true, level: []string{"1"}}, filepath.ToSlash(dir) + "/web/app.js:1: /* todo1 later */\n", "", exitClean},
+		{"list from the current directory given as .", options{dir: dir, given: ".", list: true}, all, "", exitClean},
+		{"check from a directory given", options{dir: dir, given: "../proj", check: true}, "5 TODOs\n", "", exitFound},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			out, errOut, status := run(c.o)
