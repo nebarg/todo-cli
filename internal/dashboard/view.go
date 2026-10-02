@@ -255,7 +255,7 @@ func taskStatus(theme ui.Theme, t store.Task) string {
 		status = lipgloss.NewStyle().Foreground(theme.ColorGreen).Render("✓ Done")
 	}
 	priority := theme.MutedStyle.Render("No priority")
-	if t.Priority != "" {
+	if t.Priority != store.PriorityNone {
 		priority = priorityStyle(theme, t.Priority).Render(priorityMark(t.Priority) + " " + t.Priority.Title() + " priority")
 	}
 	return status + theme.MutedStyle.Render("  ·  ") + priority
@@ -363,7 +363,7 @@ func renderGroupRow(theme ui.Theme, item navigationRow, width int, selected, cur
 // renderTaskRow shows a todo.md task with its priority.
 func renderTaskRow(theme ui.Theme, t store.Task, width int, selected bool) string {
 	mark, markStyle := priorityMark(t.Priority), theme.MutedStyle
-	if t.Priority != "" {
+	if t.Priority != store.PriorityNone {
 		markStyle = priorityStyle(theme, t.Priority)
 	}
 	suffix := ""

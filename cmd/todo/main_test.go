@@ -145,7 +145,7 @@ func TestRun(t *testing.T) {
 		{"-f " + path + " -p h Fix the bug", "Added to " + path + ": Fix the bug\n", "", 0},
 		{"-f " + path + " --clear-done", "Removed 1 done task from " + path + ":\n  Shipped\n", "", 0},
 		{"-f " + path + " --clear-done", "No done tasks in " + path + "\n", "", 0},
-		{"--wat", "", "unknown flag: --wat\nRun todo --help for usage.\n", 2},
+		{"--wat", "", "unknown flag: --wat\nRun todo --help for usage\n", 2},
 		{"-f " + path + " --clear-done now", "", "usage: todo [-f file] [--clear-done] [--clear-missing]\n", 2},
 		{"-f " + path, "", "the dashboard needs a terminal; give a task to add, or use todo-scan --list\n", 2},
 		{"-f " + path + " -e /", "", "--exclude needs a directory name or path\n", 2},

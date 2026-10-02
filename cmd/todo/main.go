@@ -127,7 +127,7 @@ func runCommand(argv []string, out io.Writer) error {
 		if errors.Is(err, pflag.ErrHelp) {
 			return nil
 		}
-		return usageError(err.Error() + "\nRun todo --help for usage.")
+		return usageError(err.Error() + "\nRun todo --help for usage")
 	}
 	if o.version {
 		_, err := fmt.Fprintf(out, "todo %s\n", buildinfo.Version())

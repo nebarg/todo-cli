@@ -55,7 +55,7 @@ var syntaxByExtension = map[string]syntax{
 	".sql": sql, ".mysql": sql, ".pgsql": sql,
 	".lua": lua,
 	".hs":  haskell, ".elm": haskell,
-	".xml": markup, ".svg": markup, ".md": markup, ".markdown": markup,
+	".xml": markup, ".svg": markup,
 	".html": page, ".htm": page, ".vue": page, ".svelte": page, ".astro": page, ".ejs": page, ".hbs": page, ".mustache": page,
 	".twig": twig, ".jinja": twig, ".j2": twig,
 	".tpl": smarty,

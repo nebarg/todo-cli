@@ -183,7 +183,7 @@ func (v *allTasksView) view(theme ui.Theme, tasks []store.Task, missing func(bra
 			scope = "⚠ " + t.Branch
 		}
 		mark, markStyle := priorityMark(t.Priority)+" ", theme.MutedStyle
-		if t.Priority != "" {
+		if t.Priority != store.PriorityNone {
 			markStyle = priorityStyle(theme, t.Priority)
 		}
 		taskStyle := lipgloss.NewStyle().Foreground(theme.ColorStrong)

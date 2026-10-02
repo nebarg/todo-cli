@@ -9,6 +9,8 @@ import (
 // Priority orders tasks; PriorityNone sorts after the others.
 type Priority string
 
+// The priorities a task can have, written in todo.md as a trailing !high,
+// !medium or !low. PriorityNone is a task without one.
 const (
 	PriorityNone   Priority = ""
 	PriorityHigh   Priority = "high"
