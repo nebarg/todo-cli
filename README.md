@@ -250,7 +250,7 @@ The scanner supports [todo-system](https://github.com/archtechx/todo-system)'s m
 ```sh
 go run ./cmd/todo
 go test ./...
-go tool golangci-lint run ./...
+go tool -modfile=tools/go.mod golangci-lint run ./...
 ```
 
-The linter version is pinned in `go.mod` and configured in `.golangci.yml`.
+The linter version is pinned in its own module, `tools/go.mod`, and configured in `.golangci.yml`.
