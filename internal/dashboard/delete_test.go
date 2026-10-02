@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -205,15 +204,6 @@ func TestDeleteLeavesAFileChangedSinceAlone(t *testing.T) {
 	if got := fileContent(t, path); got != elsewhere || !strings.Contains(m.status, "changed") || m.lastRemoval != nil {
 		t.Fatalf("file = %q, status %q", got, m.status)
 	}
-}
-
-// taskOrder is the text and line of each row in the focused list.
-func taskOrder(m *model) []string {
-	var order []string
-	for _, row := range m.rows(m.focus) {
-		order = append(order, fmt.Sprintf("%s:%d", row.todo.Text, row.todo.Line))
-	}
-	return order
 }
 
 func TestDeletingOneOfIdenticalTasksLeavesTheOtherInPlace(t *testing.T) {

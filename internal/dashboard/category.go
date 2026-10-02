@@ -53,7 +53,7 @@ type categorySetMsg struct{ task store.Task }
 // categorySet follows a recategorised task: to its new category in General,
 // or to its new place in the All tasks view.
 func (m *model) categorySet(msg categorySetMsg) (tea.Model, tea.Cmd) {
-	if err := m.refresh(); err != nil {
+	if err := m.refresh(msg.task); err != nil {
 		m.status = err.Error()
 		return m, nil
 	}

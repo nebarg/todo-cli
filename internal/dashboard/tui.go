@@ -64,7 +64,7 @@ func newModel(file string, repo project.Context, files filesui.Model) (*model, e
 	m := &model{file: file, project: repo, theme: ui.NewTheme(true), width: 100, height: 30, files: files}
 	// Before the dashboard is drawn, Git is asked directly.
 	m.setBranches(branchState(repo))
-	if err := m.readTasks(true); err != nil {
+	if err := m.readTasks(true, nil); err != nil {
 		return nil, err
 	}
 	m.openCurrentBranch()
@@ -176,7 +176,7 @@ func (m *model) taskKey(key string) tea.Cmd {
 		m.undoRemoval()
 	case "r":
 		m.status = ""
-		if err := m.readTasks(true); err != nil {
+		if err := m.readTasks(true, nil); err != nil {
 			m.status = err.Error()
 		}
 		return tea.Batch(reloadProject(), m.files.Scan())
@@ -341,6 +341,7 @@ func (m *model) openReadme() tea.Cmd {
 func (m *model) toggleSelected() {
 	var toggle func() error
 	var reselect func()
+	var changed []store.Task
 	if readme, ok := m.selectedReadmeTask(); ok {
 		toggle = func() error { return store.ToggleReadme(m.readmeFile(), readme) }
 		reselect = func() { m.selectReadmeTask(readme) }
@@ -358,17 +359,19 @@ func (m *model) toggleSelected() {
 			return
 		}
 		toggle = func() error { return store.Toggle(m.file, selected) }
-		reselect = func() { m.selectNavigationTask(selected) }
+		toggled := selected
+		toggled.Done = !selected.Done
+		changed = append(changed, toggled)
 	}
 	if err := toggle(); err != nil {
 		m.status = errorStatus(err)
 		return
 	}
-	if err := m.refresh(); err != nil {
+	if err := m.refresh(changed...); err != nil {
 		m.status = err.Error()
 		return
 	}
-	if m.all == nil {
+	if reselect != nil {
 		reselect()
 	}
 	m.status = ""
@@ -402,11 +405,13 @@ func (m *model) cyclePriority() {
 	if m.blockMissingBranch(selected) {
 		return
 	}
-	if err := store.SetPriority(m.file, selected, selected.Priority.Next()); err != nil {
+	changed := selected
+	changed.Priority = selected.Priority.Next()
+	if err := store.SetPriority(m.file, selected, changed.Priority); err != nil {
 		m.status = errorStatus(err)
 		return
 	}
-	if err := m.refresh(); err != nil {
+	if err := m.refresh(changed); err != nil {
 		m.status = err.Error()
 		return
 	}
@@ -490,8 +495,12 @@ func (m *model) setTheme(theme ui.Theme) {
 	}
 }
 
-func (m *model) refresh() error {
-	return m.readTasks(false)
+// refresh rereads the file after a write, keeping each task in the place it
+// was shown in. changed are the tasks the write changed, as they now are but
+// with the lines they were read at. They are placed after the other tasks,
+// so an identical task can't take their places, and the cursor follows them.
+func (m *model) refresh(changed ...store.Task) error {
+	return m.readTasks(false, changed)
 }
 
 // refreshFrom rereads the file as refresh does, keeping the rows in the
@@ -502,10 +511,16 @@ func (m *model) refreshFrom(previous []store.Task) error {
 }
 
 // readTasks also drops any pending undo of a clear or delete: whatever
-// caused the reload may have changed the file since.
-func (m *model) readTasks(sortByPriority bool) error {
+// caused the reload may have changed the file since. changed is as refresh
+// takes it.
+func (m *model) readTasks(sortByPriority bool, changed []store.Task) error {
 	m.lastRemoval = nil
 	previous, hadSelection := m.selectedTask()
+	i := slices.IndexFunc(changed, func(t store.Task) bool { return t.Line == previous.Line })
+	selectionChanged := hadSelection && i >= 0
+	if selectionChanged {
+		previous = changed[i]
+	}
 	tasks, err := store.Load(m.file)
 	if err != nil {
 		return err
@@ -516,7 +531,7 @@ func (m *model) readTasks(sortByPriority bool) error {
 			m.all.byPriority = false
 		}
 	} else {
-		m.tasks.setAll(preserveTaskOrder(m.tasks.all, tasks))
+		m.tasks.setAll(preserveTaskOrder(m.tasks.all, tasks, changed))
 	}
 	if m.tasks.readme, err = loadReadme(m.readmeFile()); err != nil {
 		return err
@@ -534,17 +549,29 @@ func (m *model) readTasks(sortByPriority bool) error {
 		if hadSelection {
 			m.selectInAllTasks(previous)
 		}
+	} else if selectionChanged {
+		m.selectNavigationTask(previous)
 	}
 	return nil
 }
 
-func preserveTaskOrder(previous, loaded []store.Task) []store.Task {
+// preserveTaskOrder orders loaded as previous was shown. Each task takes the
+// place of the previous task most like it: first one alike in text, section,
+// done state and priority, then any in its section, nearest its line either
+// way. Tasks without a place go last. The changed tasks, at their previous
+// lines, only get places in the second round, so an identical task left as
+// it was can't take theirs.
+func preserveTaskOrder(previous, loaded, changed []store.Task) []store.Task {
 	if len(previous) == 0 || len(loaded) == 0 {
 		return loaded
 	}
-	type key struct{ text, branch, category string }
+	type key struct {
+		text, branch, category string
+		done                   bool
+		priority               store.Priority
+	}
 	identity := func(item store.Task) key {
-		return key{item.Text, item.Branch, strings.ToLower(item.Category)}
+		return key{item.Text, item.Branch, strings.ToLower(item.Category), item.Done, item.Priority}
 	}
 	positions := make(map[key][]int, len(loaded))
 	for i, item := range loaded {
@@ -556,6 +583,9 @@ func preserveTaskOrder(previous, loaded []store.Task) []store.Task {
 	}
 	used := make([]bool, len(loaded))
 	for oldIndex, old := range previous {
+		if slices.ContainsFunc(changed, func(t store.Task) bool { return t.Line == old.Line }) {
+			continue
+		}
 		candidates := positions[identity(old)]
 		best, bestOffset, distance := -1, -1, math.MaxInt
 		for offset, i := range candidates {

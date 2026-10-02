@@ -283,14 +283,23 @@ func (m *model) reveal(t store.Task) {
 
 // nearestTask finds t in tasks after a write, which can move it in the file:
 // the task with its title, category and branch nearest its old line, or -1.
+// Of identical tasks, those with t's done state and priority come first.
 func nearestTask(tasks []store.Task, t store.Task) int {
-	best, distance := -1, math.MaxInt
+	best, bestDiffers, distance := -1, math.MaxInt, math.MaxInt
 	for i, candidate := range tasks {
 		if candidate.Text != t.Text || !candidate.Same(t.Section) {
 			continue
 		}
-		if d := abs(candidate.Line - t.Line); d < distance {
-			best, distance = i, d
+		differs := 0
+		if candidate.Done != t.Done {
+			differs++
+		}
+		if candidate.Priority != t.Priority {
+			differs++
+		}
+		d := abs(candidate.Line - t.Line)
+		if differs < bestDiffers || differs == bestDiffers && d < distance {
+			best, bestDiffers, distance = i, differs, d
 		}
 	}
 	return best

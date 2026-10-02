@@ -121,7 +121,11 @@ type taskSavedMsg struct {
 // taskSaved follows a new task, or one an edit moved to another category or
 // branch, to where it now lives.
 func (m *model) taskSaved(msg taskSavedMsg) (tea.Model, tea.Cmd) {
-	if err := m.refresh(); err != nil {
+	var changed []store.Task
+	if !msg.added {
+		changed = append(changed, msg.task)
+	}
+	if err := m.refresh(changed...); err != nil {
 		m.status = err.Error()
 		return m, nil
 	}
@@ -316,7 +320,7 @@ func (f *taskModal) save() error {
 
 // saved describes the task save wrote, for the model to follow.
 func (f *taskModal) saved() taskSavedMsg {
-	task := store.Task{Text: f.taskTitle(), Section: f.target, Line: f.selected.Line}
+	task := store.Task{Text: f.taskTitle(), Section: f.target, Line: f.selected.Line, Done: f.selected.Done, Priority: f.selected.Priority}
 	moved := f.mode == modalEdit && !f.target.Same(f.selected.Section)
 	return taskSavedMsg{task: task, added: f.mode != modalEdit, moved: moved}
 }

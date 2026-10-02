@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -391,5 +392,66 @@ func TestOnlyCOpensCategoryInput(t *testing.T) {
 	}
 	if help := ansi.Strip(renderHelp(ui.NewTheme(true))); strings.Contains(help, "c l") {
 		t.Fatalf("help still lists l: %s", help)
+	}
+}
+
+// taskOrder is each row's task in the focused list as text:line, marked ✓
+// when done and with its priority when it has one.
+func taskOrder(m *model) []string {
+	var order []string
+	for _, row := range m.rows(m.focus) {
+		task := fmt.Sprintf("%s:%d", row.todo.Text, row.todo.Line)
+		if row.todo.Done {
+			task += "✓"
+		}
+		if row.todo.Priority != store.PriorityNone {
+			task += "!" + string(row.todo.Priority)
+		}
+		order = append(order, task)
+	}
+	return order
+}
+
+func TestWritesKeepIdenticalTasksInPlace(t *testing.T) {
+	const content = "- [ ] scan\n\n- [ ] list\n\n- [ ] scan\n\n- [ ] need\n"
+	type step struct {
+		key    string
+		file   string
+		rows   []string
+		cursor int
+	}
+	for _, item := range []struct {
+		name   string
+		cursor int
+		steps  []step
+	}{
+		{"done and reopened", 0, []step{
+			{"d", "- [ ] list\n\n- [ ] scan\n\n- [ ] need\n\n- [x] scan\n", []string{"list:0", "scan:2", "need:4", "scan:6✓"}, 3},
+			{"d", "- [ ] list\n\n- [ ] scan\n\n- [ ] need\n\n- [ ] scan\n", []string{"scan:6", "list:0", "scan:2", "need:4"}, 0},
+		}},
+		{"priority", 2, []step{
+			{"p", "- [ ] scan !high\n\n- [ ] scan\n\n- [ ] list\n\n- [ ] need\n", []string{"scan:2", "list:4", "scan:0!high", "need:6"}, 2},
+		}},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "todo.md")
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			m, err := newModel(path, project.Context{}, testFiles())
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.general.cursor = item.cursor
+			for _, s := range item.steps {
+				m = press(m, s.key)
+				if got := fileContent(t, path); got != s.file {
+					t.Fatalf("%s wrote %q, want %q", s.key, got, s.file)
+				}
+				if got := taskOrder(m); !slices.Equal(got, s.rows) || m.general.cursor != s.cursor {
+					t.Fatalf("after %s rows = %v with the cursor on %d, want %v on %d", s.key, got, m.general.cursor, s.rows, s.cursor)
+				}
+			}
+		})
 	}
 }
