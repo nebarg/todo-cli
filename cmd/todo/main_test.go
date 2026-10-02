@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,19 +93,19 @@ func TestAddTaskOnBranches(t *testing.T) {
 	dir := t.TempDir()
 	project := testGitProject(t, dir, "main", "feature/x")
 	path := filepath.Join(dir, "todo.md")
-	if err := addTask(path, project, options{branch: ".", priority: "h"}, []string{"Current", "task"}); err != nil {
+	if err := addTask(io.Discard, path, project, options{branch: ".", priority: "h"}, []string{"Current", "task"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := addTask(path, project, options{branch: "feature/x"}, []string{"Other", "task"}); err != nil {
+	if err := addTask(io.Discard, path, project, options{branch: "feature/x"}, []string{"Other", "task"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := addTask(path, project, options{branch: "gone"}, []string{"Lost"}); err == nil || !strings.Contains(err.Error(), `branch "gone" does not exist locally`) {
+	if err := addTask(io.Discard, path, project, options{branch: "gone"}, []string{"Lost"}); err == nil || !strings.Contains(err.Error(), `branch "gone" does not exist locally`) {
 		t.Fatalf("missing branch error = %v", err)
 	}
-	if err := addTask(path, project, options{branch: "."}, []string{"@tests", "Both"}); err == nil {
+	if err := addTask(io.Discard, path, project, options{branch: "."}, []string{"@tests", "Both"}); err == nil {
 		t.Fatal("a branch task was given a category")
 	}
-	if err := addTask(path, projectContext{}, options{branch: "."}, []string{"No", "Git"}); err == nil || err.Error() != "no current Git branch" {
+	if err := addTask(io.Discard, path, projectContext{}, options{branch: "."}, []string{"No", "Git"}); err == nil || err.Error() != "no current Git branch" {
 		t.Fatalf("-b . outside Git = %v", err)
 	}
 	data, err := os.ReadFile(path)
@@ -122,5 +123,44 @@ func TestScanFlagsAreGone(t *testing.T) {
 		if err := newFlags(&o).Parse([]string{flag}); err == nil {
 			t.Errorf("%s was accepted", flag)
 		}
+	}
+}
+
+func TestRun(t *testing.T) {
+	t.Chdir(t.TempDir()) // outside any Git repository
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("- [x] Shipped\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		args        string
+		out, errOut string
+		status      int
+	}{
+		{"-f " + path + " -p h Fix the bug", "Added to " + path + ": Fix the bug\n", "", 0},
+		{"-f " + path + " --clear-done", "Removed 1 done task from " + path + ":\n  Shipped\n", "", 0},
+		{"-f " + path + " --clear-done", "No done tasks in " + path + "\n", "", 0},
+		{"--wat", "", "unknown flag: --wat\nRun todo --help for usage.\n", 2},
+		{"-f " + path + " --clear-done now", "", "usage: todo [-f file] [--clear-done] [--clear-missing]\n", 2},
+		{"-f " + path, "", "the dashboard needs a terminal; give a task to add, or use todo-scan --list\n", 2},
+		{"-f " + path + " -e /", "", "--exclude needs a directory name or path\n", 2},
+		{"-f " + path + " --clear-missing", "", "--clear-missing needs a Git repository to check branches against\n", 1},
+		{"-f " + path + " -b . Fix", "", "no current Git branch\n", 1},
+	} {
+		t.Run(c.args, func(t *testing.T) {
+			var out, errOut strings.Builder
+			status := run(strings.Fields(c.args), &out, &errOut)
+			if out.String() != c.out || errOut.String() != c.errOut || status != c.status {
+				t.Fatalf("got %q, %q, %d\nwant %q, %q, %d", out.String(), errOut.String(), status, c.out, c.errOut, c.status)
+			}
+		})
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "- [ ] Fix the bug !high\n" {
+		t.Fatalf("todo.md = %q, %v", data, err)
+	}
+
+	var out, errOut strings.Builder
+	if status := run([]string{"--help"}, &out, &errOut); status != 0 || !strings.HasPrefix(out.String(), "Usage:") || errOut.Len() > 0 {
+		t.Fatalf("--help = %d, %q, %q", status, out.String(), errOut.String())
 	}
 }

@@ -6,6 +6,7 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -93,69 +94,83 @@ func chooseCommand(o options, args []string) (command, error) {
 }
 
 func main() {
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// run runs todo with the arguments after the program name, and returns its
+// exit status: 2 for a usage error and 1 for any other.
+func run(args []string, stdout, stderr io.Writer) int {
+	err := runCommand(args, stdout)
+	if err == nil {
+		return 0
+	}
+	_, _ = fmt.Fprintln(stderr, err)
+	if _, ok := errors.AsType[usageError](err); ok {
+		return 2
+	}
+	return 1
+}
+
+// runCommand does what the command line asks, reporting on out.
+func runCommand(argv []string, out io.Writer) error {
 	var o options
 	flags := newFlags(&o)
 	flags.Usage = func() {
-		_, _ = fmt.Fprint(os.Stdout, usageText+flags.FlagUsages())
+		_, _ = fmt.Fprint(out, usageText+flags.FlagUsages())
 	}
-	if err := flags.Parse(os.Args[1:]); err != nil {
+	if err := flags.Parse(argv); err != nil {
 		if errors.Is(err, pflag.ErrHelp) {
-			return
+			return nil
 		}
-		fail(usageError(err.Error() + "\nRun todo --help for usage."))
+		return usageError(err.Error() + "\nRun todo --help for usage.")
 	}
 	args := flags.Args()
 	cmd, err := chooseCommand(o, args)
 	if err != nil {
-		fail(err)
+		return err
 	}
 	project := currentProject()
-	cwd, err := os.Getwd()
-	if err != nil {
-		fail(err)
-	}
-	file := o.file
-	if file == "" {
-		file = defaultFile(project)
-	}
-
+	file := cmp.Or(o.file, defaultFile(project))
 	switch cmd {
 	case commandClear:
 		var missing func(string) bool
 		if o.clearMissing {
 			if missing, err = missingBranches(project); err != nil {
-				fail(err)
+				return err
 			}
 		}
-		if err := clearTasks(os.Stdout, file, o.clearDone, missing); err != nil {
-			fail(err)
-		}
+		return clearTasks(out, file, o.clearDone, missing)
 	case commandAdd:
-		if err := addTask(file, project, o, args); err != nil {
-			fail(err)
-		}
-	case commandDashboard:
-		exclude, err := scan.ParseExclude(cwd, cwd, o.excludes)
-		if err != nil {
-			fail(err)
-		}
-		m, err := newModel(file, project, filesui.New(cwd, exclude, nil))
-		if err != nil {
-			fail(err)
-		}
-		err = ui.Run(m, os.Stdout)
-		if errors.Is(err, ui.ErrNoTerminal) {
-			err = usageError("the dashboard needs a terminal; give a task to add, or use todo-scan --list")
-		}
-		if err != nil {
-			fail(err)
-		}
+		return addTask(out, file, project, o, args)
 	}
+	return runDashboard(out, file, project, o.excludes)
+}
+
+// runDashboard opens the dashboard on out, which must be a terminal, with the
+// Files tab scanning the working directory.
+func runDashboard(out io.Writer, file string, project projectContext, excludes []string) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	exclude, err := scan.ParseExclude(cwd, cwd, excludes)
+	if err != nil {
+		return usageError(err.Error())
+	}
+	m, err := newModel(file, project, filesui.New(cwd, exclude, nil))
+	if err != nil {
+		return err
+	}
+	err = ui.Run(m, out)
+	if errors.Is(err, ui.ErrNoTerminal) {
+		return usageError("the dashboard needs a terminal; give a task to add, or use todo-scan --list")
+	}
+	return err
 }
 
 // addTask files the task in args under the category or branch the flags
-// name, and reports where it went.
-func addTask(file string, project projectContext, o options, args []string) error {
+// name, and reports where it went on out.
+func addTask(out io.Writer, file string, project projectContext, o options, args []string) error {
 	category, args := splitCategoryArg(args)
 	if len(args) == 0 {
 		return usageError("usage: todo [flags] [@category] task")
@@ -184,8 +199,8 @@ func addTask(file string, project projectContext, o options, args []string) erro
 	if err := store.Add(file, title, "", p, category, branch); err != nil {
 		return err
 	}
-	fmt.Printf("Added to %s: %s\n", file, title)
-	return nil
+	_, err = fmt.Fprintf(out, "Added to %s: %s\n", file, title)
+	return err
 }
 
 // clearTasks removes every done task from file when done is set, and every
@@ -268,12 +283,4 @@ func splitCategoryArg(args []string) (string, []string) {
 		return args[0], args[1:]
 	}
 	return "", args
-}
-
-func fail(err error) {
-	fmt.Fprintln(os.Stderr, err)
-	if _, ok := errors.AsType[usageError](err); ok {
-		os.Exit(2)
-	}
-	os.Exit(1)
 }

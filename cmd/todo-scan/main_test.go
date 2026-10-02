@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -42,19 +43,20 @@ func TestParseArgs(t *testing.T) {
 		{"--level 1", options{dir: cwd, exclude: defaults, level: []string{"1"}}},
 	} {
 		t.Run(c.argv, func(t *testing.T) {
-			got, err := parseArgs(cwd, strings.Fields(c.argv))
+			got, err := parseArgs(cwd, strings.Fields(c.argv), io.Discard)
 			if err != nil || !reflect.DeepEqual(got, c.want) {
 				t.Fatalf("parseArgs = %+v, %v; want %+v", got, err, c.want)
 			}
 		})
 	}
 	for _, argv := range []string{"a b", "--wat", "missing", "notes.txt", "--check=soon", "--list --level 12", "--list --level x", "--list --level=", "--list --level 1+", "--list --level 0*", "--list --level +"} {
-		if _, err := parseArgs(cwd, strings.Fields(argv)); err == nil {
+		if _, err := parseArgs(cwd, strings.Fields(argv), io.Discard); err == nil {
 			t.Errorf("parseArgs(%q) was accepted", argv)
 		}
 	}
-	if _, err := parseArgs(cwd, []string{"--help"}); !errors.Is(err, pflag.ErrHelp) {
-		t.Fatalf("--help = %v", err)
+	var usage strings.Builder
+	if _, err := parseArgs(cwd, []string{"--help"}, &usage); !errors.Is(err, pflag.ErrHelp) || !strings.HasPrefix(usage.String(), "Usage:") {
+		t.Fatalf("--help = %v, printing %q", err, usage.String())
 	}
 }
 
@@ -129,5 +131,45 @@ func TestReport(t *testing.T) {
 	}
 	if _, errOut, status := run(options{dir: filepath.Join(clean, "gone"), check: true}); errOut == "" || status != exitError {
 		t.Fatalf("a failed scan = %q, %d", errOut, status)
+	}
+}
+
+func TestRun(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{"a.go": "// todo0 first\n", "sub/b.go": "// TODO: later\n"} {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(dir)
+	for _, c := range []struct {
+		args        string
+		out, errOut string
+		status      int
+	}{
+		{"--list", "a.go:1: // todo0 first\nsub/b.go:1: // TODO: later\n", "", exitClean},
+		{"--list sub", "sub/b.go:1: // TODO: later\n", "", exitClean},
+		{"--list --check --levels", "a.go:1: // todo0 first\n", "1 levelled TODO\n", exitFound},
+		{"--check -e sub", "1 TODO\n", "", exitFound},
+		{"--wat", "", "unknown flag: --wat\nRun todo-scan --help for usage\n", exitError},
+		{"--list missing", "", "stat " + filepath.Join(dir, "missing") + ": no such file or directory\n", exitError},
+		{"", "", "the browser needs a terminal; use --list or --check\n", exitError},
+	} {
+		t.Run(c.args, func(t *testing.T) {
+			var out, errOut strings.Builder
+			status := run(t.Context(), strings.Fields(c.args), &out, &errOut)
+			if out.String() != c.out || errOut.String() != c.errOut || status != c.status {
+				t.Fatalf("got %q, %q, %d\nwant %q, %q, %d", out.String(), errOut.String(), status, c.out, c.errOut, c.status)
+			}
+		})
+	}
+
+	var out, errOut strings.Builder
+	if status := run(t.Context(), []string{"--help"}, &out, &errOut); status != exitClean || !strings.HasPrefix(out.String(), "Usage:") || errOut.Len() > 0 {
+		t.Fatalf("--help = %d, %q, %q", status, out.String(), errOut.String())
 	}
 }

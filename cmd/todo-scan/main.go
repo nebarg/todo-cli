@@ -46,7 +46,8 @@ type options struct {
 
 // parseArgs reads the command line: the directory to scan, as given and made
 // absolute, what to skip in it, and whether to print rather than browse.
-func parseArgs(cwd string, argv []string) (options, error) {
+// --help prints the usage on out.
+func parseArgs(cwd string, argv []string, out io.Writer) (options, error) {
 	var o options
 	var excludes []string
 	flags := pflag.NewFlagSet("todo-scan", pflag.ContinueOnError)
@@ -56,7 +57,7 @@ func parseArgs(cwd string, argv []string) (options, error) {
 	flags.BoolVar(&o.levels, "levels", false, "only todo-system's levelled TODOs, todo0 to todo9")
 	flags.StringSliceVar(&o.level, "level", nil, "only TODOs at this `level`, such as 0 for todo0, 00 for todo00, or 0+ for any number of zeros; repeat for more")
 	flags.Usage = func() {
-		_, _ = fmt.Fprint(os.Stdout, usageText+flags.FlagUsages())
+		_, _ = fmt.Fprint(out, usageText+flags.FlagUsages())
 	}
 	if err := flags.Parse(argv); err != nil {
 		if errors.Is(err, pflag.ErrHelp) {
@@ -129,30 +130,38 @@ func report(ctx context.Context, out, errOut io.Writer, o options) int {
 }
 
 func main() {
+	os.Exit(run(context.Background(), os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// run runs todo-scan with the arguments after the program name, and returns
+// its exit status.
+func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	cwd, err := os.Getwd()
 	if err != nil {
-		fail(err)
+		return fail(stderr, err)
 	}
-	o, err := parseArgs(cwd, os.Args[1:])
+	o, err := parseArgs(cwd, args, stdout)
 	if errors.Is(err, pflag.ErrHelp) {
-		return
+		return exitClean
 	}
 	if err != nil {
-		fail(err)
+		return fail(stderr, err)
 	}
 	if o.list || o.check {
-		os.Exit(report(context.Background(), os.Stdout, os.Stderr, o))
+		return report(ctx, stdout, stderr, o)
 	}
-	err = ui.Run(newModel(o.dir, o.exclude, scan.LevelFilter(o.levels, o.level)), os.Stdout)
+	err = ui.Run(newModel(o.dir, o.exclude, scan.LevelFilter(o.levels, o.level)), stdout)
 	if errors.Is(err, ui.ErrNoTerminal) {
 		err = errors.New("the browser needs a terminal; use --list or --check")
 	}
 	if err != nil {
-		fail(err)
+		return fail(stderr, err)
 	}
+	return exitClean
 }
 
-func fail(err error) {
-	fmt.Fprintln(os.Stderr, err)
-	os.Exit(exitError)
+// fail reports err and returns the exit status for an error.
+func fail(stderr io.Writer, err error) int {
+	_, _ = fmt.Fprintln(stderr, err)
+	return exitError
 }

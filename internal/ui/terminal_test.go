@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,7 +28,7 @@ func TestRunNeedsATerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = file.Close() }()
-	for name, out := range map[string]*os.File{"pipe": pipe, "file": file} {
+	for name, out := range map[string]io.Writer{"pipe": pipe, "file": file, "buffer": &bytes.Buffer{}} {
 		if err := Run(quitModel{}, out); !errors.Is(err, ErrNoTerminal) {
 			t.Errorf("Run to a %s = %v", name, err)
 		}
