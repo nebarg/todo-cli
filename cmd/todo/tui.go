@@ -264,11 +264,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m.startTaskModal(modalEdit)
 		case "r":
-			m.project = currentProject()
-			if err := m.reload(); err != nil {
+			m.status = ""
+			if err := m.refreshProject(); err != nil {
 				m.status = err.Error()
-			} else {
-				m.status = ""
 			}
 			return m, m.files.Scan()
 		}
@@ -490,6 +488,24 @@ func (m *model) cyclePriority() {
 		return
 	}
 	m.status = ""
+}
+
+// refreshProject re-reads the Git context and the task file. When the
+// Branches tab was showing the current branch and Git has since switched,
+// it follows to the new current branch, as at startup; a branch opened by
+// hand stays open.
+func (m *model) refreshProject() error {
+	previous := m.project.branch
+	m.project = currentProject()
+	err := m.reload()
+	if m.project.branch != previous && previous != "" && m.branchFilter == previous {
+		m.branchFilter, m.branchCursor = "", m.branchRootCursor
+		if m.focus == detailPane && m.detailFrom == branchPane {
+			m.focus = branchPane
+		}
+		m.openCurrentBranch()
+	}
+	return err
 }
 
 // reload is for startup and explicit refreshes. Otherwise Git is only asked
@@ -758,11 +774,9 @@ func (m *model) updateIndex(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "enter", "e":
 		return m.startTaskModal(modalEdit)
 	case "r":
-		m.project = currentProject()
-		if err := m.reload(); err != nil {
+		m.status = ""
+		if err := m.refreshProject(); err != nil {
 			m.status = err.Error()
-		} else {
-			m.status = ""
 		}
 		return m, m.files.Scan()
 	}

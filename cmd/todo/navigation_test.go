@@ -441,3 +441,59 @@ func TestFilesTabKeysReachTheBrowser(t *testing.T) {
 		t.Fatalf("returning to Files did not show its list:\n%s", files())
 	}
 }
+
+func TestReloadFollowsASwitchedGitBranch(t *testing.T) {
+	setup := func(t *testing.T) (*model, string) {
+		dir := t.TempDir()
+		project := testGitProject(t, dir, "main", "feature/x", "feature/empty")
+		path := filepath.Join(dir, "todo.md")
+		if err := os.WriteFile(path, []byte("# Branches\n\n## main\n\n- [ ] Main task\n\n## feature/x\n\n- [ ] Feature task\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		t.Chdir(dir) // reload reads the Git context from the working directory.
+		m, err := newModel(path, project)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.focus = branchPane
+		return m, dir
+	}
+	checkout := func(t *testing.T, dir, branch string) {
+		t.Helper()
+		if _, err := gitOutput(dir, "checkout", "-q", branch); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("follows from the old current branch", func(t *testing.T) {
+		m, dir := setup(t)
+		m = press(m, "right") // details of the old branch's task
+		checkout(t, dir, "feature/x")
+		m = press(m, "r")
+		if m.project.branch != "feature/x" || m.branchFilter != "feature/x" || m.focus != branchPane {
+			t.Fatalf("after switching: branch %q, open %q, focus %v", m.project.branch, m.branchFilter, m.focus)
+		}
+	})
+	t.Run("keeps a branch opened by hand", func(t *testing.T) {
+		m, dir := setup(t)
+		m = press(m, "2") // back to the branch list
+		m.branchCursor = 0
+		m = press(m, "right")
+		if m.branchFilter != "feature/x" {
+			t.Fatalf("opened %q", m.branchFilter)
+		}
+		checkout(t, dir, "feature/empty")
+		m = press(m, "r")
+		if m.branchFilter != "feature/x" {
+			t.Fatalf("a branch opened by hand was left: %q", m.branchFilter)
+		}
+	})
+	t.Run("returns to the list when the new branch has no tasks", func(t *testing.T) {
+		m, dir := setup(t)
+		checkout(t, dir, "feature/empty")
+		m = press(m, "r")
+		if m.project.branch != "feature/empty" || m.branchFilter != "" {
+			t.Fatalf("after switching to a branch without tasks: open %q", m.branchFilter)
+		}
+	})
+}
