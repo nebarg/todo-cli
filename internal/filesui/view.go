@@ -25,7 +25,10 @@ func (m *Model) Hints() []ui.KeyHint {
 	if m.details {
 		return []ui.KeyHint{back, {Key: "e", Label: "open file"}}
 	}
-	if _, ok := m.Selected(); !ok && len(m.rows()) > 0 {
+	if _, ok := m.Selected(); !ok {
+		if len(m.rows()) == 0 {
+			return nil
+		}
 		return []ui.KeyHint{{Key: "→", Label: "open"}}
 	}
 	hints := []ui.KeyHint{{Key: "e", Label: "open file"}, {Key: "→", Label: "details"}}

@@ -218,8 +218,8 @@ func TestArrowOpensDetailsAndEscapeReturnsToList(t *testing.T) {
 	updated, _ = m.Update(filesui.ScannedMsg{})
 	m = updated.(*model)
 	footer := ansi.Strip(m.renderFooter(100))
-	if !strings.Contains(footer, "e open file") || strings.Contains(footer, "Found 0") {
-		t.Fatalf("scan changed the file TODO footer: %q", footer)
+	if strings.Contains(footer, "e open file") || strings.Contains(footer, "Found 0") {
+		t.Fatalf("empty file TODO footer = %q", footer)
 	}
 	m.status = "No current Git branch"
 	footer = ansi.Strip(m.renderFooter(60))

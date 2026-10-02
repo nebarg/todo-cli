@@ -114,7 +114,13 @@ func TestEmptyListOpensNothing(t *testing.T) {
 	if !m.Loading() || !strings.Contains(ansi.Strip(m.View(60, 10)), "Scanning…") {
 		t.Fatal("a list before its first scan should say it's scanning")
 	}
+	if m.Hints() != nil {
+		t.Fatalf("hints while scanning = %+v", m.Hints())
+	}
 	m.Update(ScannedMsg{})
+	if m.Hints() != nil {
+		t.Fatalf("hints for an empty list = %+v", m.Hints())
+	}
 	if press(&m, "right"); m.Details() || m.Loading() || m.Total() != 0 {
 		t.Fatal("right opened details without a TODO")
 	}
