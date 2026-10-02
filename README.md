@@ -1,8 +1,8 @@
 # todo-cli
 
-A small TODO app that keeps your tasks in a Markdown file, with a terminal dashboard for working through them.
+A TODO app that keeps tasks in a Markdown file, with a terminal dashboard.
 
-It also finds TODO comments in your code and the TODO list in your README, and understands [todo-system](https://github.com/archtechx/todo-system)'s categories (`todo@boundary`) and priorities (`todo0`, `todo1`). If you only want to browse TODO comments, [`todo-scan`](#todo-scan) does that on its own, without a task file.
+It also lists TODO comments in source files and the TODO list in a README, including [todo-system](https://github.com/archtechx/todo-system)'s categories (`todo@boundary`) and levels (`todo0`, `todo1`). [`todo-scan`](#todo-scan) lists TODO comments on their own, without a task file.
 
 Use a terminal with a [Nerd Font](https://www.nerdfonts.com/) for the Git and branch icons; without one they show as empty boxes.
 
@@ -25,7 +25,7 @@ todo [flags] --clear-done        remove done tasks
 todo [flags] --clear-missing     remove tasks of branches no longer in Git
 ```
 
-Flags come first, and everything after them is the task, so a task can start with any word. To start a task with a dash, put `--` before it: `todo -- -v flag is broken`.
+Flags come first; everything after them is the task. To start a task with a dash, put `--` before it: `todo -- -v flag is broken`.
 
 ```sh
 todo Update the changelog
@@ -43,10 +43,10 @@ todo -b . -p h Fix the bug on this branch
 | `--all-files` | With `--scan`, include Markdown, hidden and ignored files |
 | `--scan [directory]` | List TODO comments under the directory, or here. See [TODOs in source files](#todos-in-source-files) |
 | `--clear-done` | Remove every done task, and list what went |
-| `--clear-missing` | Remove every task of branches whose local Git branch no longer exists, open ones included, and their headings. Your Git branches aren't touched. Needs Git. Give both `--clear-` flags to do both |
+| `--clear-missing` | Remove every task, open or done, of branches whose local Git branch no longer exists, with their headings. Git branches aren't changed. Needs Git |
 | `-h`, `--help` | Show usage |
 
-A task goes in one place: the general list, a category, or a branch. Branch tasks can't have a category. Categories are one word, and `Branches` is reserved; a branch must already exist locally.
+A task goes in the general list, a category or a branch. Branch tasks can't have a category. Categories are one word, and `Branches` is reserved. A branch must exist locally.
 
 The task file is `todo.md` at the repository root, or in the current directory outside Git. It's created when you add the first task.
 
@@ -70,7 +70,7 @@ A branch whose local Git branch has been deleted shows as `⚠ branch-name  miss
 - Counts such as `1/2` are done/total, for tabs, categories and branches. Files shows its number of matches, or `…` while scanning.
 - The status bar under the list describes the highlighted row, and the footer shows the main keys for it.
 
-The list keeps rows still while you work, so cycling `p` doesn't make a row jump. It re-sorts when it opens and when you press `r`.
+Rows keep their place after edits. The list re-sorts when it opens and when you press `r`.
 
 ### All tasks
 
@@ -143,10 +143,10 @@ File and README TODOs open in `$VISUAL`, then `$EDITOR`, falling back to `vi`. V
 - **Sections:** tasks before the first heading are general. `## branch-name` headings under `# Branches` are branch sections, and headings nested inside a branch stay part of it. Any other heading is a category.
 - **Categories** can't contain spaces, and `Branches` is reserved. `auth`, `@auth` and `#auth` all mean the same category.
 - **Details** are everything under a task until the next task or heading: paragraphs, lists, code, even indented checkboxes. The app writes them indented by two spaces.
-- **Priority** is a trailing `!high`, `!medium` or `!low`. Only a last word that names a priority counts, so `Ship it!` and `Fix !important CSS` stay as they are. Old `- Priority:` and `- Labels:` lines now read as details.
+- **Priority** is a trailing `!high`, `!medium` or `!low`. Only a last word that names a priority counts, so `Ship it!` and `Fix !important CSS` stay as they are.
 - **Plain list items** such as `- Buy milk` are read as tasks, and become `- [ ] Buy milk` when edited.
 
-The file stays readable without the app. When the app writes a task, it re-sorts that task's section: open tasks high, medium, low, then no priority, with done tasks last.
+When the app writes a task, it re-sorts that task's section: open tasks by priority (high, medium, low, none), then done tasks.
 
 - Tasks move with their details, and tasks of equal priority keep your order.
 - Notes above the first task and nested headings stay put, as do other sections.
@@ -155,7 +155,7 @@ The file stays readable without the app. When the app writes a task, it re-sorts
 
 ## TODOs in README.md
 
-As in todo-system, the dashboard reads the TODO list in the `README.md` beside the task file, so at the repository root by default. They're listed under `▸ README.md` in General, and never copied into `todo.md`.
+The dashboard reads the TODO list in the `README.md` next to the task file, which is the repository root by default, following todo-system's rules for READMEs. The tasks are listed under `▸ README.md` in General and aren't copied into `todo.md`.
 
 ```md
 ## TODOs
@@ -177,7 +177,7 @@ The dashboard's Files tab and [`todo-scan`](#todo-scan) show the same results, u
 
 - The dashboard scans the working directory and below, and `todo-scan` the directory you give it. Both use ripgrep (`rg`) if it's installed.
 - It skips gitignored, hidden, binary and Markdown files. `todo --all-files --scan` includes them, apart from binaries, and still only counts comments.
-- Only comments count. Each file is read with its language's comment syntax, picked by its extension, so code such as `class Todo {`, strings, CSS's `#todo` and C's `#define TODO` are ignored, and comments that span lines are followed to their end.
+- Only comments count. Each file is read with the comment syntax for its extension, so code and strings such as `class Todo {`, `"TODO"`, CSS's `#todo` and C's `#define TODO` don't match. Comments spanning several lines are followed to their end.
 - A file with PHP in it is read as PHP whatever its extension, and HTML and template files also count `//` and `/* */` comments in their scripts and styles. Files of an unknown type are read a line at a time, guessing where each line's comment starts.
 - Directories starting with `.` are always skipped, as are `node_modules` and `vendor` by default.
 
@@ -196,7 +196,7 @@ todo -e ./web/generated
 
 ### todo-scan
 
-`todo-scan` is the Files tab on its own, full screen. It never reads or creates a task file, so it's safe to point at any directory:
+`todo-scan` is the Files tab on its own, full screen. It doesn't read or create a task file.
 
 ```sh
 todo-scan
@@ -205,6 +205,30 @@ todo-scan -e dist web
 ```
 
 The directory defaults to the current one. `-e` / `--exclude` works as above, with paths taken from where you run it. The keys are the Files tab's, plus `r` to rescan and `q` to quit.
+
+`--list` and `--check` print instead of opening the browser:
+
+| Command | Prints | Exit status |
+| --- | --- | --- |
+| `todo-scan --list` | Every TODO, as `path:line: text`, most urgent first | 0 |
+| `todo-scan --check` | How many there are, such as `3 TODOs` | 1 if there are any, 0 if not |
+| `todo-scan --list --check` | The list on stdout, the count on stderr | 1 if there are any, 0 if not |
+
+`--levels` limits either to levelled TODOs, `todo0` to `todo9`. `--level` limits them to the levels given: `--level 0` matches `todo0` only, `--level 00` matches `todo00`, and `--level 0+` matches any number of zeros. Repeat it, or separate levels with commas:
+
+```sh
+todo-scan --list --level 0 --level 1
+todo-scan --check --level 0+,1
+```
+
+Errors, such as a missing directory or an unknown flag, exit with 2.
+
+A CI step that fails while any levelled TODOs remain:
+
+```yaml
+- name: No urgent TODOs
+  run: todo-scan --list --check --levels
+```
 
 ### todo-system syntax
 
@@ -219,9 +243,9 @@ The scanner supports [todo-system](https://github.com/archtechx/todo-system)'s m
 
 - Category rows open like categories in General, and `3` again goes back.
 - Levels are listed first, most urgent at the top, with the level beside the text. Zero levels are red, and other levels yellow.
-- Four or more zeros are labelled `0x4` to `0x9`, then `0x9+`, so the column stays narrow. They still sort by the real count.
+- Four or more zeros are labelled `0x4` to `0x9`, then `0x9+`. They sort by the real count.
 - As in todo-system, a TODO has a category or a level, not both: `todo1@boundary` is just in `boundary`.
-- Numbers todo-system doesn't accept, such as `todo12`, are treated as generic rather than hidden.
+- todo-system ignores levels it doesn't accept, such as `todo12`. Here they're listed as generic TODOs.
 - `todo --scan` lists levels first too, then the rest by file.
 
 ## Development

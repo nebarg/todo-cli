@@ -18,42 +18,108 @@ func TestParseArgs(t *testing.T) {
 	if err := os.Mkdir(sub, 0755); err != nil {
 		t.Fatal(err)
 	}
-	file := filepath.Join(cwd, "notes.txt")
-	if err := os.WriteFile(file, nil, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(cwd, "notes.txt"), nil, 0644); err != nil {
 		t.Fatal(err)
 	}
+	defaults := scan.Exclude{Names: []string{"node_modules", "vendor"}}
 	for _, c := range []struct {
-		argv    string
-		dir     string
-		exclude scan.Exclude
+		argv string
+		want options
 	}{
-		{"", cwd, scan.Exclude{Names: []string{"node_modules", "vendor"}}},
-		{"web", sub, scan.Exclude{Names: []string{"node_modules", "vendor"}}},
-		{"-e dist --exclude web/gen web", sub, scan.Exclude{Names: []string{"dist"}, Paths: []string{"gen"}}},
-		{sub, sub, scan.Exclude{Names: []string{"node_modules", "vendor"}}},
+		{"", options{dir: cwd, exclude: defaults}},
+		{"web", options{dir: sub, exclude: defaults}},
+		{"-e dist --exclude web/gen web", options{dir: sub, exclude: scan.Exclude{Names: []string{"dist"}, Paths: []string{"gen"}}}},
+		{sub, options{dir: sub, exclude: defaults}},
+		{"--list", options{dir: cwd, exclude: defaults, list: true}},
+		{"--check web", options{dir: sub, exclude: defaults, check: true}},
+		{"--list --check --levels", options{dir: cwd, exclude: defaults, list: true, check: true, levels: true}},
+		{"--list --level 0 --level 1", options{dir: cwd, exclude: defaults, list: true, level: []string{"0", "1"}}},
+		{"--check --level 00,9", options{dir: cwd, exclude: defaults, check: true, level: []string{"00", "9"}}},
+		{"--list --level 0+,1", options{dir: cwd, exclude: defaults, list: true, level: []string{"0+", "1"}}},
 	} {
 		t.Run(c.argv, func(t *testing.T) {
-			dir, exclude, err := parseArgs(cwd, strings.Fields(c.argv))
-			if err != nil || dir != c.dir || !reflect.DeepEqual(exclude, c.exclude) {
-				t.Fatalf("parseArgs = %q, %+v, %v; want %q, %+v", dir, exclude, err, c.dir, c.exclude)
+			got, err := parseArgs(cwd, strings.Fields(c.argv))
+			if err != nil || !reflect.DeepEqual(got, c.want) {
+				t.Fatalf("parseArgs = %+v, %v; want %+v", got, err, c.want)
 			}
 		})
 	}
-	for _, c := range []struct {
-		argv  string
-		usage bool
-	}{
-		{"a b", true},
-		{"--wat", true},
-		{"missing", false},
-		{"notes.txt", false},
-	} {
-		_, _, err := parseArgs(cwd, strings.Fields(c.argv))
-		if _, isUsage := errors.AsType[usageError](err); err == nil || isUsage != c.usage {
-			t.Errorf("parseArgs(%q) = %v, usage error %v", c.argv, err, isUsage)
+	for _, argv := range []string{"a b", "--wat", "missing", "notes.txt", "--levels", "--check=soon", "--level 1", "--list --level 12", "--list --level x", "--list --level=", "--list --level 1+", "--list --level 0*", "--list --level +"} {
+		if _, err := parseArgs(cwd, strings.Fields(argv)); err == nil {
+			t.Errorf("parseArgs(%q) was accepted", argv)
 		}
 	}
-	if _, _, err := parseArgs(cwd, []string{"--help"}); !errors.Is(err, pflag.ErrHelp) {
+	if _, err := parseArgs(cwd, []string{"--help"}); !errors.Is(err, pflag.ErrHelp) {
 		t.Fatalf("--help = %v", err)
+	}
+}
+
+func TestReport(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"a.go":       "// TODO: tidy\nx := 1 // todo0 fix first\ny := 2 // todo00 fix before that\n",
+		"b.go":       "// todo@ui split\n",
+		"clean.go":   "package clean\n",
+		"string.go":  `const s = "// TODO: not a comment"` + "\n",
+		"web/app.js": "/* todo1 later */\n",
+	}
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := func(o options) (string, string, int) {
+		var out, errOut strings.Builder
+		status := report(&out, &errOut, o)
+		return out.String(), errOut.String(), status
+	}
+	all := "a.go:3: y := 2 // todo00 fix before that\na.go:2: x := 1 // todo0 fix first\nweb/app.js:1: /* todo1 later */\na.go:1: // TODO: tidy\nb.go:1: // todo@ui split\n"
+	levelled := "a.go:3: y := 2 // todo00 fix before that\na.go:2: x := 1 // todo0 fix first\nweb/app.js:1: /* todo1 later */\n"
+	for _, c := range []struct {
+		name        string
+		o           options
+		out, errOut string
+		status      int
+	}{
+		{"list", options{dir: dir, list: true}, all, "", exitClean},
+		{"check", options{dir: dir, check: true}, "5 TODOs\n", "", exitFound},
+		{"list and check", options{dir: dir, list: true, check: true}, all, "5 TODOs\n", exitFound},
+		{"list levels", options{dir: dir, list: true, levels: true}, levelled, "", exitClean},
+		{"check levels", options{dir: dir, check: true, levels: true}, "3 levelled TODOs\n", "", exitFound},
+		{"list and check levels", options{dir: dir, list: true, check: true, levels: true}, levelled, "3 levelled TODOs\n", exitFound},
+		{"list one level", options{dir: dir, list: true, level: []string{"0"}}, "a.go:2: x := 1 // todo0 fix first\n", "", exitClean},
+		{"list and check two levels", options{dir: dir, list: true, check: true, level: []string{"00", "1"}}, "a.go:3: y := 2 // todo00 fix before that\nweb/app.js:1: /* todo1 later */\n", "2 levelled TODOs\n", exitFound},
+		{"list any zeros", options{dir: dir, list: true, level: []string{"0+"}}, "a.go:3: y := 2 // todo00 fix before that\na.go:2: x := 1 // todo0 fix first\n", "", exitClean},
+		{"check any zeros and todo1", options{dir: dir, check: true, level: []string{"0+", "1"}}, "3 levelled TODOs\n", "", exitFound},
+		{"check a level nobody used", options{dir: dir, check: true, level: []string{"5"}}, "0 levelled TODOs\n", "", exitClean},
+		{"check with exclusions", options{dir: dir, check: true, exclude: scan.Exclude{Names: []string{"web"}}}, "4 TODOs\n", "", exitFound},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			out, errOut, status := run(c.o)
+			if out != c.out || errOut != c.errOut || status != c.status {
+				t.Fatalf("got %q, %q, %d\nwant %q, %q, %d", out, errOut, status, c.out, c.errOut, c.status)
+			}
+		})
+	}
+
+	clean := t.TempDir()
+	if err := os.WriteFile(filepath.Join(clean, "a.go"), []byte("// TODO: one\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if out, errOut, status := run(options{dir: clean, check: true, levels: true}); out != "0 levelled TODOs\n" || errOut != "" || status != exitClean {
+		t.Fatalf("levels check without levels = %q, %q, %d", out, errOut, status)
+	}
+	if err := os.Remove(filepath.Join(clean, "a.go")); err != nil {
+		t.Fatal(err)
+	}
+	if out, errOut, status := run(options{dir: clean, list: true, check: true}); out != "" || errOut != "0 TODOs\n" || status != exitClean {
+		t.Fatalf("clean check = %q, %q, %d", out, errOut, status)
+	}
+	if _, errOut, status := run(options{dir: filepath.Join(clean, "gone"), check: true}); errOut == "" || status != exitError {
+		t.Fatalf("a failed scan = %q, %d", errOut, status)
 	}
 }
