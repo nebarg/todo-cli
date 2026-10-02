@@ -1,0 +1,47 @@
+# Builds the release archives when .github/workflows/release.yml runs on a
+# pushed v* tag. Each archive holds both commands for one platform.
+version: 2
+
+project_name: todo-cli
+
+builds:
+  - id: todo
+    main: ./cmd/todo
+    binary: todo
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    # The version comes from the Git tag, which Go records in the binary.
+    ldflags:
+      - -s -w
+    mod_timestamp: "{{ .CommitTimestamp }}"
+  - id: todo-scan
+    main: ./cmd/todo-scan
+    binary: todo-scan
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  # Without the version in the name, releases/latest/download/ links to the
+  # newest archive.
+  - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc

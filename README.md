@@ -8,6 +8,16 @@ Use a terminal with a [Nerd Font](https://www.nerdfonts.com/) for the Git and br
 
 ## Install
 
+Each [release](https://github.com/nebarg/todo-cli/releases) has an archive of both commands for macOS and Linux, on `arm64` or `amd64`. For the latest on an Apple silicon Mac:
+
+```sh
+curl -sL https://github.com/nebarg/todo-cli/releases/latest/download/todo-cli_darwin_arm64.tar.gz | tar -xz todo todo-scan
+```
+
+For another platform, use `darwin_amd64`, `linux_arm64` or `linux_amd64` instead. Then move `todo` and `todo-scan` to a directory on your `PATH`.
+
+With Go:
+
 ```sh
 go install github.com/nebarg/todo-cli/cmd/todo@latest
 go install github.com/nebarg/todo-cli/cmd/todo-scan@latest
@@ -261,6 +271,13 @@ The scanner supports [todo-system](https://github.com/archtechx/todo-system)'s m
 go run ./cmd/todo
 go test ./...
 go tool -modfile=tools/go.mod golangci-lint run ./...
+go tool -modfile=tools/go.mod govulncheck ./...
 ```
 
-The linter version is pinned in its own module, `tools/go.mod`, and configured in `.golangci.yml`.
+The linter and govulncheck versions are pinned in their own module, `tools/go.mod`, and the linter is configured in `.golangci.yml`.
+
+CI runs the tests on Linux and macOS, the linter and govulncheck on every push to `main` and every pull request.
+
+### Releasing
+
+Pushing a tag such as `v0.1.0` runs the release workflow. It tests, then [GoReleaser](https://goreleaser.com) builds the archives for macOS and Linux, configured in `.goreleaser.yaml`, and publishes them with a checksum file as a GitHub release. `--version` prints the tag.
