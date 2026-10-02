@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
+	"runtime"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -24,25 +24,57 @@ func Open(path string, line int) tea.Cmd {
 // Command runs $VISUAL, then $EDITOR, falling back to vi. Editors known to
 // take a line number open at line.
 func Command(path string, line int) *exec.Cmd {
-	editor := os.Getenv("VISUAL")
+	editor := strings.TrimSpace(os.Getenv("VISUAL"))
 	if editor == "" {
-		editor = os.Getenv("EDITOR")
+		editor = strings.TrimSpace(os.Getenv("EDITOR"))
 	}
 	if editor == "" {
 		editor = "vi"
 	}
-	parts := strings.Fields(editor)
-	if len(parts) == 0 {
-		parts = []string{"vi"}
+	if runtime.GOOS == "windows" {
+		// Without sh to run it, the editor's value is split at spaces.
+		parts := strings.Fields(editor)
+		return exec.Command(parts[0], append(parts[1:], fileArgs(parts[0], path, line)...)...)
 	}
-	args := slices.Clone(parts[1:])
-	switch filepath.Base(parts[0]) {
+	// As Git does, sh runs the editor, so its value can quote a path with
+	// spaces and add arguments of its own.
+	return exec.Command("sh", append([]string{"-c", editor + ` "$@"`, editor}, fileArgs(program(editor), path, line)...)...)
+}
+
+// fileArgs are the arguments that open path at line in program, or just
+// path when program isn't known to take a line number.
+func fileArgs(program, path string, line int) []string {
+	switch filepath.Base(program) {
 	case "code", "codium", "cursor":
-		args = append(args, "--wait", "--goto", fmt.Sprintf("%s:%d", path, line))
+		return []string{"--wait", "--goto", fmt.Sprintf("%s:%d", path, line)}
 	case "vi", "vim", "nvim", "view":
-		args = append(args, fmt.Sprintf("+%d", line), path)
-	default:
-		args = append(args, path)
+		return []string{fmt.Sprintf("+%d", line), path}
 	}
-	return exec.Command(parts[0], args...)
+	return []string{path}
+}
+
+// program is the first word of a shell command without its quotes and
+// escapes: /opt/My Editor/vim for "/opt/My Editor/vim" -n.
+func program(command string) string {
+	var word strings.Builder
+	var quote rune
+	escaped := false
+	for _, r := range command {
+		switch {
+		case escaped:
+			word.WriteRune(r)
+			escaped = false
+		case quote != 0 && r == quote:
+			quote = 0
+		case quote == 0 && (r == '"' || r == '\''):
+			quote = r
+		case r == '\\' && quote != '\'':
+			escaped = true
+		case quote == 0 && (r == ' ' || r == '\t'):
+			return word.String()
+		default:
+			word.WriteRune(r)
+		}
+	}
+	return word.String()
 }
