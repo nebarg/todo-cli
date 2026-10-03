@@ -10,9 +10,13 @@ import (
 	"github.com/nebarg/todo-cli/internal/ui"
 )
 
-// categoryInputWidth fits a category name and leaves the rest of the
-// footer for the key hints or an error.
-const categoryInputWidth = 32
+// minCategoryInputWidth keeps room to type in a narrow terminal, where the
+// keys beside the input give way first.
+const minCategoryInputWidth = 24
+
+// promptKeys are the category prompt's keys, after tab while it shows a
+// suggestion.
+var promptKeys = []ui.KeyHint{{Key: "enter", Label: "save"}, {Key: "esc", Label: "cancel"}}
 
 // categoryPrompt edits a general task's category in the footer.
 type categoryPrompt struct {
@@ -38,7 +42,7 @@ func (m *model) startCategoryInput() tea.Cmd {
 	}
 	p := &categoryPrompt{file: m.file, task: selected, input: textinput.New()}
 	p.input.Prompt = "Category: "
-	p.input.SetWidth(categoryInputWidth)
+	p.resize(m.theme, m.width)
 	styles := p.input.Styles()
 	styles.Focused.Suggestion = m.theme.MutedStyle
 	p.input.SetStyles(styles)
@@ -103,19 +107,37 @@ func (p *categoryPrompt) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 	return p, nil, cmd
 }
 
-// footer takes the dashboard's footer while the prompt is open, with a
-// failed save's error in place of the key hints.
+// resize gives the input the footer's width less its keys, leaving room
+// for tab, so the keys sit at the right edge.
+func (p *categoryPrompt) resize(theme ui.Theme, width int) {
+	keys := ansi.StringWidth(theme.RenderHints(append([]ui.KeyHint{completeHint}, promptKeys...)))
+	p.input.SetWidth(max(minCategoryInputWidth, width-ansi.StringWidth(p.input.Prompt)-keys-3))
+}
+
+// footer takes the dashboard's footer while the prompt is open: the input,
+// and at the right edge its keys, or a failed save's error. What's typed
+// always shows, and an error may take the input's room after it.
 func (p *categoryPrompt) footer(theme ui.Theme, width int) string {
-	input := p.input.View()
-	rest := width - ansi.StringWidth(input) - 2
+	prompt := ansi.StringWidth(p.input.Prompt)
+	// The input's view ends in the cursor's cell after the text.
+	typed := prompt + min(p.input.Width(), ansi.StringWidth(p.input.Value())) + 1
+	room := max(0, width-typed-2)
+	right := theme.FitHints(p.keys(), room)
 	if p.err != "" {
-		return input + "  " + errorText(theme, p.err, rest)
+		right = errorText(theme, p.err, room)
 	}
-	hints := []ui.KeyHint{{Key: "enter", Label: "save"}, {Key: "esc", Label: "cancel"}}
+	// The input pads to its width without counting a suggestion's grey text,
+	// so it's cut back to that width, or to what the right side leaves.
+	input := ansi.Truncate(p.input.View(), min(prompt+p.input.Width()+1, width-ansi.StringWidth(right)-2), "")
+	return input + strings.Repeat(" ", max(0, width-ansi.StringWidth(input)-ansi.StringWidth(right))) + right
+}
+
+// keys are the prompt's keys, led by tab while it shows a suggestion.
+func (p *categoryPrompt) keys() []ui.KeyHint {
 	if canCompleteCategory(p.input) {
-		hints = append([]ui.KeyHint{completeHint}, hints...)
+		return append([]ui.KeyHint{completeHint}, promptKeys...)
 	}
-	return input + "  " + theme.FitHints(hints, rest)
+	return promptKeys
 }
 
 // completeHint offers tab while a category input shows a completion.

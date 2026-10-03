@@ -140,3 +140,69 @@ func TestEditFormDoesNotCompleteAFilledCategory(t *testing.T) {
 		t.Fatalf("tab completed a category already filled in: %q, field %d", f.scope.Value(), f.field)
 	}
 }
+
+func TestCategoryPromptKeepsItsKeysAtTheRightEdge(t *testing.T) {
+	m, _ := categoriesModel(t)
+	m.general.cursor = 3
+	m = typeText(press(m, "c"), "my category")
+	check := func(footer string) {
+		t.Helper()
+		plain := ansi.Strip(footer)
+		if ansi.StringWidth(footer) != 100 || !strings.HasSuffix(plain, "enter save  esc cancel") {
+			t.Fatalf("keys are not at the right edge of %q", plain)
+		}
+	}
+	footer := m.renderFooter(100)
+	check(footer)
+	column := strings.Index(ansi.Strip(footer), "enter save")
+	for range 6 {
+		m = press(m, "backspace")
+		footer = m.renderFooter(100)
+		check(footer)
+		plain := ansi.Strip(footer)
+		if !strings.HasPrefix(plain, "Category: my category ") || !strings.Contains(plain, "tab complete  enter save") || strings.Index(plain, "enter save") != column {
+			t.Fatalf("suggestion or keys moved with %q typed: %q", prompt(t, m).input.Value(), plain)
+		}
+	}
+	for prompt(t, m).input.Value() != "" {
+		m = press(m, "backspace")
+	}
+	check(m.renderFooter(100))
+}
+
+func TestCategoryPromptShowsALongCategoryAndError(t *testing.T) {
+	m, _ := categoriesModel(t)
+	m.general.cursor = 3
+	long := "Infrastructure security and compliance reviews"
+	m = typeText(press(m, "c"), long)
+	if plain := ansi.Strip(m.renderFooter(120)); !strings.HasPrefix(plain, "Category: "+long+" ") || !strings.HasSuffix(plain, "esc cancel") {
+		t.Fatalf("long category was cut: %q", plain)
+	}
+	prompt(t, m).input.SetValue("C #")
+	m = press(m, "enter")
+	want := `"C #" can't be a category: its heading would read as "C"`
+	if plain := ansi.Strip(m.renderFooter(100)); !strings.HasPrefix(plain, "Category: C #") || !strings.HasSuffix(plain, want) {
+		t.Fatalf("error was not shown in full at the right edge: %q", plain)
+	}
+}
+
+func TestCategoryPromptFitsANarrowTerminal(t *testing.T) {
+	m, _ := categoriesModel(t)
+	m.width = 56
+	m.general.cursor = 3
+	m = typeText(press(m, "c"), "my ca")
+	// The suggestion's grey text gives way to the keys.
+	if footer := ansi.Strip(m.renderFooter(56)); ansi.StringWidth(footer) != 56 || !strings.HasPrefix(footer, "Category: my ca") || !strings.HasSuffix(footer, "tab complete  enter save  esc cancel") {
+		t.Fatalf("narrow footer = %q", footer)
+	}
+	// The keys give way to what's typed, the least important first.
+	m = typeText(m, "rity and compliance")
+	if footer := ansi.Strip(m.renderFooter(56)); ansi.StringWidth(footer) != 56 || !strings.HasPrefix(footer, "Category: my carity and compliance ") || !strings.HasSuffix(footer, " enter save") {
+		t.Fatalf("narrow footer with a long category = %q", footer)
+	}
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = updated.(*model)
+	if footer := ansi.Strip(m.renderFooter(120)); !strings.HasSuffix(footer, "enter save  esc cancel") || ansi.StringWidth(footer) != 120 || prompt(t, m).input.Width() <= minCategoryInputWidth {
+		t.Fatalf("the prompt did not take the wider terminal: %q", footer)
+	}
+}

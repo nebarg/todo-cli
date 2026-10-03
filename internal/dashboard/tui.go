@@ -77,10 +77,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		// Laying the task form out needs the theme, which only the model
-		// holds, so it is resized here rather than through its update.
-		if f, ok := m.overlay.(*taskModal); ok {
-			f.resize(m.theme, msg.Width, msg.Height)
+		// Laying the task form or the category prompt out needs the theme,
+		// which only the model holds, so they are resized here rather than
+		// through their updates.
+		switch o := m.overlay.(type) {
+		case *taskModal:
+			o.resize(m.theme, msg.Width, msg.Height)
+		case *categoryPrompt:
+			o.resize(m.theme, msg.Width)
 		}
 	case tea.BackgroundColorMsg:
 		m.setTheme(ui.NewTheme(msg.IsDark()))
