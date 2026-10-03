@@ -178,8 +178,8 @@ func runDashboard(out io.Writer, file string, repo project.Context, excludes []s
 }
 
 // addTask files the task in args under the category or branch the flags
-// name, and reports where it went on out, naming a branch Git doesn't have
-// as unknown so a mistyped name stands out.
+// name, and reports it on out, naming a branch Git doesn't have as unknown
+// so a mistyped name stands out.
 func addTask(out io.Writer, file string, repo project.Context, o options, args []string) error {
 	category, args := splitCategoryArg(args)
 	if len(args) == 0 {
@@ -207,10 +207,10 @@ func addTask(out io.Writer, file string, repo project.Context, o options, args [
 		return err
 	}
 	if branch != "" && !repo.HasLocalBranch(branch) {
-		_, err = fmt.Fprintf(out, "Added to %s on unknown branch %s: %s\n", file, ui.CleanDisplay(branch), title)
+		_, err = fmt.Fprintf(out, "Added task on unknown branch %s: %s\n", ui.CleanDisplay(branch), title)
 		return err
 	}
-	_, err = fmt.Fprintf(out, "Added to %s: %s\n", file, title)
+	_, err = fmt.Fprintf(out, "Added task: %s\n", title)
 	return err
 }
 
@@ -232,7 +232,7 @@ func clearTasks(out io.Writer, file string, done bool, missing func(string) bool
 	}
 	targets := store.PickClearTargets(tasks, missing)
 	if len(targets.Tasks) == 0 {
-		_, err := fmt.Fprintf(out, "No %s in %s\n", nothingToClear(done, clearMissing), file)
+		_, err := fmt.Fprintf(out, "No %s\n", nothingToClear(done, clearMissing))
 		return err
 	}
 	removal, err := store.PlanRemove(file, targets.Tasks)
@@ -243,12 +243,9 @@ func clearTasks(out io.Writer, file string, done bool, missing func(string) bool
 		return err
 	}
 	var report strings.Builder
-	fmt.Fprintf(&report, "Removed %s from %s:\n", targets.Summary(), file)
+	fmt.Fprintf(&report, "Removed %s:\n", ui.CleanDisplay(targets.Summary()))
 	for _, t := range slices.Backward(removal.Tasks) {
 		fmt.Fprintf(&report, "  %s\n", ui.CleanDisplay(t.Text))
-	}
-	if len(targets.Branches) > 0 {
-		fmt.Fprintf(&report, "Branches not in Git: %s\n", ui.CleanDisplay(strings.Join(targets.Branches, ", ")))
 	}
 	var headings []string
 	for _, category := range removal.Categories {
@@ -269,9 +266,9 @@ func clearTasks(out io.Writer, file string, done bool, missing func(string) bool
 func nothingToClear(done, missing bool) string {
 	switch {
 	case done && missing:
-		return "done tasks or branches missing from Git"
+		return "done tasks or unknown branches"
 	case missing:
-		return "branches missing from Git"
+		return "unknown branches"
 	}
 	return "done tasks"
 }

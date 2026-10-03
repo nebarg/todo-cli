@@ -44,22 +44,22 @@ func PickClearTargets(tasks []Task, missing func(branch string) bool) ClearTarge
 	return c
 }
 
-// Summary reads like "3 done tasks and 2 tasks of missing branches".
+// Summary reads like "3 done tasks and unknown branch feature/x with its 2
+// tasks", naming the branches Git doesn't have.
 func (c ClearTargets) Summary() string {
 	var parts []string
 	if c.Done > 0 {
-		parts = append(parts, doneTaskCount(c.Done))
+		parts = append(parts, plural(c.Done, "done task", "done tasks"))
 	}
-	if len(c.Branches) > 0 {
-		parts = append(parts, missingTaskCount(len(c.Tasks)-c.Done))
+	tasks := plural(len(c.Tasks)-c.Done, "task", "tasks")
+	switch len(c.Branches) {
+	case 0:
+	case 1:
+		parts = append(parts, fmt.Sprintf("unknown branch %s with its %s", c.Branches[0], tasks))
+	default:
+		parts = append(parts, fmt.Sprintf("unknown branches %s with their %s", strings.Join(c.Branches, ", "), tasks))
 	}
 	return strings.Join(parts, " and ")
-}
-
-func doneTaskCount(n int) string { return plural(n, "done task", "done tasks") }
-
-func missingTaskCount(n int) string {
-	return plural(n, "task of a missing branch", "tasks of missing branches")
 }
 
 // plural reads like "1 task" or "3 tasks".
