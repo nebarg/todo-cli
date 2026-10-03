@@ -3,6 +3,7 @@
 package project
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -115,11 +116,33 @@ func gitOutput(dir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// DefaultFile is the task file when none is given: todo.md at the repository
-// root, or in the working directory outside Git.
+// taskFile is the name of the task file this app creates.
+const taskFile = "todo.md"
+
+// DefaultFile is the task file when none is given, at the repository root,
+// or in the working directory outside Git: todo.md, or else a file already
+// there whose name differs only in case, such as TODO.md, so a project's own
+// task file is used rather than a second one made beside it.
 func (c Context) DefaultFile() string {
-	if c.Root != "" {
-		return filepath.Join(c.Root, "todo.md")
+	dir := cmp.Or(c.Root, ".")
+	return filepath.Join(dir, existingTaskFile(dir))
+}
+
+// existingTaskFile is the name to use for dir's task file. A directory that
+// can't be listed gets todo.md, so reading the task file reports the problem.
+func existingTaskFile(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return taskFile
 	}
-	return "todo.md"
+	var other string
+	for _, entry := range entries {
+		switch name := entry.Name(); {
+		case name == taskFile:
+			return taskFile
+		case other == "" && !entry.IsDir() && strings.EqualFold(name, taskFile):
+			other = name
+		}
+	}
+	return cmp.Or(other, taskFile)
 }

@@ -137,6 +137,24 @@ func TestAddTaskToASpacedCategory(t *testing.T) {
 	}
 }
 
+func TestAddUsesAnExistingTODOmd(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir) // outside any Git repository
+	if err := os.WriteFile("TODO.md", []byte("- [ ] Existing\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut strings.Builder
+	if status := run([]string{"New", "task"}, &out, &errOut); status != 0 || out.String() != "Added to TODO.md: New task\n" {
+		t.Fatalf("status %d, %q, %q", status, out.String(), errOut.String())
+	}
+	if data, err := os.ReadFile("TODO.md"); err != nil || string(data) != "- [ ] Existing\n\n- [ ] New task\n" {
+		t.Fatalf("TODO.md = %q, %v", data, err)
+	}
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 1 || entries[0].Name() != "TODO.md" {
+		t.Fatalf("directory holds %v, %v; want only TODO.md", entries, err)
+	}
+}
+
 func TestScanFlagsAreGone(t *testing.T) {
 	for _, flag := range []string{"--scan", "--all-files"} {
 		var o options

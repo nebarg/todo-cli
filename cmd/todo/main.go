@@ -1,8 +1,8 @@
 // Command todo keeps tasks in a Markdown file, todo.md at the repository root
-// by default. Without arguments it opens a terminal dashboard of the general
-// tasks, the tasks of each Git branch, and the TODO comments in source files.
-// Given task text, it adds a task; --clear-done and --clear-missing remove
-// tasks.
+// by default, or an existing TODO.md. Without arguments it opens a terminal
+// dashboard of the general tasks, the tasks of each Git branch, and the TODO
+// comments in source files. Given task text, it adds a task; --clear-done and
+// --clear-missing remove tasks.
 package main
 
 import (
@@ -54,7 +54,7 @@ func newFlags(o *options) *pflag.FlagSet {
 	flags.StringVarP(&o.priority, "priority", "p", "", "priority of a new task: `h|m|l`, or high, medium or low")
 	flags.StringVarP(&o.category, "category", "c", "", "category `name` for a new task; quote a name with spaces")
 	flags.StringVarP(&o.branch, "branch", "b", "", "local Git branch `name` for a new task, or . for the current branch")
-	flags.StringVarP(&o.file, "file", "f", "", "task file `path` (default todo.md at the repository root)")
+	flags.StringVarP(&o.file, "file", "f", "", "task file `path` (default todo.md at the repository root, or an existing TODO.md)")
 	flags.BoolVar(&o.clearDone, "clear-done", false, "remove done tasks")
 	flags.BoolVar(&o.clearMissing, "clear-missing", false, "remove every task of branches no longer in Git, open ones included")
 	flags.BoolVar(&o.version, "version", false, "print the version")

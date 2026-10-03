@@ -107,7 +107,7 @@ Flags come first; everything after them is the task.
 | `--version` | Print the version |
 | `-h`, `--help` | Show usage |
 
-- The task file is `todo.md` at the Git repository root, or in the current directory outside Git. It's created when you add the first task.
+- The task file is `todo.md` at the Git repository root, or in the current directory outside Git. If there's no `todo.md` but there is a `TODO.md`, or the name in any other case, that file is used instead. Otherwise `todo.md` is created when you add the first task.
 - A task goes in the general list, a category or a branch. Branch tasks can't have a category. `Branches` is reserved as a category name. A branch must exist locally.
 
 ### Dashboard
