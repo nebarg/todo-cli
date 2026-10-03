@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"strings"
-	"unicode"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -40,7 +39,11 @@ func (m *model) startCategoryInput() tea.Cmd {
 	p := &categoryPrompt{file: m.file, task: selected, input: textinput.New()}
 	p.input.Prompt = "Category: "
 	p.input.SetWidth(categoryInputWidth)
+	styles := p.input.Styles()
+	styles.Focused.Suggestion = m.theme.MutedStyle
+	p.input.SetStyles(styles)
 	p.input.SetValue(selected.Category)
+	suggestCategories(&p.input, m.categoryNames())
 	m.overlay = p
 	m.status = ""
 	return p.input.Focus()
@@ -71,7 +74,6 @@ func (p *categoryPrompt) update(msg tea.Msg) (overlay, tea.Msg, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.PasteMsg:
-		msg.Content = stripCategorySpaces(msg.Content)
 		p.input, cmd = p.input.Update(msg)
 	case tea.KeyPressMsg:
 		return p.key(msg)
@@ -83,6 +85,9 @@ func (p *categoryPrompt) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		return nil, nil, nil
+	case "tab":
+		completeCategory(&p.input)
+		return p, nil, nil
 	case "enter":
 		if err := store.SetCategory(p.file, p.task, p.input.Value()); err != nil {
 			p.err = errorStatus(err)
@@ -92,11 +97,7 @@ func (p *categoryPrompt) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 		moved.Category = store.NormalizeCategory(p.input.Value())
 		return nil, categorySetMsg{moved}, nil
 	}
-	if msg.Code == tea.KeySpace {
-		return p, nil, nil
-	}
 	p.err = ""
-	msg.Text = stripCategorySpaces(msg.Text)
 	var cmd tea.Cmd
 	p.input, cmd = p.input.Update(msg)
 	return p, nil, cmd
@@ -110,14 +111,50 @@ func (p *categoryPrompt) footer(theme ui.Theme, width int) string {
 	if p.err != "" {
 		return input + "  " + errorText(theme, p.err, rest)
 	}
-	return input + "  " + theme.FitHints([]ui.KeyHint{{Key: "enter", Label: "save"}, {Key: "esc", Label: "cancel"}}, rest)
+	hints := []ui.KeyHint{{Key: "enter", Label: "save"}, {Key: "esc", Label: "cancel"}}
+	if canCompleteCategory(p.input) {
+		hints = append([]ui.KeyHint{completeHint}, hints...)
+	}
+	return input + "  " + theme.FitHints(hints, rest)
 }
 
-func stripCategorySpaces(value string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsSpace(r) {
-			return -1
+// completeHint offers tab while a category input shows a completion.
+var completeHint = ui.KeyHint{Key: "tab", Label: "complete"}
+
+// categoryNames lists General's categories, in the order its rows show them.
+func (m *model) categoryNames() []string {
+	var names []string
+	for _, row := range generalRows(m.tasks.general, nil, group{}) {
+		if row.kind == rowCategory {
+			names = append(names, row.name)
 		}
-		return r
-	}, value)
+	}
+	return names
+}
+
+// suggestCategories has input show the rest of the first category that
+// starts with what's typed, in grey after the cursor. ctrl+n and ctrl+p
+// switch between the categories that match.
+func suggestCategories(input *textinput.Model, categories []string) {
+	input.ShowSuggestions = true
+	input.SetSuggestions(categories)
+}
+
+// canCompleteCategory is true while input shows more of a category than is
+// typed.
+func canCompleteCategory(input textinput.Model) bool {
+	suggestion := input.CurrentSuggestion()
+	return suggestion != "" && !strings.EqualFold(suggestion, input.Value())
+}
+
+// completeCategory fills input with the category it suggests, written as the
+// category is rather than in the case typed, and reports whether there was
+// one to complete.
+func completeCategory(input *textinput.Model) bool {
+	if !canCompleteCategory(*input) {
+		return false
+	}
+	input.SetValue(input.CurrentSuggestion())
+	input.CursorEnd()
+	return true
 }

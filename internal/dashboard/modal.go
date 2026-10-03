@@ -96,6 +96,7 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 	} else {
 		modal.scope.Placeholder = "Optional category"
 		modal.scope.SetValue(modal.target.Category)
+		suggestCategories(&modal.scope, m.categoryNames())
 	}
 	modal.details.Prompt = ""
 	modal.details.ShowLineNumbers = false
@@ -174,8 +175,12 @@ func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 		}
 		return nil, f.saved(), nil
 	case "tab":
-		if f.branchScope() && f.field == scopeField {
+		switch {
+		case f.field != scopeField:
+		case f.branchScope():
 			f.acceptBranch()
+		case completeCategory(&f.scope):
+			return f, nil, nil
 		}
 		return f, nil, f.focusField((f.field + 1) % (detailsField + 1))
 	case "shift+tab":
@@ -228,12 +233,7 @@ func (f *taskModal) typeKey(msg tea.KeyPressMsg) tea.Cmd {
 	case titleField:
 		f.title, cmd = f.title.Update(msg)
 	case scopeField:
-		if !f.branchScope() {
-			if msg.Code == tea.KeySpace {
-				return nil
-			}
-			msg.Text = stripCategorySpaces(msg.Text)
-		} else if f.branchFresh && msg.Text != "" {
+		if f.branchScope() && f.branchFresh && msg.Text != "" {
 			f.scope.SetValue("")
 		}
 		f.scope, cmd = f.scope.Update(msg)
@@ -254,9 +254,7 @@ func (f *taskModal) paste(msg tea.PasteMsg) tea.Cmd {
 	case titleField:
 		f.title, cmd = f.title.Update(msg)
 	case scopeField:
-		if !f.branchScope() {
-			msg.Content = stripCategorySpaces(msg.Content)
-		} else if f.branchFresh {
+		if f.branchScope() && f.branchFresh {
 			f.scope.SetValue("")
 		}
 		f.scope, cmd = f.scope.Update(msg)
@@ -553,6 +551,9 @@ func (f *taskModal) footer(theme ui.Theme, width int) string {
 		return errorText(theme, f.err, width)
 	}
 	hints := []ui.KeyHint{{Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}, {Key: "tab", Label: "next field"}}
+	if f.field == scopeField && canCompleteCategory(f.scope) {
+		hints = []ui.KeyHint{completeHint, {Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}}
+	}
 	if f.branchScope() && f.field == scopeField {
 		hints = []ui.KeyHint{{Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}, {Key: "↑↓", Label: "choose"}, {Key: "tab", Label: "accept"}}
 	}

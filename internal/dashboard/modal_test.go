@@ -219,13 +219,13 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	form(t, m).title.SetValue("New categorised task")
 	updated, _ = m.Update(tea.PasteMsg{Content: "@new area"})
 	m = updated.(*model)
-	if form(t, m).scope.Value() != "@newarea" {
-		t.Fatalf("pasted category kept spaces: %q", form(t, m).scope.Value())
+	if form(t, m).scope.Value() != "@new area" {
+		t.Fatalf("pasted category lost its space: %q", form(t, m).scope.Value())
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
 	selected, ok := m.selectedTask()
-	if isOpen[*taskModal](m) || !ok || selected.Category != "newarea" || m.general.open.name != "newarea" {
+	if isOpen[*taskModal](m) || !ok || selected.Category != "new area" || m.general.open.name != "new area" {
 		t.Fatalf("new category was not created and opened: %+v", m.rows(generalPane))
 	}
 	m.project = projecttest.Repo(t, filepath.Dir(path), "feature/new", "feature/index")
@@ -260,7 +260,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "# newarea") || !strings.Contains(string(data), "# Branches\n\n## feature/new") {
+	if !strings.Contains(string(data), "# new area\n") || !strings.Contains(string(data), "# Branches\n\n## feature/new") {
 		t.Fatalf("new category or branch heading missing: %s", data)
 	}
 	m.openAllTasks()
@@ -276,7 +276,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	if m.all != nil || m.branch.open.name != "feature/index" {
 		t.Fatalf("branch add from All tasks did not open the new section: %q", m.branch.open.name)
 	}
-	m.focus, m.general.open = generalPane, categoryGroup("newarea")
+	m.focus, m.general.open = generalPane, categoryGroup("new area")
 	m.openAllTasks()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(*model)

@@ -86,35 +86,60 @@ func TestBranchesAndMetadata(t *testing.T) {
 	}
 }
 
-func TestCategoriesAllowSymbolsButNotWhitespace(t *testing.T) {
-	for _, category := range []string{"two words", " leading", "trailing ", "tab\tname", "line\nbreak"} {
-		t.Run(category, func(t *testing.T) {
+func TestCategoriesAllowSpacesAndSymbols(t *testing.T) {
+	for _, c := range []struct{ category, err string }{
+		{"line\nbreak", "category must be one line"},
+		{"line\r\nbreak", "category must be one line"},
+		{"Branches", `"Branches" is reserved`},
+		{" branches ", `"Branches" is reserved`},
+		{"C #", `"C #" can't be a category: its heading would read as "C"`},
+		{"##x", `"#x" can't be a category: its heading would read as "x"`},
+	} {
+		t.Run(c.category, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "TODO.md")
-			if err := Add(path, "Task", "", "", Section{Category: category}); err == nil || !strings.Contains(err.Error(), "category must be a single word without whitespace") {
-				t.Errorf("category %q was accepted or gave an unclear error: %v", category, err)
+			if err := Add(path, "Task", "", "", Section{Category: c.category}); err == nil || !strings.Contains(err.Error(), c.err) {
+				t.Errorf("category %q was accepted or gave an unclear error: %v", c.category, err)
 			}
 			if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-				t.Errorf("invalid category %q changed the file: %v", category, err)
+				t.Errorf("invalid category %q changed the file: %v", c.category, err)
 			}
 		})
 	}
-	for _, category := range []string{"auth", "A1", "@tests2", "#café3", "+v1", "bug-fix", "under_score", "a?", "emoji🙂", "foo#", "@", "#"} {
+	for category, want := range map[string]string{
+		"two words": "two words", " leading": "leading", "trailing ": "trailing", "tab\tname": "tab name",
+		"@release  notes": "release notes", "# docs and FAQ": "docs and FAQ", "C# notes": "C# notes",
+		"auth": "auth", "A1": "A1", "@tests2": "tests2", "#café3": "café3", "+v1": "+v1", "bug-fix": "bug-fix",
+		"under_score": "under_score", "a?": "a?", "emoji🙂": "emoji🙂", "foo#": "foo#", "@": "@", "#": "#",
+	} {
 		t.Run(category, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "TODO.md")
 			if err := Add(path, "Task", "", "", Section{Category: category}); err != nil {
 				t.Fatalf("valid category %q rejected: %v", category, err)
 			}
 			tasks, err := Load(path)
-			if err != nil || len(tasks) != 1 || tasks[0].Category != NormalizeCategory(category) {
-				t.Fatalf("category %q was not saved correctly: %v, %+v", category, err, tasks)
+			if err != nil || len(tasks) != 1 || tasks[0].Category != want {
+				t.Fatalf("category %q was not saved as %q: %v, %+v", category, want, err, tasks)
+			}
+			if got := readFile(t, path); !strings.HasPrefix(got, "# "+want+"\n") {
+				t.Fatalf("category %q has the heading %q", category, got)
 			}
 		})
 	}
 	if _, name, ok := parseHeading("# auth ###"); !ok || name != "auth" {
 		t.Fatalf("closing Markdown hashes were not parsed correctly: %q", name)
 	}
-	if err := validateCategory("Branches"); err == nil {
-		t.Fatal("reserved branch heading was accepted as a category")
+}
+
+func TestSpacedCategoryMatchesItsHeadingWhateverItsCaseAndSpacing(t *testing.T) {
+	path, tasks := writeAndLoad(t, "# Release  Notes\n\n- [ ] Existing\n")
+	if len(tasks) != 1 || tasks[0].Category != "Release Notes" {
+		t.Fatalf("tasks = %+v", tasks)
+	}
+	if err := Add(path, "New", "", PriorityNone, Section{Category: "release notes"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := readFile(t, path), "# Release  Notes\n\n- [ ] Existing\n\n- [ ] New\n"; got != want {
+		t.Fatalf("file = %q, want %q", got, want)
 	}
 }
 
@@ -182,29 +207,33 @@ func TestChangingCategoryToSymbolName(t *testing.T) {
 	}
 }
 
-func TestLegacySpacedCategoryCanBeRenamed(t *testing.T) {
+func TestSpacedCategoryTasksCanBeEditedAndMoved(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	old := "## General\n\n### @a category?\n\n- [ ] Existing task\n"
-	if err := os.WriteFile(path, []byte(old), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("## General\n\n### @a category?\n\n- [ ] Existing task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	tasks, err := Load(path)
 	if err != nil || len(tasks) != 1 || tasks[0].Category != "a category?" {
-		t.Fatalf("legacy category was not readable: %v, %+v", err, tasks)
+		t.Fatalf("spaced category was not readable: %v, %+v", err, tasks)
 	}
-	if err := SetCategory(path, tasks[0], "bad category"); err == nil {
-		t.Fatal("invalid edit was accepted")
+	if err := Edit(path, tasks[0], "Edited task", "With details.", Section{Category: tasks[0].Category}); err != nil {
+		t.Fatalf("task in a spaced category could not be edited: %v", err)
 	}
-	data, err := os.ReadFile(path)
-	if err != nil || string(data) != old {
-		t.Fatalf("invalid edit changed the file: %v, %q", err, data)
+	if got, want := readFile(t, path), "## General\n\n### @a category?\n\n- [ ] Edited task\n\n  With details.\n"; got != want {
+		t.Fatalf("edit in place = %q, want %q", got, want)
 	}
-	if err := SetCategory(path, tasks[0], "clean2"); err != nil {
+	if tasks, err = Load(path); err != nil || len(tasks) != 1 {
+		t.Fatalf("tasks = %+v, %v", tasks, err)
+	}
+	if err := SetCategory(path, tasks[0], "another  category"); err != nil {
 		t.Fatal(err)
 	}
 	tasks, err = Load(path)
-	if err != nil || len(tasks) != 1 || tasks[0].Category != "clean2" {
-		t.Fatalf("legacy category could not be renamed: %v, %+v", err, tasks)
+	if err != nil || len(tasks) != 1 || tasks[0].Category != "another category" {
+		t.Fatalf("spaced category could not be renamed: %v, %+v", err, tasks)
+	}
+	if got := readFile(t, path); strings.Contains(got, "a category?") || !strings.Contains(got, "# another category\n") {
+		t.Fatalf("file after the move = %q", got)
 	}
 }
 

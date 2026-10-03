@@ -122,6 +122,21 @@ func TestAddTaskOnBranches(t *testing.T) {
 	}
 }
 
+func TestAddTaskToASpacedCategory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	var out, errOut strings.Builder
+	if status := run([]string{"-f", path, "-c", "release notes", "Draft", "the", "notes"}, &out, &errOut); status != 0 || errOut.Len() > 0 {
+		t.Fatalf("status %d, %q", status, errOut.String())
+	}
+	if status := run([]string{"-f", path, "@Release", "Notes", "stay", "in", "the", "title"}, &out, &errOut); status != 0 {
+		t.Fatalf("status %d, %q", status, errOut.String())
+	}
+	want := "# release notes\n\n- [ ] Draft the notes\n\n# Release\n\n- [ ] Notes stay in the title\n"
+	if data, err := os.ReadFile(path); err != nil || string(data) != want {
+		t.Fatalf("todo.md = %q, want %q", data, want)
+	}
+}
+
 func TestScanFlagsAreGone(t *testing.T) {
 	for _, flag := range []string{"--scan", "--all-files"} {
 		var o options

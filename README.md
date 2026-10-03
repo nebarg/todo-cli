@@ -82,7 +82,8 @@ todo                                   # open the dashboard
 todo Update the changelog              # add a general task
 todo -p high Fix the login redirect    # with a priority
 todo @docs Write the install guide     # in the docs category
-todo -c docs -p l Proofread the FAQ    # the same with flags, at low priority
+todo -c "release notes" Draft v2 notes # in a category with spaces
+todo -c docs -p l Proofread the FAQ    # in the docs category at low priority
 todo -b . Fix the flaky test           # on the current Git branch
 todo -b feature/login Add 2FA          # on another local branch
 todo -f ~/notes/todo.md Renew passport # in another task file
@@ -97,7 +98,7 @@ Flags come first; everything after them is the task.
 | Flag | Effect |
 | --- | --- |
 | `-p`, `--priority h\|high\|m\|medium\|l\|low` | Priority of the new task |
-| `-c`, `--category name` | Category of the new task. A leading `@name` word does the same; use one or the other |
+| `-c`, `--category name` | Category of the new task. A leading `@name` word does the same for a one-word category; use one or the other. Quote a name with spaces |
 | `-b`, `--branch name` | Local Git branch of the new task. `.` means the current branch |
 | `-f`, `--file path` | Use another task file instead of `todo.md` |
 | `-e`, `--exclude dir` | Skip a directory in the dashboard's Files tab. See [Skipping directories](#skipping-directories) |
@@ -107,7 +108,7 @@ Flags come first; everything after them is the task.
 | `-h`, `--help` | Show usage |
 
 - The task file is `todo.md` at the Git repository root, or in the current directory outside Git. It's created when you add the first task.
-- A task goes in the general list, a category or a branch. Branch tasks can't have a category. Categories are one word, and `Branches` is reserved. A branch must exist locally.
+- A task goes in the general list, a category or a branch. Branch tasks can't have a category. `Branches` is reserved as a category name. A branch must exist locally.
 
 ### Dashboard
 
@@ -148,11 +149,12 @@ Rows keep their place after edits. The list re-sorts when it opens and when you 
 In the form:
 
 - `tab` / `shift+tab` move between Task, Category or Branch, and Details.
+- Category suggests an existing category that starts with what you've typed, in grey. `tab` fills it in, `ctrl+n` / `ctrl+p` switch between the categories that match, and typing on ignores it.
 - `enter` adds a new line in Task or Details, `ctrl+enter` saves, and `esc` cancels.
 - The Branch field suggests local Git branches as you type. You can only pick a branch that exists.
 - When editing, changing the category or branch moves the task. A heading left empty is removed.
 
-`c` changes just the category of a general task, without the form.
+`c` changes just the category of a general task, without the form, with the same suggestions.
 
 #### Deleting and clearing
 
@@ -203,7 +205,7 @@ File and README TODOs open in `$VISUAL`, then `$EDITOR`, falling back to `vi`. V
 ```
 
 - **Sections:** tasks before the first heading are general. `## branch-name` headings under `# Branches` are branch sections, and headings nested inside a branch stay part of it. Any other heading is a category.
-- **Categories** can't contain spaces, and `Branches` is reserved. `auth`, `@auth` and `#auth` all mean the same category.
+- **Categories** can contain spaces, and `Branches` is reserved. `auth`, `@auth` and `#auth` all mean the same category, and so do names differing only in case or spacing, such as `Release  Notes` and `release notes`.
 - **Details** are everything under a task until the next task or heading: paragraphs, lists, code, even indented checkboxes. The app writes them indented by two spaces.
 - **Formatting:** `**bold**`, `*italic*`, `~~strikethrough~~` and `` `code` `` show formatted in the dashboard, as do `__bold__`, `_italic_` and `~strikethrough~`. Struck-through text is greyed out too, for terminals that don't draw strikethrough, such as macOS Terminal. Underscores inside words, as in `user_id`, stay as written, and `\*` writes a literal `*`. Fenced code blocks in details show as written, and the edit form shows the Markdown itself.
 - **Priority** is a trailing `!high`, `!medium` or `!low`. Only a last word that names a priority counts, so `Ship it!` and `Fix !important CSS` stay as they are.

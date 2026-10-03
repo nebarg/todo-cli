@@ -4,12 +4,12 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
-	"unicode"
 )
 
 var taskLine = regexp.MustCompile(`^([ \t]*- )(?:\[([ xX])\] +)?(.*)$`)
@@ -50,8 +50,8 @@ func (s Section) Same(other Section) bool {
 	return s.Branch == other.Branch && strings.EqualFold(s.Category, other.Category)
 }
 
-// normalized checks a destination section, trimming the branch and dropping
-// a leading @ or # from the category. A blank category is the general list.
+// normalized checks a destination section, trimming the branch and
+// normalizing the category. A blank category is the general list.
 func (s Section) normalized() (Section, error) {
 	branch := strings.TrimSpace(s.Branch)
 	if strings.ContainsAny(branch, "\r\n") {
@@ -59,6 +59,9 @@ func (s Section) normalized() (Section, error) {
 	}
 	if strings.TrimSpace(s.Category) == "" {
 		return Section{Branch: branch}, nil
+	}
+	if strings.ContainsAny(s.Category, "\r\n") {
+		return Section{}, errors.New("category must be one line")
 	}
 	category := NormalizeCategory(s.Category)
 	if err := validateCategory(category); err != nil {
@@ -318,27 +321,31 @@ func taskUnchanged(lines []string, selected Task) bool {
 	return true
 }
 
+// validateCategory checks a normalized category can be written as a heading
+// that reads back as the same category.
 func validateCategory(category string) error {
 	if category == "" {
-		return errors.New("category must be a single word without whitespace")
+		return errors.New("enter a category name")
 	}
 	if strings.EqualFold(category, "Branches") {
 		return errors.New(`"Branches" is reserved for the branch section`)
 	}
-	for _, r := range category {
-		if unicode.IsSpace(r) {
-			return errors.New("category must be a single word without whitespace")
-		}
+	// A heading drops a closing " #", and a second leading @ or #.
+	if _, name, _ := parseHeading("# " + category); NormalizeCategory(name) != category {
+		return fmt.Errorf("%q can't be a category: its heading would read as %q", category, NormalizeCategory(name))
 	}
 	return nil
 }
 
-// NormalizeCategory drops one leading @ or # from a category name.
+// NormalizeCategory drops one leading @ or # from a category name, and
+// writes each run of whitespace in it as one space, so names that read the
+// same in a heading are the same category.
 func NormalizeCategory(raw string) string {
-	if len(raw) > 1 && (strings.HasPrefix(raw, "@") || strings.HasPrefix(raw, "#")) {
-		return raw[1:]
+	raw = strings.TrimSpace(raw)
+	if len(raw) > 1 && (raw[0] == '@' || raw[0] == '#') {
+		raw = raw[1:]
 	}
-	return raw
+	return strings.Join(strings.Fields(raw), " ")
 }
 
 func insertTaskBlock(data string, block []string, to Section) string {

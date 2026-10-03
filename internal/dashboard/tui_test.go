@@ -135,7 +135,7 @@ func TestCategoryPromptShowsAFailedSave(t *testing.T) {
 	}
 }
 
-func TestCategoryInputBlocksSpaces(t *testing.T) {
+func TestCategoryInputTakesSpaces(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
 	if err := os.WriteFile(path, []byte("- [ ] Task\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -145,21 +145,56 @@ func TestCategoryInputBlocksSpaces(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.startCategoryInput()
-	prompt(t, m).input.SetValue("a")
+	prompt(t, m).input.SetValue("release")
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
 	m = updated.(*model)
-	if got := prompt(t, m).input.Value(); got != "a" {
-		t.Fatalf("space key changed category input to %q", got)
-	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: 'c', Text: " category"})
+	updated, _ = m.Update(tea.PasteMsg{Content: "notes\nfor  v2"})
 	m = updated.(*model)
-	if got := prompt(t, m).input.Value(); got != "acategory" {
-		t.Fatalf("multi-character input kept a space: %q", got)
+	if got := prompt(t, m).input.Value(); got != "release notes for  v2" {
+		t.Fatalf("category input = %q", got)
 	}
-	updated, _ = m.Update(tea.PasteMsg{Content: " more words"})
+	m = press(m, "enter")
+	if isOpen[*categoryPrompt](m) {
+		t.Fatalf("spaced category was not saved: %q", prompt(t, m).err)
+	}
+	if got, want := readFile(t, path), "# release notes for v2\n\n- [ ] Task\n"; got != want {
+		t.Fatalf("file = %q, want %q", got, want)
+	}
+	if row, ok := m.selectedNavigationRow(); !ok || row.todo.Category != "release notes for v2" {
+		t.Fatalf("the moved task is not selected: %+v", row)
+	}
+}
+
+func TestEditFormSavesASpacedCategory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "TODO.md")
+	if err := os.WriteFile(path, []byte("# release notes\n\n- [ ] Task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project.Context{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = press(m, "enter")
+	if m.general.open.name != "release notes" {
+		t.Fatalf("enter did not open the spaced category: %+v", m.general.open)
+	}
+	m = press(m, "e")
+	f := form(t, m)
+	if got := f.scope.Value(); got != "release notes" {
+		t.Fatalf("edit form category = %q", got)
+	}
+	f.focusField(scopeField)
+	for _, key := range []string{" ", "v", "2"} {
+		updated, _ := m.Update(tea.KeyPressMsg{Code: []rune(key)[0], Text: key})
+		m = updated.(*model)
+	}
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
-	if got := prompt(t, m).input.Value(); got != "acategorymorewords" {
-		t.Fatalf("pasted input kept spaces: %q", got)
+	if isOpen[*taskModal](m) {
+		t.Fatalf("edit was not saved: %q", form(t, m).err)
+	}
+	if got, want := readFile(t, path), "# release notes v2\n\n- [ ] Task\n"; got != want {
+		t.Fatalf("file = %q, want %q", got, want)
 	}
 }
 
