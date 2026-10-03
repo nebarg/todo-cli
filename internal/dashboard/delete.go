@@ -30,9 +30,6 @@ func (m *model) startDelete() {
 		}
 		return
 	}
-	if m.blockMissingBranch(selected) {
-		return
-	}
 	removal, err := store.PlanRemove(m.file, []store.Task{selected})
 	if err != nil {
 		m.status = errorStatus(err)
@@ -54,7 +51,7 @@ func (d deleteConfirmation) render(theme ui.Theme) string {
 		details = "Its details go too."
 	}
 	title := fmt.Sprintf("Delete \"%s\"?", d.text())
-	return renderConfirmation(theme, title, []string{details, emptiedHeadings(d.removal, nil)}, "delete")
+	return renderConfirmation(theme, title, []string{details, emptiedHeadings(d.removal)}, "delete")
 }
 
 func (d deleteConfirmation) text() string { return ui.CleanDisplay(d.removal.Tasks[0].Text) }

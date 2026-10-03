@@ -10,7 +10,7 @@ import (
 )
 
 // GroupRow is a row that opens a group, such as a category or a branch:
-// "▸ name  note", with a count on the right.
+// "▸ name note", with a count on the right.
 type GroupRow struct {
 	Marker, Name, Note, Count string
 	NameStyle, NoteStyle      lipgloss.Style
@@ -33,7 +33,7 @@ func (g GroupRow) Render(theme Theme, width int, selected bool) string {
 	}
 	note := g.Note
 	if note != "" {
-		note = "  " + note
+		note = " " + note
 	}
 	fixed := ansi.StringWidth(g.Marker) + ansi.StringWidth(note) + ansi.StringWidth(g.Count) + 2
 	name := ansi.Truncate(g.Name, max(0, width-fixed), "…")

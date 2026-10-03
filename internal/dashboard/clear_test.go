@@ -210,44 +210,35 @@ func missingBranchModel(t *testing.T) (*model, string) {
 	return m, path
 }
 
-func TestClearInsideMissingBranchDeletesIt(t *testing.T) {
+func TestClearInsideMissingBranchOnlyClearsDoneTasks(t *testing.T) {
 	m, path := missingBranchModel(t)
 	m.branch.open = branchGroup("feature/gone")
-	if footer := ansi.Strip(m.renderFooter(200)); !strings.Contains(footer, "X remove its tasks") {
-		t.Fatalf("missing branch footer lacks remove: %q", footer)
-	}
-	m = press(m, "X")
-	if !isOpen[*clearConfirmation](m) {
-		t.Fatalf("X did not ask for confirmation: %q", m.status)
-	}
-	if dialog := ansi.Strip(confirmation(t, m).render(m.theme)); !strings.Contains(dialog, "Remove the 2 tasks of "+branchIcon+" feature/gone?") || !strings.Contains(dialog, "no longer exists in Git") {
-		t.Fatalf("dialog = %s", dialog)
-	}
-	m = press(m, "y")
-	want := "- [x] Loose done\n\n# Branches\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n"
-	if got := fileContent(t, path); got != want || m.status != "Removed the tasks of feature/gone" || m.branch.open.name != "" {
-		t.Fatalf("file = %q, status %q, filter %q", got, m.status, m.branch.open.name)
-	}
-	if press(m, "u"); fileContent(t, path) != missingContent {
-		t.Fatal("undo did not bring the branch back")
-	}
-}
-
-func TestClearingBranchesRemovesMissingOnes(t *testing.T) {
-	m, path := missingBranchModel(t)
-	if footer := ansi.Strip(m.renderFooter(200)); !strings.Contains(footer, "X clear 1 done + 1 missing") {
+	if footer := ansi.Strip(m.renderFooter(200)); !strings.Contains(footer, "X clear 1 done") {
 		t.Fatalf("footer = %q", footer)
 	}
 	m = press(m, "X")
-	dialog := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(confirmation(t, m).render(m.theme)), "│", " ")), " ")
-	for _, want := range []string{"Remove 1 done task and 2 tasks of missing branches from Branches?", branchIcon + " feature/gone no longer exists in Git, so all of its 2 tasks go too."} {
-		if !strings.Contains(dialog, want) {
-			t.Errorf("dialog lacks %q: %s", want, dialog)
-		}
+	if dialog := ansi.Strip(confirmation(t, m).render(m.theme)); !strings.Contains(dialog, "Remove 1 done task from "+branchIcon+" feature/gone?") || strings.Contains(dialog, "Git") {
+		t.Fatalf("dialog = %s", dialog)
 	}
 	m = press(m, "y")
-	want := "- [x] Loose done\n\n# Branches\n\n## feature/live\n\n- [ ] Live open\n"
-	if got := fileContent(t, path); got != want || m.status != "Removed 1 done task and 2 tasks of missing branches" {
+	want := "- [x] Loose done\n\n# Branches\n\n## feature/gone\n\n- [ ] Gone open\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n"
+	if got := fileContent(t, path); got != want || m.status != "Removed 1 done task" || m.branch.open.name != "feature/gone" {
+		t.Fatalf("file = %q, status %q, open %q", got, m.status, m.branch.open.name)
+	}
+}
+
+func TestClearingBranchesKeepsTasksOfBranchesNotInGit(t *testing.T) {
+	m, path := missingBranchModel(t)
+	if footer := ansi.Strip(m.renderFooter(200)); !strings.Contains(footer, "X clear 2 done") {
+		t.Fatalf("footer = %q", footer)
+	}
+	m = press(m, "X")
+	if dialog := ansi.Strip(confirmation(t, m).render(m.theme)); !strings.Contains(dialog, "Remove 2 done tasks from Branches?") || strings.Contains(dialog, "Git") {
+		t.Fatalf("dialog = %s", dialog)
+	}
+	m = press(m, "y")
+	want := "- [x] Loose done\n\n# Branches\n\n## feature/gone\n\n- [ ] Gone open\n\n## feature/live\n\n- [ ] Live open\n"
+	if got := fileContent(t, path); got != want || m.status != "Removed 2 done tasks" {
 		t.Fatalf("file = %q, status %q", got, m.status)
 	}
 }

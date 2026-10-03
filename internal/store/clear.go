@@ -14,7 +14,7 @@ import (
 var ErrFileChanged = errors.New("file changed on disk")
 
 // ClearTargets is what a clear removes: every done task, and every task of a
-// branch that no longer exists in Git.
+// branch Git doesn't have.
 type ClearTargets struct {
 	// Tasks are the tasks to remove, in the order given.
 	Tasks []Task

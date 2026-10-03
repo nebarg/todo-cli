@@ -214,9 +214,9 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.detailScroll = 0
 		m.files.CloseDetails()
 	case "1":
-		return m.jumpToTab(generalPane), true
+		m.jumpToTab(generalPane)
 	case "2":
-		return m.jumpToTab(branchPane), true
+		m.jumpToTab(branchPane)
 	case "3":
 		if m.focus == sourcePane {
 			m.files.Top()
@@ -226,8 +226,8 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		return m.files.PreviewCmd(), true
 	case "right":
-		if cmd, entered := m.enterSelectedGroup(); entered {
-			return cmd, true
+		if m.enterSelectedGroup() {
+			return nil, true
 		}
 		if row, ok := m.selectedNavigationRow(); ok && row.isTask() && m.focus != detailPane {
 			m.detailFrom = m.focus
@@ -254,8 +254,8 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			m.moveCursor(1)
 		}
 	case "enter":
-		if cmd, entered := m.enterSelectedGroup(); entered {
-			return cmd, true
+		if m.enterSelectedGroup() {
+			return nil, true
 		}
 		return m.editSelected(), true
 	default:
@@ -355,9 +355,6 @@ func (m *model) toggleSelected() {
 			}
 			return
 		}
-		if m.blockMissingBranch(selected) {
-			return
-		}
 		toggle = func() error { return store.Toggle(m.file, selected) }
 		toggled := selected
 		toggled.Done = !selected.Done
@@ -384,14 +381,6 @@ func errorStatus(err error) string {
 	return err.Error()
 }
 
-func (m *model) blockMissingBranch(t store.Task) bool {
-	if !m.branchMissing(t.Branch) {
-		return false
-	}
-	m.status = missingBranchStatus
-	return true
-}
-
 func (m *model) cyclePriority() {
 	if m.readmeSelected() {
 		m.status = readmeReadOnly
@@ -400,9 +389,6 @@ func (m *model) cyclePriority() {
 	selected, ok := m.selectedTask()
 	if !ok {
 		m.status = "Select a Markdown task to set priority"
-		return
-	}
-	if m.blockMissingBranch(selected) {
 		return
 	}
 	changed := selected
@@ -439,16 +425,11 @@ func (m *model) checkBranches() tea.Cmd {
 }
 
 // setBranches takes the local branches Git listed, passing them on to an
-// open branch task form. An edit of a task whose branch Git no longer has
-// closes, as the edit would have been refused had Git answered first.
+// open branch task form.
 func (m *model) setBranches(msg branchStateMsg) {
 	m.localBranches, m.branchesVerified = msg.branches, msg.verified
 	f, ok := m.overlay.(*taskModal)
 	if !ok || !f.branchScope() {
-		return
-	}
-	if f.mode == modalEdit && m.blockMissingBranch(f.selected) {
-		m.overlay = nil
 		return
 	}
 	f.setBranches(msg.branches, msg.current)

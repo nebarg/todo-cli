@@ -3,7 +3,6 @@ package dashboard
 import (
 	"cmp"
 	"errors"
-	"fmt"
 	"slices"
 	"strings"
 
@@ -12,7 +11,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/nebarg/todo-cli/internal/project"
 	"github.com/nebarg/todo-cli/internal/store"
 	"github.com/nebarg/todo-cli/internal/ui"
 )
@@ -29,7 +27,6 @@ type taskModal struct {
 	mode         modalMode
 	selected     store.Task
 	file         string
-	project      project.Context
 	target       store.Section
 	onCurrent    bool // target is the current Git branch, which Git's answer may update
 	branches     []string
@@ -51,7 +48,7 @@ const (
 // startTaskModal opens the task form. A branch form starts with the branches
 // Git last listed, and takes a fresh list when Git answers in the background.
 func (m *model) startTaskModal(mode modalMode) tea.Cmd {
-	modal := &taskModal{mode: mode, file: m.file, project: m.project}
+	modal := &taskModal{mode: mode, file: m.file}
 	var check tea.Cmd
 	if mode == modalAddGeneral && m.all == nil && m.activePane() == generalPane && m.general.open.kind == rowCategory {
 		modal.target.Category = m.general.open.name
@@ -62,9 +59,6 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 		if m.all == nil && m.activePane() == branchPane && m.branch.open != (group{}) {
 			modal.target.Branch, modal.onCurrent = m.branch.open.name, false
 		}
-		if !slices.Contains(modal.branches, modal.target.Branch) {
-			modal.branchCursor = -1
-		}
 	}
 	if mode == modalEdit {
 		selected, ok := m.selectedTask()
@@ -74,9 +68,6 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 		}
 		if selected.Branch != "" {
 			modal.branches, check = m.localBranches, m.checkBranches()
-		}
-		if m.blockMissingBranch(selected) {
-			return check
 		}
 		modal.selected = selected
 		modal.target = selected.Section
@@ -91,8 +82,9 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 	modal.title.SetHeight(2)
 	modal.scope.Prompt = ""
 	if modal.branchScope() {
-		modal.scope.Placeholder = "Search local branches"
+		modal.scope.Placeholder = "Search local branches, or name a new one"
 		modal.scope.SetValue(modal.target.Branch)
+		modal.branchCursor = slices.Index(modal.branchChoices(), modal.target.Branch)
 	} else {
 		modal.scope.Placeholder = "Optional category"
 		modal.scope.SetValue(modal.target.Category)
@@ -187,7 +179,7 @@ func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 		return f, nil, f.focusField((f.field + detailsField) % (detailsField + 1))
 	case "down":
 		if f.branchScope() && f.field == scopeField {
-			if count := len(f.matchingBranches()); count > 0 {
+			if count := len(f.branchChoices()); count > 0 {
 				f.branchCursor = (f.branchCursor + 1) % count
 			}
 			return f, nil, nil
@@ -211,7 +203,7 @@ func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 		}
 		if f.field == scopeField {
 			if f.branchScope() {
-				if count := len(f.matchingBranches()); count > 0 {
+				if count := len(f.branchChoices()); count > 0 {
 					f.branchCursor = (f.branchCursor - 1 + count) % count
 				}
 				return f, nil, nil
@@ -294,18 +286,8 @@ func (f *taskModal) focusField(field int) tea.Cmd {
 func (f *taskModal) save() error {
 	if f.branchScope() {
 		f.target.Branch = f.chosenBranch()
-		if f.target.Branch == "" && f.mode == modalEdit && strings.TrimSpace(f.scope.Value()) == f.selected.Branch {
-			f.target.Branch = f.selected.Branch
-		}
 		if f.target.Branch == "" {
-			if len(f.branches) == 0 {
-				return errors.New("no local Git branches found")
-			}
-			return errors.New("choose an existing local Git branch")
-		}
-		// The task's own branch was checked when the form opened.
-		if f.target.Branch != f.selected.Branch && !f.project.HasLocalBranch(f.target.Branch) {
-			return fmt.Errorf("branch %q no longer exists locally", f.target.Branch)
+			return errors.New("choose or type a branch")
 		}
 	} else {
 		f.target.Category = store.NormalizeCategory(f.scope.Value())
@@ -351,13 +333,24 @@ func (f *taskModal) matchingBranches() []string {
 	return matches
 }
 
+// branchChoices are the local branches matching what's typed, then the typed
+// name itself when Git has no branch of that name, as the task may be for a
+// branch not created yet.
+func (f *taskModal) branchChoices() []string {
+	choices := f.matchingBranches()
+	if name := strings.TrimSpace(f.scope.Value()); name != "" && !slices.Contains(f.branches, name) {
+		choices = append(choices, name)
+	}
+	return choices
+}
+
 // setBranches takes a fresh list of local branches and the current branch,
 // keeping the highlighted suggestion while Git still has it. A form still
 // showing the current branch it opened with moves to the new current branch.
 func (f *taskModal) setBranches(branches []string, current string) {
 	highlighted := ""
-	if matches := f.matchingBranches(); f.branchCursor >= 0 && f.branchCursor < len(matches) {
-		highlighted = matches[f.branchCursor]
+	if choices := f.branchChoices(); f.branchCursor >= 0 && f.branchCursor < len(choices) {
+		highlighted = choices[f.branchCursor]
 	}
 	if f.onCurrent && f.scope.Value() == f.target.Branch {
 		f.target.Branch = current
@@ -365,69 +358,69 @@ func (f *taskModal) setBranches(branches []string, current string) {
 		highlighted = current
 	}
 	f.branches = branches
-	f.branchCursor = slices.Index(f.matchingBranches(), highlighted)
+	f.branchCursor = slices.Index(f.branchChoices(), highlighted)
 }
 
 func (f *taskModal) resetBranchCursor() {
-	if strings.TrimSpace(f.scope.Value()) == "" || len(f.matchingBranches()) == 0 {
+	if strings.TrimSpace(f.scope.Value()) == "" {
 		f.branchCursor = -1
 	} else {
 		f.branchCursor = 0
 	}
 }
 
+// chosenBranch is the highlighted choice, or "" when there's none, such as
+// when Git no longer lists the one that was highlighted.
 func (f *taskModal) chosenBranch() string {
-	query := strings.TrimSpace(f.scope.Value())
-	matches := f.matchingBranches()
-	if f.branchCursor >= 0 && f.branchCursor < len(matches) {
-		return matches[f.branchCursor]
-	}
-	for _, branch := range f.branches {
-		if branch == query && query != "" {
-			return branch
-		}
+	if choices := f.branchChoices(); f.branchCursor >= 0 && f.branchCursor < len(choices) {
+		return choices[f.branchCursor]
 	}
 	return ""
 }
 
+// acceptBranch fills the field with the chosen branch, keeping it
+// highlighted even where a local branch's name contains it.
 func (f *taskModal) acceptBranch() {
 	if branch := f.chosenBranch(); branch != "" {
 		f.scope.SetValue(branch)
-		f.branchCursor = 0
+		f.branchCursor = slices.Index(f.branchChoices(), branch)
 		f.branchFresh = true
 	}
 }
 
 func (f *taskModal) branchSuggestions(theme ui.Theme, width int) []string {
 	rows := 2
-	matches := f.matchingBranches()
+	choices := f.branchChoices()
 	lines := make([]string, 0, rows)
-	if len(matches) == 0 {
-		message := "No matching local branches"
-		if len(f.branches) == 0 {
-			message = "No local Git branches"
-		}
-		lines = append(lines, theme.MutedStyle.Render(ansi.Truncate(message, width, "…")))
+	if len(choices) == 0 {
+		lines = append(lines, theme.MutedStyle.Render(ansi.Truncate("No local Git branches", width, "…")))
 	} else {
 		start := max(0, f.branchCursor-rows+1)
-		for i := start; i < len(matches) && len(lines) < rows; i++ {
-			mark := "  "
+		for i := start; i < len(choices) && len(lines) < rows; i++ {
+			known := slices.Contains(f.branches, choices[i])
+			mark, label := "  ", branchIcon+" "+choices[i]
+			if !known {
+				label = "⚠ " + choices[i] + " not in Git"
+			}
 			style := theme.MutedStyle
 			if i == f.branchCursor {
 				mark = "› "
 				style = lipgloss.NewStyle().Foreground(theme.ColorGreen)
+				if !known {
+					style = style.Foreground(theme.ColorHigh)
+				}
 				if f.field == scopeField {
 					style = style.Background(theme.ColorSelection)
 				}
 			}
 			lineWidth := width
-			if len(matches) > rows {
+			if len(choices) > rows {
 				lineWidth = max(1, width-2)
 			}
-			line := ansi.Truncate(mark+branchIcon+" "+matches[i], lineWidth, "…")
-			if len(matches) > rows {
+			line := ansi.Truncate(mark+label, lineWidth, "…")
+			if len(choices) > rows {
 				line += strings.Repeat(" ", max(0, lineWidth-ansi.StringWidth(line)))
-				thumb := min(rows-1, max(0, f.branchCursor)*rows/len(matches))
+				thumb := min(rows-1, max(0, f.branchCursor)*rows/len(choices))
 				bar := "│"
 				if i-start == thumb {
 					bar = "┃"

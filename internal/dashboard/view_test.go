@@ -206,7 +206,7 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 	}
 	m.branch.open = branchGroup("")
 	branches := ansi.Strip(m.renderNavigationPane(m.rows(branchPane), 0, branchPane, 60, 20))
-	if strings.Contains(branches, "Branches") || !regexp.MustCompile(`▸ main  current +1/2 │`).MatchString(branches) {
+	if strings.Contains(branches, "Branches") || !regexp.MustCompile(`▸ main current +1/2 │`).MatchString(branches) {
 		t.Fatalf("branch list = %s", branches)
 	}
 	m.general.open = categoryGroup("Docs")

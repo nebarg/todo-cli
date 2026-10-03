@@ -96,7 +96,7 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 		t.Fatalf("new general task was not selected or was categorised: %+v", m.rows(generalPane))
 	}
 	m.general.cursor = 0
-	if _, entered := m.enterSelectedGroup(); !entered {
+	if !m.enterSelectedGroup() {
 		t.Fatal("could not open the test category")
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
@@ -242,14 +242,15 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 		t.Fatalf("branch field is not visible in the small add form: %s", view)
 	}
 	form(t, m).title.SetValue("New branch task")
-	form(t, m).scope.SetValue("not-a-branch")
+	form(t, m).scope.SetValue("")
 	form(t, m).resetBranchCursor()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
-	if !isOpen[*taskModal](m) || form(t, m).err != "choose an existing local Git branch" {
-		t.Fatalf("unknown branch was accepted: %+v", m.overlay)
+	if !isOpen[*taskModal](m) || form(t, m).err != "choose or type a branch" {
+		t.Fatalf("a task was saved without a branch: %+v", m.overlay)
 	}
 	form(t, m).scope.SetValue("feature/new")
+	form(t, m).resetBranchCursor()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
 	selected, ok = m.selectedTask()
@@ -331,21 +332,28 @@ func TestBranchPickerSearchAndSelection(t *testing.T) {
 	if got := form(t, m).matchingBranches(); len(got) != 2 || got[0] != "feature/auth" || got[1] != "fix/auth" {
 		t.Fatalf("unexpected case-insensitive matches: %v", got)
 	}
+	if got := form(t, m).branchChoices(); len(got) != 3 || got[2] != "AUTH" {
+		t.Fatalf("the typed name is not the last choice: %v", got)
+	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(*model)
 	if form(t, m).branchCursor != 1 {
 		t.Fatalf("down did not select the second branch: %d", form(t, m).branchCursor)
 	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	m = updated.(*model)
+	for range 2 {
+		updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+		m = updated.(*model)
+	}
 	if form(t, m).branchCursor != 0 || form(t, m).scope.Value() != "AUTH" || form(t, m).field != 1 {
 		t.Fatalf("down at the end did not wrap without selecting: %+v", m.overlay)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(*model)
-	if form(t, m).branchCursor != 1 || form(t, m).field != 1 {
+	if form(t, m).branchCursor != 2 || form(t, m).field != 1 {
 		t.Fatalf("up at the start did not wrap: %+v", m.overlay)
 	}
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(*model)
 	if form(t, m).field != 2 || form(t, m).scope.Value() != "fix/auth" {
@@ -395,7 +403,7 @@ func TestBranchCreatedAfterStartupIsNotMissing(t *testing.T) {
 	}
 }
 
-func TestEditModalRefreshesBranchState(t *testing.T) {
+func TestEditFormStaysOpenWhenGitNoLongerHasTheBranch(t *testing.T) {
 	dir := t.TempDir()
 	repo := projecttest.Repo(t, dir, "main", "feature/x")
 	path := filepath.Join(dir, "todo.md")
@@ -409,25 +417,21 @@ func TestEditModalRefreshesBranchState(t *testing.T) {
 	m.focus = branchPane
 	m.branch.open = branchGroup("feature/x")
 	projecttest.Git(t, dir, "branch", "-D", "feature/x")
-	// The branch was there when Git last answered, so the form opens, and
-	// closes when Git answers that it has gone.
-	cmd := m.startTaskModal(modalEdit)
-	if !isOpen[*taskModal](m) {
-		t.Fatalf("edit was blocked before Git answered: status %q", m.status)
-	}
-	runCmd(t, m, cmd)
-	if isOpen[*taskModal](m) || m.status != missingBranchStatus {
-		t.Fatalf("edit stayed open for a branch deleted after startup: status %q", m.status)
-	}
-	projecttest.Git(t, dir, "branch", "feature/x")
-	// A blocked edit asks Git again, so the next one opens.
-	runCmd(t, m, m.startTaskModal(modalEdit))
-	if isOpen[*taskModal](m) || m.branchMissing("feature/x") {
-		t.Fatalf("a blocked edit did not ask Git again: status %q", m.status)
-	}
+	answerGit(t, m)
 	m.startTaskModal(modalEdit)
-	if !isOpen[*taskModal](m) {
-		t.Fatalf("edit stayed blocked after the branch was restored: status %q", m.status)
+	answerGit(t, m)
+	f := form(t, m)
+	if f.chosenBranch() != "feature/x" || !m.branchMissing("feature/x") {
+		t.Fatalf("edit form chose %q for a branch Git no longer has", f.chosenBranch())
+	}
+	f.title.SetValue("Edited task")
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	m = updated.(*model)
+	if isOpen[*taskModal](m) {
+		t.Fatalf("edit was not saved: %q", form(t, m).err)
+	}
+	if got := readFile(t, path); got != "# Branches\n\n## feature/x\n\n- [ ] Edited task\n" {
+		t.Fatalf("file = %q", got)
 	}
 }
 
@@ -459,25 +463,50 @@ func TestGitAnswerUpdatesAnOpenBranchForm(t *testing.T) {
 	}
 }
 
-func TestBranchPickerRejectsDeletedBranch(t *testing.T) {
+func TestBranchPickerTakesABranchNotInGit(t *testing.T) {
 	dir := t.TempDir()
-	repo := projecttest.Repo(t, dir, "main", "feature/old")
+	repo := projecttest.Repo(t, dir, "main", "feature/auth")
 	path := filepath.Join(dir, "todo.md")
 	m, err := newModel(path, repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.startTaskModal(modalAddBranch)
-	form(t, m).title.SetValue("Do not save")
-	form(t, m).scope.SetValue("feature/old")
-	projecttest.Git(t, dir, "branch", "-D", "feature/old")
+	f := form(t, m)
+	f.title.SetValue("Plan ahead")
+	f.scope.SetValue("feature/au")
+	f.resetBranchCursor()
+	if got := f.chosenBranch(); got != "feature/auth" {
+		t.Fatalf("a prefix of a local branch chose %q, want the local branch", got)
+	}
+	f.scope.SetValue("feature/planned")
+	f.resetBranchCursor()
+	if got := ansi.Strip(strings.Join(f.branchSuggestions(m.theme, 40), "\n")); !strings.Contains(got, "› ⚠ feature/planned not in Git") {
+		t.Fatalf("suggestions do not mark the new branch: %q", got)
+	}
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
-	if !isOpen[*taskModal](m) || form(t, m).err != "branch \"feature/old\" no longer exists locally" {
-		t.Fatalf("deleted branch was accepted: %+v", m.overlay)
+	if isOpen[*taskModal](m) {
+		t.Fatalf("a branch not in Git was refused: %q", form(t, m).err)
 	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("rejected task changed the TODO file: %v", err)
+	if got := readFile(t, path); got != "# Branches\n\n## feature/planned\n\n- [ ] Plan ahead\n" {
+		t.Fatalf("file = %q", got)
+	}
+	if !m.branchMissing("feature/planned") || m.branch.open.name != "feature/planned" {
+		t.Fatalf("the new branch was not opened and marked not in Git: open %q", m.branch.open.name)
+	}
+}
+
+func TestAcceptingANewBranchKeepsItChosen(t *testing.T) {
+	m := &model{project: project.Context{Branch: "main"}, theme: ui.NewTheme(true), localBranches: []string{"feature/login", "main"}, width: 100, height: 30}
+	m.startTaskModal(modalAddBranch)
+	f := form(t, m)
+	f.scope.SetValue("login")
+	f.resetBranchCursor()
+	f.branchCursor = 1 // the typed name, after feature/login
+	f.acceptBranch()
+	if got := f.chosenBranch(); f.scope.Value() != "login" || got != "login" {
+		t.Fatalf("accepting the typed name chose %q", got)
 	}
 }
 
@@ -495,10 +524,11 @@ func TestBranchPickerFitsCompactAndRegularModals(t *testing.T) {
 	if len(suggestions) != 2 || !strings.Contains(ansi.Strip(suggestions[0]), "feature/auth") || !strings.Contains(ansi.Strip(suggestions[1]), "feature/ui") || strings.Contains(strings.Join(suggestions, ""), "fix/search") || !strings.Contains(strings.Join(suggestions, ""), "┃") {
 		t.Fatalf("picker did not show two rows with a scroll indicator: %q", suggestions)
 	}
-	form(t, m).scope.SetValue("feature/")
+	form(t, m).scope.SetValue("feature/u")
 	form(t, m).resetBranchCursor()
-	if suggestions = form(t, m).branchSuggestions(m.theme, 24); len(suggestions) != 2 || strings.Contains(strings.Join(suggestions, ""), "┃") || strings.Contains(strings.Join(suggestions, ""), "│") {
-		t.Fatalf("scroll indicator shown for only two matches: %q", suggestions)
+	if suggestions = form(t, m).branchSuggestions(m.theme, 32); len(suggestions) != 2 || strings.Contains(strings.Join(suggestions, ""), "┃") || strings.Contains(strings.Join(suggestions, ""), "│") ||
+		!strings.Contains(ansi.Strip(suggestions[1]), "⚠ feature/u not in Git") {
+		t.Fatalf("two choices should fit without a scroll indicator, the typed name last: %q", suggestions)
 	}
 	form(t, m).scope.SetValue("")
 	form(t, m).branchCursor = 0

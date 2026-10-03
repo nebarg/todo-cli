@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/nebarg/todo-cli/internal/store"
 )
 
@@ -358,48 +357,37 @@ func (m *model) selectedNavigationRow() (navigationRow, bool) {
 
 // enterSelectedGroup opens the selected category, branch or README.md
 // group, reporting false when the selection isn't one.
-func (m *model) enterSelectedGroup() (tea.Cmd, bool) {
+func (m *model) enterSelectedGroup() bool {
 	if m.focus == detailPane {
-		return nil, false
+		return false
 	}
 	row, ok := m.selectedNavigationRow()
 	if !ok || row.isTask() {
-		return nil, false
+		return false
 	}
-	var cmd tea.Cmd
 	if row.kind == rowBranch {
-		cmd = m.enterBranch(row.name)
+		m.branch.enter(branchGroup(row.name))
 	} else {
 		m.general.enter(group{kind: row.kind, name: row.name})
 	}
 	m.detailScroll = 0
 	m.status = ""
-	return cmd, true
+	return true
 }
 
 // jumpToTab focuses a tab, or leaves its opened category or branch when it
 // already has focus. At the top of Branches it opens the current branch.
-func (m *model) jumpToTab(p pane) tea.Cmd {
+func (m *model) jumpToTab(p pane) {
 	switch {
 	case m.focus != p:
 		m.focus = p
 		m.detailScroll = 0
 		m.files.CloseDetails()
 	case p == branchPane && m.branch.open == (group{}):
-		if m.openCurrentBranch() {
-			return m.checkBranches()
-		}
+		m.openCurrentBranch()
 	default:
 		m.leaveGroup()
 	}
-	return nil
-}
-
-// enterBranch opens a branch from the top of Branches, and asks Git in the
-// background whether it still has it.
-func (m *model) enterBranch(name string) tea.Cmd {
-	m.branch.enter(branchGroup(name))
-	return m.checkBranches()
 }
 
 func (m *model) leaveGroup() {
@@ -410,19 +398,17 @@ func (m *model) leaveGroup() {
 	m.status = ""
 }
 
-// openCurrentBranch opens the current Git branch's tasks, if it has any,
-// reporting whether it did.
-func (m *model) openCurrentBranch() bool {
+// openCurrentBranch opens the current Git branch's tasks, if it has any.
+func (m *model) openCurrentBranch() {
 	if m.project.Branch == "" || m.branch.open != (group{}) {
-		return false
+		return
 	}
 	i := slices.IndexFunc(m.rows(branchPane), branchGroup(m.project.Branch).openedBy)
 	if i < 0 {
-		return false
+		return
 	}
 	m.branch.cursor = i
 	m.branch.enter(branchGroup(m.project.Branch))
 	m.detailScroll = 0
 	m.status = ""
-	return true
 }

@@ -74,7 +74,7 @@ todo-scan code
 todo [flags]                   open the dashboard
 todo [flags] [@category] task  add a task
 todo [flags] --clear-done      remove done tasks
-todo [flags] --clear-missing   remove tasks of branches no longer in Git
+todo [flags] --clear-missing   remove tasks of branches not in Git
 ```
 
 ```sh
@@ -85,11 +85,11 @@ todo @docs Write the install guide     # in the docs category
 todo -c "release notes" Draft v2 notes # in a category with spaces
 todo -c docs -p l Proofread the FAQ    # in the docs category at low priority
 todo -b . Fix the flaky test           # on the current Git branch
-todo -b feature/login Add 2FA          # on another local branch
+todo -b feature/login Add 2FA          # on another branch
 todo -f ~/notes/todo.md Renew passport # in another task file
 todo -- -v flag is broken              # task text starting with a dash
 todo --clear-done                      # remove done tasks
-todo --clear-missing                   # remove the tasks of deleted Git branches
+todo --clear-missing                   # remove the tasks of branches not in Git
 todo -e dist -e node_modules           # open the dashboard, skipping these in Files
 ```
 
@@ -99,16 +99,16 @@ Flags come first; everything after them is the task.
 | --- | --- |
 | `-p`, `--priority h\|high\|m\|medium\|l\|low` | Priority of the new task |
 | `-c`, `--category name` | Category of the new task. A leading `@name` word does the same for a one-word category; use one or the other. Quote a name with spaces |
-| `-b`, `--branch name` | Local Git branch of the new task. `.` means the current branch |
+| `-b`, `--branch name` | Git branch of the new task. `.` means the current branch. A branch Git doesn't have locally, such as one not created yet, is fine: the task is added, and the output says it went to an unknown branch |
 | `-f`, `--file path` | Use another task file instead of `todo.md` |
 | `-e`, `--exclude dir` | Skip a directory in the dashboard's Files tab. See [Skipping directories](#skipping-directories) |
 | `--clear-done` | Remove every done task, and list what went |
-| `--clear-missing` | Remove every task, open or done, of branches whose local Git branch no longer exists, with their headings. Git branches aren't changed. Needs Git |
+| `--clear-missing` | Remove every task, open or done, of branches Git doesn't have locally, with their headings. That includes branches not created yet. Git branches aren't changed. Needs Git |
 | `--version` | Print the version |
 | `-h`, `--help` | Show usage |
 
 - The task file is `todo.md` at the Git repository root, or in the current directory outside Git. If there's no `todo.md` but there is a `TODO.md`, or the name in any other case, that file is used instead. Otherwise `todo.md` is created when you add the first task.
-- A task goes in the general list, a category or a branch. Branch tasks can't have a category. `Branches` is reserved as a category name. A branch must exist locally.
+- A task goes in the general list, a category or a branch. Branch tasks can't have a category. `Branches` is reserved as a category name.
 
 ### Dashboard
 
@@ -120,7 +120,7 @@ Flags come first; everything after them is the task.
 
 Each tab returns to where you left it. Press `1` or `3` again to leave an opened category, and `2` again to switch between the branch list and the current branch. `←` or `esc` goes back one level.
 
-A branch whose local Git branch has been deleted shows as `⚠ branch-name  missing` in red. Its tasks stay visible but read only. Opening a branch re-checks it; `r` re-checks them all. If Git has switched branch since the Branches tab opened the current one, `r` opens the new current branch instead, or the branch list if it has no tasks.
+A branch Git doesn't have locally, deleted or not created yet, shows as `⚠ branch-name not in Git` in red, and the status bar inside it warns the same. Its tasks work as any others. The dashboard asks Git at startup and when you press `r`. If Git has switched branch since the Branches tab opened the current one, `r` opens the new current branch instead, or the branch list if it has no tasks.
 
 #### Reading the list
 
@@ -151,7 +151,7 @@ In the form:
 - `tab` / `shift+tab` move between Task, Category or Branch, and Details.
 - Category suggests an existing category that starts with what you've typed, in grey. `tab` fills it in, `ctrl+n` / `ctrl+p` switch between the categories that match, and typing on ignores it.
 - `enter` adds a new line in Task or Details, `ctrl+enter` saves, and `esc` cancels.
-- The Branch field suggests local Git branches as you type. You can only pick a branch that exists.
+- The Branch field suggests local Git branches as you type. A name Git doesn't have is offered last, marked `not in Git`, for a branch you haven't created yet.
 - When editing, changing the category or branch moves the task. A heading left empty is removed.
 
 `c` changes just the category of a general task, without the form, with the same suggestions.
@@ -160,7 +160,7 @@ In the form:
 
 `backspace` deletes the selected task with its details.
 
-`X` clears done tasks from where you are: the opened category or branch, the whole tab, or everything in the All tasks view. The tasks of missing branches go too, open ones included. Inside a missing branch, `X` removes all of its tasks.
+`X` clears done tasks from where you are: the opened category or branch, the whole tab, or everything in the All tasks view.
 
 Both show a dialog naming what will go, including headings left empty, and only `y` goes ahead. Afterwards `u` undoes it, until the file next changes.
 

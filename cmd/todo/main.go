@@ -40,7 +40,7 @@ const usageText = `Usage:
   todo [flags]                   open the dashboard
   todo [flags] [@category] task  add a task
   todo [flags] --clear-done      remove done tasks
-  todo [flags] --clear-missing   remove tasks of branches no longer in Git
+  todo [flags] --clear-missing   remove tasks of branches not in Git
 
 Flags come first; everything after them is the task.
 
@@ -53,10 +53,10 @@ func newFlags(o *options) *pflag.FlagSet {
 	flags.SetInterspersed(false)
 	flags.StringVarP(&o.priority, "priority", "p", "", "priority of a new task: `h|m|l`, or high, medium or low")
 	flags.StringVarP(&o.category, "category", "c", "", "category `name` for a new task; quote a name with spaces")
-	flags.StringVarP(&o.branch, "branch", "b", "", "local Git branch `name` for a new task, or . for the current branch")
+	flags.StringVarP(&o.branch, "branch", "b", "", "Git branch `name` for a new task, or . for the current branch")
 	flags.StringVarP(&o.file, "file", "f", "", "task file `path` (default todo.md at the repository root, or an existing TODO.md)")
 	flags.BoolVar(&o.clearDone, "clear-done", false, "remove done tasks")
-	flags.BoolVar(&o.clearMissing, "clear-missing", false, "remove every task of branches no longer in Git, open ones included")
+	flags.BoolVar(&o.clearMissing, "clear-missing", false, "remove every task, open ones included, of branches Git doesn't have locally, including ones not created yet")
 	flags.BoolVar(&o.version, "version", false, "print the version")
 	flags.StringArrayVarP(&o.excludes, "exclude", "e", nil, "skip a `dir` in the Files tab: a name at any depth, or a path from here; repeat for more (default node_modules and vendor)")
 	return flags
@@ -178,7 +178,8 @@ func runDashboard(out io.Writer, file string, repo project.Context, excludes []s
 }
 
 // addTask files the task in args under the category or branch the flags
-// name, and reports where it went on out.
+// name, and reports where it went on out, naming a branch Git doesn't have
+// as unknown so a mistyped name stands out.
 func addTask(out io.Writer, file string, repo project.Context, o options, args []string) error {
 	category, args := splitCategoryArg(args)
 	if len(args) == 0 {
@@ -197,15 +198,16 @@ func addTask(out io.Writer, file string, repo project.Context, o options, args [
 			return errors.New("no current Git branch")
 		}
 	}
-	if branch != "" && !repo.HasLocalBranch(branch) {
-		return fmt.Errorf("branch %q does not exist locally", branch)
-	}
 	p, err := store.ParsePriority(o.priority)
 	if err != nil {
 		return err
 	}
 	title := strings.Join(args, " ")
 	if err := store.Add(file, title, "", p, store.Section{Category: category, Branch: branch}); err != nil {
+		return err
+	}
+	if branch != "" && !repo.HasLocalBranch(branch) {
+		_, err = fmt.Fprintf(out, "Added to %s on unknown branch %s: %s\n", file, ui.CleanDisplay(branch), title)
 		return err
 	}
 	_, err = fmt.Fprintf(out, "Added to %s: %s\n", file, title)
@@ -246,7 +248,7 @@ func clearTasks(out io.Writer, file string, done bool, missing func(string) bool
 		fmt.Fprintf(&report, "  %s\n", ui.CleanDisplay(t.Text))
 	}
 	if len(targets.Branches) > 0 {
-		fmt.Fprintf(&report, "Branches no longer in Git: %s\n", ui.CleanDisplay(strings.Join(targets.Branches, ", ")))
+		fmt.Fprintf(&report, "Branches not in Git: %s\n", ui.CleanDisplay(strings.Join(targets.Branches, ", ")))
 	}
 	var headings []string
 	for _, category := range removal.Categories {
@@ -274,8 +276,8 @@ func nothingToClear(done, missing bool) string {
 	return "done tasks"
 }
 
-// missingBranches reports branches Git no longer has. Without Git to ask,
-// it fails rather than treat every branch as present.
+// missingBranches reports branches Git doesn't have locally. Without Git to
+// ask, it fails rather than treat every branch as present.
 func missingBranches(repo project.Context) (func(string) bool, error) {
 	branches, _, verified := repo.LocalBranchState()
 	if !verified {

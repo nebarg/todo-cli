@@ -57,9 +57,9 @@ func pressAndRun(t *testing.T, m *model, key string) *model {
 	return m
 }
 
-// answerGit gives m Git's answer to the background check that opening a
-// branch or a branch task form starts, without waiting on the form's cursor
-// blink that runCmd would also run.
+// answerGit gives m Git's answer to the background check that a branch task
+// form starts, without waiting on the form's cursor blink that runCmd would
+// also run.
 func answerGit(t *testing.T, m *model) {
 	t.Helper()
 	runCmd(t, m, m.checkBranches())

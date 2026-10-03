@@ -176,12 +176,6 @@ func TestDeleteRefusesWhatItCannotDelete(t *testing.T) {
 			m.general.open = group{kind: rowReadme, name: readmeGroup}
 			return m
 		}, readmeReadOnly},
-		{"missing branch", func(t *testing.T) *model {
-			m, _ := missingBranchModel(t)
-			m.branch.open = branchGroup("feature/gone")
-			selectTask(t, m, "Gone open")
-			return m
-		}, missingBranchStatus},
 	} {
 		t.Run(item.name, func(t *testing.T) {
 			m := press(item.setup(t), "backspace")
@@ -189,6 +183,17 @@ func TestDeleteRefusesWhatItCannotDelete(t *testing.T) {
 				t.Fatalf("status = %q, want %q", m.status, item.status)
 			}
 		})
+	}
+}
+
+func TestDeleteWorksInABranchNotInGit(t *testing.T) {
+	m, path := missingBranchModel(t)
+	m.branch.open = branchGroup("feature/gone")
+	selectTask(t, m, "Gone open")
+	m = press(press(m, "backspace"), "y")
+	want := "- [x] Loose done\n\n# Branches\n\n## feature/gone\n\n- [x] Gone done\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n"
+	if got := fileContent(t, path); got != want || m.status != `Deleted "Gone open"` {
+		t.Fatalf("file = %q, status %q", got, m.status)
 	}
 }
 

@@ -104,8 +104,13 @@ func TestAddTaskOnBranches(t *testing.T) {
 	if err := addTask(io.Discard, path, repo, options{branch: "feature/x"}, []string{"Other", "task"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := addTask(io.Discard, path, repo, options{branch: "gone"}, []string{"Lost"}); err == nil || !strings.Contains(err.Error(), `branch "gone" does not exist locally`) {
-		t.Fatalf("missing branch error = %v", err)
+	var out strings.Builder
+	if err := addTask(&out, path, repo, options{branch: "feature/planned"}, []string{"Plan", "ahead"}); err != nil || out.String() != "Added to "+path+" on unknown branch feature/planned: Plan ahead\n" {
+		t.Fatalf("unknown branch: %v, %q", err, out.String())
+	}
+	out.Reset()
+	if err := addTask(&out, path, repo, options{branch: "main"}, []string{"Known"}); err != nil || out.String() != "Added to "+path+": Known\n" {
+		t.Fatalf("known branch: %v, %q", err, out.String())
 	}
 	if err := addTask(io.Discard, path, repo, options{branch: "."}, []string{"@tests", "Both"}); err == nil {
 		t.Fatal("a branch task was given a category")
@@ -117,7 +122,7 @@ func TestAddTaskOnBranches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "# Branches\n\n## main\n\n- [ ] Current task !high\n\n## feature/x\n\n- [ ] Other task\n"; string(data) != want {
+	if want := "# Branches\n\n## main\n\n- [ ] Current task !high\n\n- [ ] Known\n\n## feature/x\n\n- [ ] Other task\n\n## feature/planned\n\n- [ ] Plan ahead\n"; string(data) != want {
 		t.Fatalf("todo.md = %q, want %q", data, want)
 	}
 }
@@ -270,7 +275,7 @@ func TestClearDoneAndMissingTogether(t *testing.T) {
 	if err := clearTasks(&out, path, true, goneMissing); err != nil {
 		t.Fatal(err)
 	}
-	want := "Removed 2 done tasks and 2 tasks of missing branches from " + path + ":\n  Loose done\n  Gone open\n  Gone done\n  Live done\nBranches no longer in Git: feature/gone\n"
+	want := "Removed 2 done tasks and 2 tasks of missing branches from " + path + ":\n  Loose done\n  Gone open\n  Gone done\n  Live done\nBranches not in Git: feature/gone\n"
 	if out.String() != want {
 		t.Fatalf("output = %q, want %q", out.String(), want)
 	}
@@ -294,7 +299,7 @@ func TestClearDoneOrMissingAlone(t *testing.T) {
 		},
 		{
 			"missing only keeps done tasks elsewhere", false, goneMissing,
-			"Removed 2 tasks of missing branches from %s:\n  Gone open\n  Gone done\nBranches no longer in Git: feature/gone\n",
+			"Removed 2 tasks of missing branches from %s:\n  Gone open\n  Gone done\nBranches not in Git: feature/gone\n",
 			"- [x] Loose done\n\n# Branches\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n",
 		},
 	} {
@@ -360,7 +365,7 @@ func TestClearReportPrintsControlCharactersAsSpaces(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "Removed 1 done task and 1 task of a missing branch from " + path + ":\n  Done  [2Jtask\n  Branch task\n" +
-		"Branches no longer in Git: br anch\nRemoved empty headings: @a ]0;x b\n"
+		"Branches not in Git: br anch\nRemoved empty headings: @a ]0;x b\n"
 	if out.String() != want {
 		t.Fatalf("output = %q, want %q", out.String(), want)
 	}

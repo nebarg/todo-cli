@@ -41,11 +41,11 @@ func TestBranchListMarksMissingGitBranches(t *testing.T) {
 		t.Fatalf("deleted branch was not identified while keeping its tasks: %+v", rows)
 	}
 	view := ansi.Strip(m.renderNavigationPane(rows, 0, branchPane, 60, 20))
-	if !regexp.MustCompile(`⚠ feature/gone  missing +0/1`).MatchString(view) || strings.Contains(view, "⚠ feature/live") || !regexp.MustCompile(`▸ feature/live +0/1`).MatchString(view) {
+	if !regexp.MustCompile(`⚠ feature/gone not in Git +0/1`).MatchString(view) || strings.Contains(view, "⚠ feature/live") || !regexp.MustCompile(`▸ feature/live +0/1`).MatchString(view) {
 		t.Fatalf("branch list warning is unclear: %s", view)
 	}
 	long := navigationRow{kind: rowBranch, name: "feature/a-very-long-branch-name-that-needs-truncating", count: 4, completed: 1, missingGitBranch: true}
-	if got := ansi.Strip(renderGroupRow(m.theme, long, 28, true, false)); !strings.HasPrefix(got, "⚠ feature/") || !strings.HasSuffix(got, "…  missing  1/4") || ansi.StringWidth(got) != 28 {
+	if got := ansi.Strip(renderGroupRow(m.theme, long, 28, true, false)); !strings.HasPrefix(got, "⚠ feature/") || !strings.HasSuffix(got, "… not in Git  1/4") || ansi.StringWidth(got) != 28 {
 		t.Fatalf("long branch hid its missing marker: %q", got)
 	}
 	projecttest.Git(t, dir, "branch", "feature/gone")
@@ -55,49 +55,43 @@ func TestBranchListMarksMissingGitBranches(t *testing.T) {
 	}
 }
 
-func TestMissingBranchTasksAreReadOnly(t *testing.T) {
+func TestMissingBranchTasksCanBeEdited(t *testing.T) {
 	dir := t.TempDir()
-	repo := projecttest.Repo(t, dir, "main", "feature/gone")
+	repo := projecttest.Repo(t, dir, "main")
 	path := filepath.Join(dir, "todo.md")
-	content := "# Branches\n\n## feature/gone\n\n- [ ] Keep this task\n"
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/planned\n\n- [ ] Keep this task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	projecttest.Git(t, dir, "branch", "-D", "feature/gone")
 	m, err := newModel(path, repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.focus = branchPane
-	if view := ansi.Strip(m.View().Content); strings.Contains(view, "Branch no longer exists") {
-		t.Fatalf("status bar shown before opening the branch: %s", view)
+	if view := ansi.Strip(m.View().Content); strings.Contains(view, missingBranchStatus) {
+		t.Fatalf("status bar warning shown before opening the branch: %s", view)
 	}
-	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(*model)
+	m = press(m, "enter")
 	lines := strings.Split(ansi.Strip(m.View().Content), "\n")
-	if len(lines) != m.height || !strings.Contains(lines[len(lines)-3], "⚠ Branch no longer exists · tasks cannot be edited") {
-		t.Fatalf("status bar missing from bottom of panel: %q", lines)
+	if len(lines) != m.height || !strings.Contains(lines[len(lines)-3], "Open  ·  No priority  ·  "+missingBranchStatus) {
+		t.Fatalf("status bar does not warn about the branch beside the task's status: %q", lines)
 	}
-	assertNoEditHints(t, m)
-	for _, key := range []tea.KeyPressMsg{{Code: 'd', Text: "d"}, {Code: 'p', Text: "p"}, {Code: 'e', Text: "e"}, {Code: tea.KeyEnter}} {
-		updated, _ = m.Update(key)
-		m = updated.(*model)
-		if isOpen[*taskModal](m) || m.status != missingBranchStatus {
-			t.Fatalf("%q was not blocked: modal=%v status=%q", key.String(), isOpen[*taskModal](m), m.status)
-		}
+	if hints := ansi.Strip(m.theme.RenderHints(m.footerHints())); !strings.Contains(hints, "d done  e edit  p priority") {
+		t.Fatalf("footer lacks the task keys: %q", hints)
 	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	m = updated.(*model)
-	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "Branch no longer exists") {
-		t.Fatalf("status bar missing from task details: %s", view)
+	m = press(press(m, "d"), "p")
+	if m.status != "" {
+		t.Fatalf("editing a task was refused: %q", m.status)
 	}
-	assertNoEditHints(t, m)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
+	if got, want := readFile(t, path), "# Branches\n\n## feature/planned\n\n- [x] Keep this task !high\n"; got != want {
+		t.Fatalf("file = %q, want %q", got, want)
 	}
-	if string(data) != content {
-		t.Fatalf("task on missing branch was modified:\n%s", data)
+	m = press(m, "e")
+	if !isOpen[*taskModal](m) {
+		t.Fatalf("edit form did not open: status %q", m.status)
+	}
+	m = press(press(m, "esc"), "right")
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, missingBranchStatus) || !strings.Contains(ansi.Strip(m.theme.RenderHints(m.footerHints())), "e edit") {
+		t.Fatalf("task details lost the warning or the task keys: %s", view)
 	}
 }
 
@@ -265,55 +259,34 @@ func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 	}
 }
 
-func assertNoEditHints(t *testing.T, m *model) {
-	t.Helper()
-	for _, hint := range m.footerHints() {
-		if slices.Contains([]string{"d", "e", "p"}, hint.Key) {
-			t.Fatalf("read-only branch footer offers %q: %v", hint.Key, m.footerHints())
-		}
-	}
-}
-
-func TestEnteringBranchRechecksIt(t *testing.T) {
+func TestReloadRechecksBranches(t *testing.T) {
 	dir := t.TempDir()
 	repo := projecttest.Repo(t, dir, "main", "feature/x")
 	path := filepath.Join(dir, "todo.md")
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/x\n\n- [ ] Branch task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	t.Chdir(dir) // reload reads the Git context from the working directory.
 	m, err := newModel(path, repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.focus = branchPane
 	projecttest.Git(t, dir, "branch", "-D", "feature/x")
-	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(*model)
-	if strings.Contains(ansi.Strip(m.panelStatus()), missingBranchStatus) {
-		t.Fatal("the branch was shown as missing before Git answered")
+	if cmd := pressKey(t, m, "enter"); cmd != nil {
+		t.Fatal("opening a branch asked Git again")
 	}
-	runCmd(t, m, cmd)
+	if strings.Contains(ansi.Strip(m.panelStatus()), missingBranchStatus) {
+		t.Fatal("the branch was shown as not in Git before Git was asked")
+	}
+	m = pressAndRun(t, m, "r")
 	if !strings.Contains(ansi.Strip(m.panelStatus()), missingBranchStatus) {
-		t.Fatal("entering a branch deleted after startup did not show it as missing")
+		t.Fatal("r did not re-check the branch")
 	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
-	m = updated.(*model)
-	if m.status != missingBranchStatus {
-		t.Fatalf("d was not blocked: status %q", m.status)
-	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	m = updated.(*model)
 	projecttest.Git(t, dir, "branch", "feature/x")
-	updated, cmd = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	m = updated.(*model)
-	runCmd(t, m, cmd)
+	m = pressAndRun(t, m, "r")
 	if strings.Contains(ansi.Strip(m.panelStatus()), missingBranchStatus) {
-		t.Fatal("restored branch still shown as missing")
-	}
-	updated, _ = m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
-	m = updated.(*model)
-	if selected, ok := m.selectedTask(); !ok || !selected.Done {
-		t.Fatalf("d did not complete the task on a restored branch: status %q", m.status)
+		t.Fatal("restored branch is still shown as not in Git")
 	}
 }
 

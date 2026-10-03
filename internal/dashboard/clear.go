@@ -15,10 +15,9 @@ import (
 
 // clearConfirmation is a planned clear waiting for the user to confirm it.
 type clearConfirmation struct {
-	removal     store.Removal
-	targets     store.ClearTargets
-	scope       string
-	wholeBranch bool
+	removal store.Removal
+	targets store.ClearTargets
+	scope   string
 }
 
 // clearScope is the tasks X clears from where the user is, and a name for
@@ -48,20 +47,16 @@ func (m *model) clearScope() ([]store.Task, string) {
 // clearHint offers X only when there is something for it to clear.
 func (m *model) clearHint() []ui.KeyHint {
 	tasks, _ := m.clearScope()
-	targets := store.PickClearTargets(tasks, m.branchMissing)
-	var parts []string
-	if targets.Done > 0 {
-		parts = append(parts, fmt.Sprintf("%d done", targets.Done))
+	if done := completedCount(tasks); done > 0 {
+		return []ui.KeyHint{{Key: "X", Label: fmt.Sprintf("clear %d done", done)}}
 	}
-	switch {
-	case m.viewingMissingBranch():
-		return []ui.KeyHint{{Key: "X", Label: "remove its tasks"}}
-	case len(targets.Branches) > 0:
-		parts = append(parts, fmt.Sprintf("%d missing", len(targets.Branches)))
-	case len(parts) == 0:
-		return nil
-	}
-	return []ui.KeyHint{{Key: "X", Label: "clear " + strings.Join(parts, " + ")}}
+	return nil
+}
+
+// doneTargets are the done tasks of tasks. Tasks of a branch Git doesn't
+// have stay, as the branch may not be created yet.
+func doneTargets(tasks []store.Task) store.ClearTargets {
+	return store.PickClearTargets(tasks, func(string) bool { return false })
 }
 
 func (m *model) startClearDone() {
@@ -74,7 +69,7 @@ func (m *model) startClearDone() {
 		return
 	}
 	tasks, scope := m.clearScope()
-	targets := store.PickClearTargets(tasks, m.branchMissing)
+	targets := doneTargets(tasks)
 	if len(targets.Tasks) == 0 {
 		m.status = "No done tasks to clear"
 		return
@@ -84,7 +79,7 @@ func (m *model) startClearDone() {
 		m.status = errorStatus(err)
 		return
 	}
-	m.overlay = &clearConfirmation{removal: removal, targets: targets, scope: scope, wholeBranch: m.viewingMissingBranch()}
+	m.overlay = &clearConfirmation{removal: removal, targets: targets, scope: scope}
 	m.status = ""
 }
 
@@ -103,9 +98,6 @@ func (c *clearConfirmation) view(theme ui.Theme, _, _ int) string { return c.ren
 
 // doneStatus reports the clear once it is applied.
 func (c *clearConfirmation) doneStatus() string {
-	if c.wholeBranch {
-		return "Removed the tasks of " + c.targets.Branches[0]
-	}
 	return "Removed " + c.targets.Summary()
 }
 
@@ -186,26 +178,8 @@ func (m *model) undoRemoval() {
 func taskCount(n int) string { return ui.Plural(n, "task", "tasks") }
 
 func (c clearConfirmation) render(theme ui.Theme) string {
-	var title, reason string
-	missingTasks := len(c.targets.Tasks) - c.targets.Done
-	missing := make([]string, len(c.targets.Branches))
-	for i, branch := range c.targets.Branches {
-		missing[i] = branchIcon + " " + branch
-	}
-	switch {
-	case c.wholeBranch:
-		title = fmt.Sprintf("Remove the %s of %s?", taskCount(missingTasks), missing[0])
-		reason = "The branch no longer exists in Git."
-	case len(missing) == 1:
-		title = fmt.Sprintf("Remove %s from %s?", c.targets.Summary(), c.scope)
-		reason = fmt.Sprintf("%s no longer exists in Git, so all of its %s go too.", missing[0], taskCount(missingTasks))
-	case len(missing) > 1:
-		title = fmt.Sprintf("Remove %s from %s?", c.targets.Summary(), c.scope)
-		reason = fmt.Sprintf("%s no longer exist in Git, so all of their %s go too.", joinNames(missing), taskCount(missingTasks))
-	default:
-		title = fmt.Sprintf("Remove %s from %s?", c.targets.Summary(), c.scope)
-	}
-	return renderConfirmation(theme, title, []string{reason, emptiedHeadings(c.removal, c.targets.Branches)}, "remove")
+	title := fmt.Sprintf("Remove %s from %s?", c.targets.Summary(), c.scope)
+	return renderConfirmation(theme, title, []string{emptiedHeadings(c.removal)}, "remove")
 }
 
 // renderConfirmation draws a dialog asking to go ahead with action, with
@@ -224,17 +198,15 @@ func renderConfirmation(theme ui.Theme, title string, notes []string, action str
 		Background(theme.ColorModal).Render(ui.OnBackground(strings.Join(lines, "\n"), theme.ColorModal))
 }
 
-// emptiedHeadings names the headings removal leaves empty, other than those
-// of the branches in named, or is "" when there are none.
-func emptiedHeadings(removal store.Removal, named []string) string {
+// emptiedHeadings names the headings removal leaves empty, or is "" when
+// there are none.
+func emptiedHeadings(removal store.Removal) string {
 	var headings []string
 	for _, category := range removal.Categories {
 		headings = append(headings, "@"+category)
 	}
 	for _, branch := range removal.Branches {
-		if !slices.Contains(named, branch) {
-			headings = append(headings, branchIcon+" "+branch)
-		}
+		headings = append(headings, branchIcon+" "+branch)
 	}
 	switch len(headings) {
 	case 0:

@@ -12,7 +12,7 @@ import (
 	"github.com/nebarg/todo-cli/internal/ui"
 )
 
-const missingBranchStatus = "⚠ Branch no longer exists · tasks cannot be edited"
+const missingBranchStatus = "⚠ Branch not in Git"
 
 func (m *model) View() tea.View {
 	width, height := m.width, m.height
@@ -165,11 +165,6 @@ func (m *model) contextHints() []ui.KeyHint {
 	case m.all != nil:
 		hints := []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, {Key: "s", Label: "sort"}, {Key: "c", Label: "category"}, remove, {Key: "a", Label: "add"}, {Key: "b", Label: "branch task"}}
 		return append(append(hints, m.clearHint()...), back, reload)
-	case m.focus == detailPane && m.viewingMissingBranch():
-		return []ui.KeyHint{back}
-	case m.viewingMissingBranch():
-		hints := []ui.KeyHint{back, {Key: "a", Label: "add"}, {Key: "→", Label: "details"}}
-		return append(append(hints, m.clearHint()...), index, reload)
 	case m.focus == detailPane && m.readmeSelected():
 		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "open file"}, back}
 	case m.readmeSelected():
@@ -205,8 +200,8 @@ func (m *model) contextHints() []ui.KeyHint {
 	return append(append(hints, m.clearHint()...), index, reload)
 }
 
-// viewingMissingBranch is true inside a branch whose Git branch is gone, where
-// its tasks are read only.
+// viewingMissingBranch is true inside a branch Git doesn't have, which may be
+// gone or not created yet.
 func (m *model) viewingMissingBranch() bool {
 	return m.activePane() == branchPane && m.branchMissing(m.branch.open.name)
 }
@@ -231,12 +226,23 @@ func (m *model) breadcrumb(kind pane) []string {
 	return []string{"General"}
 }
 
-// panelStatus is the bar along the bottom of a list or detail panel: a
-// warning for a missing branch, otherwise the selected row's status.
+// panelStatus is the bar along the bottom of a list or detail panel: the
+// selected row's status, then a warning inside a branch Git doesn't have.
 func (m *model) panelStatus() string {
-	if m.viewingMissingBranch() {
-		return m.theme.StatusBarStyle.Render(missingBranchStatus)
+	status := m.selectionStatus()
+	if !m.viewingMissingBranch() {
+		return status
 	}
+	warning := m.theme.StatusBarStyle.Render(missingBranchStatus)
+	if status == "" {
+		return warning
+	}
+	return status + m.theme.MutedStyle.Render("  ·  ") + warning
+}
+
+// selectionStatus describes the selected row: a task's state, or how much of
+// a group is done.
+func (m *model) selectionStatus() string {
 	if readme, ok := m.selectedReadmeTask(); ok {
 		return readmeTaskStatus(m.theme, readme)
 	}
@@ -347,7 +353,7 @@ func renderGroupRow(theme ui.Theme, item navigationRow, width int, selected, cur
 	row := ui.GroupRow{Marker: "▸ ", Name: item.name, NoteStyle: theme.MutedStyle.Italic(true), Count: fmt.Sprintf("%d/%d", item.completed, item.count)}
 	switch {
 	case item.missingGitBranch:
-		row.Marker, row.Note = "⚠ ", "missing"
+		row.Marker, row.Note = "⚠ ", "not in Git"
 		row.NameStyle = lipgloss.NewStyle().Foreground(theme.ColorHigh)
 		row.NoteStyle = row.NameStyle.Italic(true)
 		row.KeepColour = item.kind == rowBranch
