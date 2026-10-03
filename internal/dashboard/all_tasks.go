@@ -190,10 +190,6 @@ func (v *allTasksView) view(theme ui.Theme, tasks []store.Task, missing func(bra
 		if t.Done {
 			mark, markStyle, taskStyle = "✓ ", theme.MutedStyle, theme.MutedStyle
 		}
-		title := ui.CleanDisplay(t.Text)
-		if details := strings.Join(strings.Fields(ui.CleanDisplay(t.Details)), " "); details != "" {
-			title += ": " + details
-		}
 		selected := i == v.cursor
 		scopeStyle := theme.MutedStyle
 		switch {
@@ -213,7 +209,11 @@ func (v *allTasksView) view(theme ui.Theme, tasks []store.Task, missing func(bra
 		if selected {
 			gap = lipgloss.NewStyle().Background(theme.ColorSelection).Render(gap)
 		}
-		row := markStyle.Render(mark) + taskStyle.Render(ui.Column(title, taskWidth-ansi.StringWidth(mark))) + gap +
+		title := theme.Inline(t.Text, taskStyle)
+		if details := strings.Join(strings.Fields(ui.CleanDisplay(t.Details)), " "); details != "" {
+			title += taskStyle.Render(": ") + theme.Inline(details, taskStyle)
+		}
+		row := markStyle.Render(mark) + ui.StyledColumn(title, taskWidth-ansi.StringWidth(mark), taskStyle) + gap +
 			scopeStyle.Render(ui.Column(scope, scopeWidth))
 		lines = append(lines, row)
 	}

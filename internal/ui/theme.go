@@ -26,6 +26,7 @@ type Theme struct {
 	ColorGreen     color.Color
 	ColorGit       color.Color
 	ColorPurple    color.Color
+	ColorCode      color.Color
 	ColorHigh      color.Color
 	ColorMedium    color.Color
 	ColorLow       color.Color
@@ -61,6 +62,7 @@ func NewTheme(dark bool) Theme {
 		ColorGreen:     hex("#2F855A", "#80C99B"),
 		ColorGit:       hex("#C2410C", "#F05032"),
 		ColorPurple:    hex("#6B46C1", "#B7A4EB"),
+		ColorCode:      hex("#B02A73", "#F5A3C7"),
 		ColorHigh:      hex("#C53030", "#F07777"),
 		ColorMedium:    hex("#B7791F", "#F4D35E"),
 		ColorLow:       hex("#0E7490", "#7DCFDF"),

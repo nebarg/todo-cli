@@ -409,7 +409,6 @@ func (r taskRow) Render(theme ui.Theme, width int, selected bool) string {
 	if r.suffix != "" {
 		reserved += ansi.StringWidth(r.suffix) + 2
 	}
-	title := ansi.Truncate(ui.CleanDisplay(r.text), max(0, width-reserved), "…")
 	suffixStyle, fillStyle := theme.MutedStyle, lipgloss.NewStyle()
 	if selected {
 		markStyle = markStyle.Background(theme.ColorSelection)
@@ -419,11 +418,12 @@ func (r taskRow) Render(theme ui.Theme, width int, selected bool) string {
 		}
 		suffixStyle, fillStyle = theme.SelectedDoneStyle, theme.SelectedStyle
 	}
+	title := ansi.Truncate(theme.Inline(r.text, textStyle), max(0, width-reserved), "…")
 	fill := ""
 	if selected || r.suffix != "" {
 		fill = strings.Repeat(" ", max(0, width-ansi.StringWidth(mark)-ansi.StringWidth(title)-ansi.StringWidth(r.suffix)))
 	}
-	return markStyle.Render(mark) + textStyle.Render(title) + fillStyle.Render(fill) + suffixStyle.Render(r.suffix)
+	return markStyle.Render(mark) + title + fillStyle.Render(fill) + suffixStyle.Render(r.suffix)
 }
 
 func (m *model) renderDetailPane(width, height int) string {
@@ -466,19 +466,17 @@ func (m *model) groupDetails(row navigationRow, width int) []string {
 
 func (m *model) taskDetails(width int) []string {
 	if readme, ok := m.selectedReadmeTask(); ok {
-		return ui.WrapLines([]string{m.theme.LeveledTitle(readme.Text, readme.Level)}, width)
+		return ui.WrapLines([]string{m.theme.LeveledTitle(m.theme.Inline(readme.Text, m.theme.TaskTitleStyle), readme.Level)}, width)
 	}
 	t, ok := m.selectedTask()
 	if !ok {
 		return []string{"", m.theme.MutedStyle.Render("Select a Markdown task.")}
 	}
-	result := []string{m.theme.TaskTitleStyle.Render(ui.CleanDisplay(t.Text)), ""}
+	result := []string{m.theme.Inline(t.Text, m.theme.TaskTitleStyle), ""}
 	if t.Details == "" {
 		result = append(result, m.theme.MutedStyle.Render("No details yet"))
 	} else {
-		for line := range strings.SplitSeq(t.Details, "\n") {
-			result = append(result, ui.CleanDisplay(line))
-		}
+		result = append(result, m.theme.MarkdownLines(t.Details)...)
 	}
 	return ui.WrapLines(result, width)
 }

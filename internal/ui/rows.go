@@ -65,9 +65,9 @@ func LevelLabel(l string) string {
 	return fmt.Sprintf("0x%d", len(l))
 }
 
-// LeveledTitle is a detail page's title, led by its todo-system level.
-func (t Theme) LeveledTitle(text, level string) string {
-	title := t.TaskTitleStyle.Render(CleanDisplay(text))
+// LeveledTitle leads a detail page's title, already styled, with its
+// todo-system level.
+func (t Theme) LeveledTitle(title, level string) string {
 	if level == "" {
 		return title
 	}

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -19,7 +20,8 @@ func CleanDisplay(s string) string {
 	}, s)
 }
 
-// WrapLines wraps each line to width, keeping blank lines.
+// WrapLines wraps each line to width, keeping blank lines. A style that runs
+// onto the next line is carried over, so it doesn't spill into the border.
 func WrapLines(lines []string, width int) []string {
 	var result []string
 	for _, line := range lines {
@@ -27,7 +29,7 @@ func WrapLines(lines []string, width int) []string {
 			result = append(result, "")
 			continue
 		}
-		wrapped := ansi.Wrap(line, width, "")
+		wrapped := lipgloss.Wrap(line, width, "")
 		result = append(result, strings.Split(wrapped, "\n")...)
 	}
 	return result
@@ -38,6 +40,13 @@ func WrapLines(lines []string, width int) []string {
 func Column(value string, width int) string {
 	value = ansi.Truncate(CleanDisplay(value), width, "…")
 	return value + strings.Repeat(" ", max(0, width-ansi.StringWidth(value)))
+}
+
+// StyledColumn is Column for value already drawn in styles: it's padded with
+// spaces in pad, so a selected row's background reaches the column's end.
+func StyledColumn(value string, width int, pad lipgloss.Style) string {
+	value = ansi.Truncate(value, width, "…")
+	return value + pad.Render(strings.Repeat(" ", max(0, width-ansi.StringWidth(value))))
 }
 
 // Plural reads like "1 task" or "3 tasks".

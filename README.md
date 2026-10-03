@@ -205,6 +205,7 @@ File and README TODOs open in `$VISUAL`, then `$EDITOR`, falling back to `vi`. V
 - **Sections:** tasks before the first heading are general. `## branch-name` headings under `# Branches` are branch sections, and headings nested inside a branch stay part of it. Any other heading is a category.
 - **Categories** can't contain spaces, and `Branches` is reserved. `auth`, `@auth` and `#auth` all mean the same category.
 - **Details** are everything under a task until the next task or heading: paragraphs, lists, code, even indented checkboxes. The app writes them indented by two spaces.
+- **Formatting:** `**bold**`, `*italic*`, `~~strikethrough~~` and `` `code` `` show formatted in the dashboard, as do `__bold__`, `_italic_` and `~strikethrough~`. Struck-through text is greyed out too, for terminals that don't draw strikethrough, such as macOS Terminal. Underscores inside words, as in `user_id`, stay as written, and `\*` writes a literal `*`. Fenced code blocks in details show as written, and the edit form shows the Markdown itself.
 - **Priority** is a trailing `!high`, `!medium` or `!low`. Only a last word that names a priority counts, so `Ship it!` and `Fix !important CSS` stay as they are.
 - **Plain list items** such as `- Buy milk` are read as tasks, and become `- [ ] Buy milk` when edited.
 
@@ -229,7 +230,7 @@ The dashboard reads the TODO list in the `README.md` next to the task file, foll
 - Tasks are the list items (`- foo` or `- [ ] foo`) directly under a heading reading `TODO` or `TODOs`, with or without a `:`, in any case. The next heading ends the list.
 - Nested list items are tasks too, and anything in a ` ``` ` code block is skipped.
 - `d` marks a task done or reopens it. It changes only the checkbox, adding one to a plain `- foo`, and leaves the README's order alone.
-- Levels such as `todo0` show and sort as in the Files tab. `p`, `c`, `backspace`, `X` and the edit form don't apply; `e` opens the README in your editor at the task.
+- Tasks show their [formatting](#markdown-format), and levels such as `todo0` show and sort as in the Files tab. `p`, `c`, `backspace`, `X` and the edit form don't apply; `e` opens the README in your editor at the task.
 
 ## todo-scan
 

@@ -187,7 +187,7 @@ func (m *Model) detailLines(theme ui.Theme, width, height int) []string {
 		}
 		return []string{theme.MutedStyle.Render("No file TODO selected.")}
 	}
-	result := append(ui.WrapLines([]string{theme.LeveledTitle(item.Note, item.Level)}, width), "")
+	result := append(ui.WrapLines([]string{theme.LeveledTitle(theme.TaskTitleStyle.Render(ui.CleanDisplay(item.Note)), item.Level)}, width), "")
 	switch {
 	case m.previewPath != item.Path || m.previewLine != item.Line:
 		return append(result, theme.MutedStyle.Render("Loading preview…"))
