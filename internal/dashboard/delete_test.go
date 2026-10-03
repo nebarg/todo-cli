@@ -72,10 +72,10 @@ func TestDeleteTakesDetailsAndEmptiedHeadings(t *testing.T) {
 		want  string
 	}{
 		{"category", func(m *model) { m.general.open = categoryGroup("docs") }, "Write guide",
-			[]string{"Its details go too.", "The @docs heading will be empty and removed too."},
+			[]string{"Its details go too.", `The empty "docs" category will be removed too.`},
 			"- [ ] Keep\n\n# auth\n\n- [ ] Auth open\n\n# Branches\n\n## feature/x\n\n- [ ] Branch open\n"},
 		{"branch", func(m *model) { m.focus, m.branch.open = branchPane, branchGroup("feature/x") }, "Branch open",
-			[]string{"The " + branchIcon + " feature/x heading will be empty and removed too."},
+			[]string{`The empty "feature/x" branch will be removed too.`},
 			"- [ ] Keep\n\n# docs\n\n- [ ] Write guide\n\n  Cover install and usage.\n\n# auth\n\n- [ ] Auth open\n"},
 	} {
 		t.Run(item.name, func(t *testing.T) {
@@ -160,11 +160,20 @@ func TestDeleteRefusesWhatItCannotDelete(t *testing.T) {
 			m.focus = sourcePane
 			return m
 		}, "File TODOs are read only"},
-		{"category row", func(t *testing.T) *model {
-			m, _ := clearModel(t)
-			m.general.cursor = 0
+		{"README.md row", func(t *testing.T) *model {
+			m, path := clearModel(t)
+			if err := os.WriteFile(filepath.Join(filepath.Dir(path), "README.md"), []byte("## TODOs\n\n- Write docs\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := m.refresh(); err != nil {
+				t.Fatal(err)
+			}
+			selectGroup(t, m, rowReadme, readmeGroup)
+			if hints := ansi.Strip(m.theme.RenderHints(m.footerHints())); strings.Contains(hints, "delete") {
+				t.Fatalf("README.md row offers delete: %q", hints)
+			}
 			return m
-		}, "Select a task to delete"},
+		}, readmeReadOnly},
 		{"README task", func(t *testing.T) *model {
 			m, path := clearModel(t)
 			if err := os.WriteFile(filepath.Join(filepath.Dir(path), "README.md"), []byte("## TODOs\n\n- Write docs\n"), 0644); err != nil {
@@ -194,6 +203,69 @@ func TestDeleteWorksInABranchNotInGit(t *testing.T) {
 	want := "- [x] Loose done\n\n# Branches\n\n## feature/gone\n\n- [x] Gone done\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n"
 	if got := fileContent(t, path); got != want || m.status != `Deleted "Gone open"` {
 		t.Fatalf("file = %q, status %q", got, m.status)
+	}
+}
+
+// selectGroup puts the cursor on the category, branch or README.md row
+// called name in the focused list.
+func selectGroup(t *testing.T, m *model, kind navigationKind, name string) {
+	t.Helper()
+	for i, row := range m.rows(m.focus) {
+		if row.kind == kind && row.name == name {
+			m.list(m.focus).cursor = i
+			return
+		}
+	}
+	t.Fatalf("no group %q in the list", name)
+}
+
+func TestDeleteRemovesACategoryAndAllItsTasks(t *testing.T) {
+	m, path := clearModel(t)
+	selectGroup(t, m, rowCategory, "auth")
+	if hints := ansi.Strip(m.theme.RenderHints(m.footerHints())); !strings.Contains(hints, "→ open  ⌫ delete  a add") {
+		t.Fatalf("category row footer = %q", hints)
+	}
+	m = press(m, "backspace")
+	dialog := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(opened[*deleteConfirmation](t, m).render(m.theme)), "│", " ")), " ")
+	for _, want := range []string{`Delete the "auth" category and its 2 tasks?`, "1 open, 1 done"} {
+		if !strings.Contains(dialog, want) {
+			t.Errorf("dialog lacks %q: %s", want, dialog)
+		}
+	}
+	m = press(m, "y")
+	want := "- [x] Loose done\n\n- [ ] Loose open\n\n# docs\n\n- [x] Doc done\n\n# Branches\n\n## feature/x\n\n- [x] Branch done\n"
+	if got := fileContent(t, path); got != want || m.status != `Deleted the "auth" category and its 2 tasks` {
+		t.Fatalf("file = %q, status %q", got, m.status)
+	}
+	if rows := m.rows(generalPane); slices.ContainsFunc(rows, func(r navigationRow) bool { return r.name == "auth" }) {
+		t.Fatalf("the deleted category is still listed: %+v", rows)
+	}
+	if press(m, "u"); fileContent(t, path) != clearContent {
+		t.Fatal("undo did not bring the category back")
+	}
+}
+
+func TestDeleteRemovesABranchAndAllItsTasks(t *testing.T) {
+	m, path := missingBranchModel(t)
+	selectGroup(t, m, rowBranch, "feature/live")
+	m = press(m, "backspace")
+	dialog := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(opened[*deleteConfirmation](t, m).render(m.theme)), "│", " ")), " ")
+	for _, want := range []string{`Delete the "feature/live" branch and its 2 tasks?`, "1 open, 1 done"} {
+		if !strings.Contains(dialog, want) {
+			t.Errorf("dialog lacks %q: %s", want, dialog)
+		}
+	}
+	m = press(m, "y")
+	want := "- [x] Loose done\n\n# Branches\n\n## feature/gone\n\n- [ ] Gone open\n\n- [x] Gone done\n"
+	if got := fileContent(t, path); got != want || m.status != `Deleted the "feature/live" branch and its 2 tasks` {
+		t.Fatalf("file = %q, status %q", got, m.status)
+	}
+	// A branch Git doesn't have goes the same way, and the last one takes
+	// the Branches heading with it.
+	selectGroup(t, m, rowBranch, "feature/gone")
+	m = press(press(m, "backspace"), "y")
+	if got := fileContent(t, path); got != "- [x] Loose done\n" || len(m.rows(branchPane)) != 0 {
+		t.Fatalf("file = %q, rows %+v", got, m.rows(branchPane))
 	}
 }
 

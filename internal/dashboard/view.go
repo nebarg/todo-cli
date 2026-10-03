@@ -179,7 +179,11 @@ func (m *model) contextHints() []ui.KeyHint {
 		return append(m.files.Hints(), index, reload)
 	}
 	if row, ok := m.selectedNavigationRow(); ok && !row.isTask() {
-		hints := []ui.KeyHint{{Key: "→", Label: "open"}, {Key: "a", Label: "add"}}
+		hints := []ui.KeyHint{{Key: "→", Label: "open"}}
+		if row.kind != rowReadme {
+			hints = append(hints, remove)
+		}
+		hints = append(hints, ui.KeyHint{Key: "a", Label: "add"})
 		if m.focus == generalPane {
 			hints = append(hints, ui.KeyHint{Key: "b", Label: "branch task"})
 		}

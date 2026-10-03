@@ -179,7 +179,7 @@ func taskCount(n int) string { return ui.Plural(n, "task", "tasks") }
 
 func (c clearConfirmation) render(theme ui.Theme) string {
 	title := fmt.Sprintf("Remove %s from %s?", c.targets.Summary(), c.scope)
-	return renderConfirmation(theme, title, []string{emptiedHeadings(c.removal)}, "remove")
+	return renderConfirmation(theme, title, []string{emptiedGroups(c.removal)}, "remove")
 }
 
 // renderConfirmation draws a dialog asking to go ahead with action, with
@@ -198,23 +198,37 @@ func renderConfirmation(theme ui.Theme, title string, notes []string, action str
 		Background(theme.ColorModal).Render(ui.OnBackground(strings.Join(lines, "\n"), theme.ColorModal))
 }
 
-// emptiedHeadings names the headings removal leaves empty, or is "" when
-// there are none.
-func emptiedHeadings(removal store.Removal) string {
-	var headings []string
-	for _, category := range removal.Categories {
-		headings = append(headings, "@"+category)
+// emptiedGroups says which categories and branches removal leaves with
+// nothing in them, which go with it, or is "" when there are none.
+func emptiedGroups(removal store.Removal) string {
+	var groups []string
+	if n := len(removal.Categories); n > 0 {
+		groups = append(groups, "the empty "+quotedNames(removal.Categories)+" "+pluralWord(n, "category", "categories"))
 	}
-	for _, branch := range removal.Branches {
-		headings = append(headings, branchIcon+" "+branch)
+	if n := len(removal.Branches); n > 0 {
+		groups = append(groups, "the empty "+quotedNames(removal.Branches)+" "+pluralWord(n, "branch", "branches"))
 	}
-	switch len(headings) {
-	case 0:
+	if len(groups) == 0 {
 		return ""
-	case 1:
-		return fmt.Sprintf("The %s heading will be empty and removed too.", headings[0])
 	}
-	return fmt.Sprintf("The %s headings will be empty and removed too.", joinNames(headings))
+	return "T" + strings.Join(groups, " and ")[1:] + " will be removed too."
+}
+
+// quotedNames lists names in quotes, as "a", "a" and "b" or "a", "b" and "c",
+// since a category's own name may have "and" in it.
+func quotedNames(names []string) string {
+	quoted := make([]string, len(names))
+	for i, name := range names {
+		quoted[i] = `"` + ui.CleanDisplay(name) + `"`
+	}
+	return joinNames(quoted)
+}
+
+func pluralWord(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // joinNames lists names as "a", "a and b" or "a, b and c".

@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/project"
 	"github.com/nebarg/todo-cli/internal/project/projecttest"
+	"github.com/nebarg/todo-cli/internal/store"
 	"github.com/nebarg/todo-cli/internal/ui"
 )
 
@@ -101,8 +102,8 @@ func TestClearDoneNamesHeadingsItEmpties(t *testing.T) {
 	m, _ := clearModel(t)
 	m.openAllTasks()
 	m = press(m, "X")
-	dialog := ansi.Strip(confirmation(t, m).render(m.theme))
-	if !strings.Contains(dialog, "The @docs and "+branchIcon+" feature/x headings will be empty") || !strings.Contains(dialog, "y remove") {
+	dialog := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(confirmation(t, m).render(m.theme)), "│", " ")), " ")
+	if !strings.Contains(dialog, `The empty "docs" category and the empty "feature/x" branch will be removed too.`) || !strings.Contains(dialog, "y remove") {
 		t.Fatalf("dialog = %s", dialog)
 	}
 	for _, size := range [][2]int{{56, 16}, {120, 30}} {
@@ -250,5 +251,22 @@ func TestIndexMarksMissingBranches(t *testing.T) {
 	gone := lipgloss.NewStyle().Foreground(m.theme.ColorHigh).Render(ui.Column("⚠ feature/gone", 24))
 	if !strings.Contains(view, gone) || !strings.Contains(ansi.Strip(view), branchIcon+" feature/live") {
 		t.Fatalf("index does not mark the missing branch:\n%s", view)
+	}
+}
+
+func TestEmptiedGroupsReadAsASentence(t *testing.T) {
+	for _, c := range []struct {
+		removal store.Removal
+		want    string
+	}{
+		{store.Removal{}, ""},
+		{store.Removal{Categories: []string{"docs"}}, `The empty "docs" category will be removed too.`},
+		{store.Removal{Categories: []string{"auth", "docs"}}, `The empty "auth" and "docs" categories will be removed too.`},
+		{store.Removal{Branches: []string{"a", "b", "c"}}, `The empty "a", "b" and "c" branches will be removed too.`},
+		{store.Removal{Categories: []string{"Security and DevSecOps"}, Branches: []string{"feature/x"}}, `The empty "Security and DevSecOps" category and the empty "feature/x" branch will be removed too.`},
+	} {
+		if got := emptiedGroups(c.removal); got != c.want {
+			t.Errorf("emptiedGroups(%+v) = %q, want %q", c.removal, got, c.want)
+		}
 	}
 }

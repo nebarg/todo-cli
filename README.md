@@ -158,7 +158,7 @@ In the form:
 
 #### Deleting and clearing
 
-`backspace` deletes the selected task with its details.
+`backspace` deletes the selected task with its details. On a category or branch row, it deletes every task in it, done or not, and the heading once nothing else is under it. The README.md group is read only.
 
 `X` clears done tasks from where you are: the opened category or branch, the whole tab, or everything in the All tasks view.
 
@@ -177,7 +177,7 @@ Both show a dialog naming what will go, including headings left empty, and only 
 | `e` / `enter` | Edit a task, or open a file or README TODO in your editor. `enter` also opens a category or branch |
 | `d` / `space` | Mark done or reopen |
 | `p` / `c` | Cycle priority / change category |
-| `backspace` | Delete a task |
+| `backspace` | Delete a task, or a category or branch with all of its tasks |
 | `X` / `u` | Clear done / undo the clear or delete |
 | `r` | Reload the file and Git branches, and rescan files |
 | `?` | Help |
