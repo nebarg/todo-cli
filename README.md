@@ -1,8 +1,8 @@
 # Simple task management in the terminal
 
-`todo` is a simple terminal user interface (TUI) that lets you manage tasks from where you work in the terminal. Tasks are kept in a Markdown file for simplicity. Tasks in your README are also captured, alongside the file scanner to find TODO comments in your code. 
+[todo](#todo) is a simple terminal user interface (TUI) that lets you manage tasks from where you work in the terminal. Tasks are kept in a Markdown file for simplicity. Tasks in your README are also captured, alongside the file scanner to find TODO comments in your code. You can also add tasks and clear out done ones straight from the command line, without opening the dashboard, so `todo` works in scripts too.
 
-`todo-scan` is a separate file scanner that lists the TODO comments found in your code on their own. It can be used in CI/CD pipelines or with the user interface. This is essentially a standalone "Files" tab from the todo app.
+[todo-scan](#todo-scan) is a separate file scanner that lists the TODO comments found in your code on their own. It can be used in CI/CD pipelines or with the user interface. This is essentially a standalone "Files" tab from the todo app.
 
 Both read [todo-system](https://github.com/archtechx/todo-system)'s categories (`todo@auth`) and levels (`todo0`, `todo1`). You can [read why this is a pretty cool system](https://stancl.substack.com/p/organizing-todos-in-code) on Samuel's blog.
 
@@ -16,7 +16,7 @@ Both read [todo-system](https://github.com/archtechx/todo-system)'s categories (
 - [Install](#install)
   - [Download](#download)
   - [Add them to your PATH](#add-them-to-your-path)
-  - [With Go](#with-go)
+  - [Using Go](#using-go)
   - [zsh completion](#zsh-completion)
 - [Try it](#try-it)
 - [todo](#todo)
@@ -24,6 +24,7 @@ Both read [todo-system](https://github.com/archtechx/todo-system)'s categories (
     - [Reading the list](#reading-the-list)
     - [All tasks](#all-tasks)
     - [Adding and editing](#adding-and-editing)
+    - [Subtasks](#subtasks)
     - [Deleting and clearing](#deleting-and-clearing)
     - [Keys](#keys)
   - [Markdown format](#markdown-format)
@@ -142,82 +143,99 @@ Everything after the flags is the task.
 
 ![The README.md group, a task's details, the branch list, a branch's tasks, the Files tab and a TODO's details](docs/todo.gif)
 
-- **1 General**: tasks outside branch sections. `▸ category` rows open to show that category's tasks, and `▸ README.md` opens [your README's TODOs](#todos-in-readmemd), grouped by their headings; uncategorised tasks follow.
-- **2 Branches**: every branch with tasks. At startup it opens on the current branch's tasks, if it has any.
+The dashboard has three tabs:
+
+- **1 General**: your tasks outside branch sections. Each category is a `▸ category` row you can open, and `▸ README.md` opens [your README's TODOs](#todos-in-readmemd). Tasks without a category are listed after them.
+- **2 Branches**: every branch with tasks. At startup it opens on the current branch, if that branch has any tasks.
 - **3 Files**: the [TODO comments](#todo-comments) in files under the working directory. Scanning runs in the background, and these are read only.
 
-Each tab returns to where you left it. Press `1` or `3` again to leave an opened category, and `2` again to switch between the branch list and the current branch. `←` or `esc` goes back one level.
+Use `↑` and `↓` to move. Up from the first row goes to the last, and down from the last goes back to the first. `→` opens a category, branch or task, and `←` or `esc` goes back one level.
 
-A branch Git doesn't have locally, deleted or not created yet, shows as `⚠ branch-name not in Git` in red, and the status bar inside it warns the same. Its tasks work as any others. The dashboard asks Git at startup and when you press `r`. If Git has switched branch since the Branches tab opened the current one, `r` opens the new current branch instead, or the branch list if it has no tasks.
+Each tab remembers where you left it. Pressing `1` again goes back to the top of General, and `3` again goes back out of a TODO or category. Pressing `2` again switches between the branch list and the current branch.
+
+A branch Git doesn't have locally, because it was deleted or isn't created yet, shows as `⚠ branch-name not in Git` in red, and the status bar inside it says so too. Its tasks work like any others. The dashboard checks with Git at startup and when you press `r`. If you've switched branch since the Branches tab opened the current one, `r` opens the new current branch, or the branch list if that branch has no tasks.
 
 #### Reading the list
 
-- `●` in red, yellow or cyan: high, medium or low priority. `○`: no priority.
-- `✓`: done. Done tasks sit at the end of each group once the list re-sorts.
-- `⋯` at the end of a row: the task has details. Press `→` to read them.
-- Indented rows are [subtasks](#markdown-format), under their task. While a task is done, its subtasks are greyed out but keep their own state, and when the list re-sorts they move with it.
-- Counts such as `1/2` are done/total, for tabs, categories and branches, leaving out subtasks. Files shows its number of matches, or `…` while scanning.
-- The status bar under the list describes the highlighted row, such as how many of a task's subtasks are done, and the footer shows the main keys for it.
+- `●` in red, yellow or cyan is a high, medium or low priority task. `○` has no priority.
+- `✓` is a done task.
+- `⋯` at the end of a row means the task has details. Press `→` to read them.
+- Indented rows are [subtasks](#subtasks).
+- Counts such as `1/2` are done/total, for tabs, categories and branches. They don't include subtasks. The Files tab shows how many TODOs it found, or `…` while it scans.
+- The status bar under the list describes the highlighted row, and the footer shows the main keys for it.
 
-Rows keep their place after edits, including marking a task done, so the list doesn't jump. The list re-sorts when it opens and when you press `r`. A new task goes after the open tasks of its group.
+Rows stay where they are while you work, so marking a task done doesn't make the list jump. The list is sorted when the dashboard starts and when you press `r`: open tasks first, by priority, then done tasks. A task you add goes after the open tasks of its group until then.
 
 #### All tasks
 
-`i` opens a full-screen list of every Markdown task, with its category (`@auth`) or branch in the last column. `s` cycles between priority, branch and category order, keeping the dashboard's order within each, and `i`, `esc` or `←` returns to the dashboard. The task keys work here too, with `enter` opening the edit form.
+`i` opens a full-screen list of every task in your task file, with its category (`@auth`) or branch in the last column. `s` switches between priority, branch and category order, and `i`, `esc` or `←` takes you back to the dashboard. The task keys work here too, and `enter` opens the edit form.
 
 #### Adding and editing
 
 `a` adds a task where you are:
 
-- in General, a general task, or one in the opened category
-- in Branches, to the opened branch, or the current Git branch at the top level
+- in General, a general task, or one in the category you've opened
+- in Branches, a task on the branch you've opened, or on the current Git branch from the branch list
 - in Files or All tasks, a general task
-- in README.md, nothing, as it's read only
+- in README.md, nothing, as your README is read only
 
-`b` adds to the current Git branch from anywhere, or to the opened branch.
+`b` adds a task to the current Git branch from anywhere, or to the branch you've opened.
 
-On a task's details page (`→`), `a` adds a subtask to it, or, on a subtask's, to the same task. The new subtask goes after the task's others, and the list then shows it selected.
+To edit a task, press `e` or `enter`. The form has three fields: Task, Category (or Branch for a branch task) and Details.
 
-In the form:
+- `tab` and `shift+tab` move between the fields.
+- `enter` starts a new line in Task or Details. `ctrl+enter` saves, and `esc` cancels.
+- Category suggests an existing category in grey as you type. `tab` fills it in, and `ctrl+n` / `ctrl+p` switch between the categories that match.
+- Branch suggests your local Git branches as you type. A name Git doesn't have is offered last, marked `not in Git`, for a branch you haven't created yet.
+- Changing the category or branch moves the task there, with its subtasks. A heading left empty is removed.
 
-- `tab` / `shift+tab` move between Task, Category or Branch, and Details.
-- Category suggests an existing category that starts with what you've typed, in grey. `tab` fills it in, `ctrl+n` / `ctrl+p` switch between the categories that match, and typing on ignores it.
-- `enter` adds a new line in Task or Details, `ctrl+enter` saves, and `esc` cancels.
-- The Branch field suggests local Git branches as you type. A name Git doesn't have is offered last, marked `not in Git`, for a branch you haven't created yet.
-- When editing, changing the category or branch moves the task, with its subtasks. A heading left empty is removed.
-- A subtask's form has only the Task field, as a subtask keeps its task's category or branch. A trailing `!high`, `!medium` or `!low` sets its priority.
+`c` changes just the category of a general task, without opening the form.
 
-`c` changes just the category of a general task, without the form, with the same suggestions.
+#### Subtasks
+
+A subtask is a checkbox indented under a task in your task file. The dashboard shows subtasks indented under their task, in General, Branches and All tasks.
+
+- To add a subtask, open a task with `→` and press `a`. The new subtask goes after the task's other subtasks. If you've opened a subtask instead, `a` adds another subtask to the same task.
+- A subtask's form only has the Task field, because a subtask always stays in its task's category or branch. End the text with `!high`, `!medium` or `!low` to give it a priority.
+- `d`, `p`, `e` and `backspace` work on a subtask just as on a task. `c` doesn't.
+- When you mark a task done, its subtasks are greyed out, but they aren't ticked. When the list is sorted, subtasks move with their task, open ones first.
+- The status bar of a task with subtasks shows how many of them are done.
+
+Deleting a task deletes its subtasks too. Clearing done tasks removes a done task with all of its subtasks, including open ones. A done subtask of an open task is cleared on its own.
 
 #### Deleting and clearing
 
-`backspace` deletes the selected task with its details and subtasks. On a category or branch row, it deletes every task in it, done or not, and the heading once nothing else is under it. The README.md group is read only.
+`backspace` deletes the selected task, with its details and subtasks. On a category or branch row, it deletes every task in it, done or not, and removes the heading once nothing else is under it.
 
-`X` (shift-x) clears done tasks from where you are: the opened category or branch, the whole tab, or everything in the All tasks view. A done task goes with all its subtasks, open ones too, and a done subtask of an open task goes on its own.
+`X` (`shift+x`) clears done tasks from where you are: the category or branch you've opened, the whole tab, or everything in the All tasks view.
 
-Both show a dialog naming what will go, including subtasks and headings left empty, and only `y` goes ahead. Afterwards `u` undoes it, until the file next changes.
+Both show a dialog saying what will go, including any subtasks and headings left empty, and only `y` goes ahead. Afterwards `u` undoes it, as long as the file hasn't changed since.
+
+Your README is read only, so neither works on its TODOs.
 
 #### Keys
 
 | Key | Action |
 | --- | --- |
 | `1` `2` `3`, `tab` / `shift+tab` | Switch tab |
-| `↑` `↓` / `j` `k` | Move. Up from the first row goes to the last, and down from the last to the first |
-| `→` | Open a category or branch, or a task's details |
+| `↑` `↓` / `k` `j` | Move up or down, wrapping round at either end |
+| `→` | Open a category, branch or task |
 | `←` / `esc` | Back |
-| `i` | All tasks (`s` to change the sort) |
-| `a` / `b` | Add a task / add a branch task. On a task's details, `a` adds a subtask |
-| `e` / `enter` | Edit a task, or open a file or README TODO in your editor. `enter` also opens a category or branch |
+| `i` | All tasks (`s` to change the order) |
+| `a` | Add a task. On an opened task, add a subtask |
+| `b` | Add a task to a branch |
+| `e` / `enter` | Edit a task, or open a TODO in your editor. `enter` also opens a category or branch |
 | `d` / `space` | Mark done or reopen |
-| `p` / `c` | Cycle task priority / change task category |
+| `p` | Cycle the priority |
+| `c` | Change the category |
 | `backspace` | Delete a task, or a category or branch with all of its tasks |
-| `X` (shift+x) | Clear done tasks |
+| `X` (`shift+x`) | Clear done tasks |
 | `u` | Undo the last clear or delete |
-| `r` | Reload the file and Git branches, and rescan files |
+| `r` | Reload the task file and Git branches, and rescan files |
 | `?` | Help |
 | `q` / `ctrl+c` | Quit |
 
-File and README TODOs open in `$VISUAL`, then `$EDITOR`, falling back to `vi`. Vim, Neovim, VS Code, Codium and Cursor open at the TODO's line. When the editor exits, the tasks reload and the Files tab rescans.
+File and README TODOs open in `$VISUAL`, then `$EDITOR`, falling back to `vi`. Vim, Neovim, VS Code, Codium and Cursor open at the TODO's line. When the editor closes, the tasks reload and the Files tab rescans.
 
 ### Markdown format
 
@@ -242,24 +260,25 @@ File and README TODOs open in `$VISUAL`, then `$EDITOR`, falling back to `vi`. V
 ```
 
 - **Sections:** tasks before the first heading are general. `## branch-name` headings under `# Branches` are branch sections, and headings nested inside a branch stay part of it. Any other heading is a category.
-- **Categories** can contain spaces, and `Branches` is reserved. `auth`, `@auth` and `#auth` all mean the same category, and so do names differing only in case or spacing, such as `Release  Notes` and `release notes`.
-- **Details** are everything under a task until the next task or heading, apart from its subtasks: paragraphs, lists and code. The app writes them indented by two spaces.
-- **Subtasks** are checkboxes indented under a task, one level deep: anything indented under a subtask, checkboxes included, is its details. A subtask stays with its task, in its category or branch. A checkbox typed into the form's Details becomes a subtask.
-- **Formatting:** `**bold**`, `*italic*`, `~~strikethrough~~` and `` `code` `` show formatted in the dashboard, as do `__bold__`, `_italic_` and `~strikethrough~`. Struck-through text is greyed out too, for terminals that don't draw strikethrough, such as macOS Terminal. Underscores inside words, as in `user_id`, stay as written, and `\*` writes a literal `*`. Fenced code blocks in details show as written, and the edit form shows the Markdown itself.
+- **Categories** can contain spaces, and `Branches` is reserved. `auth`, `@auth` and `#auth` all mean the same category, and so do names that only differ in case or spacing, such as `Release  Notes` and `release notes`.
+- **Details** are everything under a task, up to the next task or heading, apart from its subtasks: paragraphs, lists and code. The app writes them indented by two spaces.
+- **Subtasks** are checkboxes indented under a task, such as `Reproduce it in a test`. They only go one level deep: anything indented under a subtask, even a checkbox, is that subtask's details. A checkbox you type into the form's Details becomes a subtask.
 - **Priority** is a trailing `!high`, `!medium` or `!low`. Only a last word that names a priority counts, so `Ship it!` and `Fix !important CSS` stay as they are.
-- **Plain list items** such as `- Buy milk` are read as tasks, and become `- [ ] Buy milk` when edited.
+- **Plain list items** such as `- Buy milk` are tasks too, and become `- [ ] Buy milk` when you edit them.
+- **Formatting:** `**bold**`, `*italic*`, `~~strikethrough~~` and `` `code` `` show formatted in the dashboard, as do `__bold__`, `_italic_` and `~strikethrough~`. Struck-through text is greyed out as well, for terminals that don't draw strikethrough, such as macOS Terminal. Underscores inside words, as in `user_id`, stay as written, and `\*` writes a literal `*`. Code blocks in details show as written, and the edit form shows the Markdown itself.
 
-When the app writes a task, it re-sorts that task's section by priority: high, medium, low, then none.
+When the app writes a task, it sorts that task's section by priority: high, medium, low, then none. Everything else is left as you wrote it:
 
-- Marking a task done or reopening it doesn't move it, so a task you reopen is back where it was. The dashboard lists done tasks last when it sorts.
-- Tasks move with their details and subtasks, and tasks of equal priority keep your order. Subtasks keep the order they're written in.
-- Notes above the first task and nested headings stay put, as do other sections.
+- Tasks of the same priority keep your order.
+- Marking a task done or reopening it doesn't move it, so a task you reopen is back where it was.
+- Tasks move with their details and subtasks, and subtasks keep the order you wrote them in.
+- Notes above the first task, nested headings and other sections stay where they are.
 - A compact list without blank lines stays compact.
-- All other Markdown is preserved.
+- All other Markdown is kept as it is.
 
 ### TODOs in README.md
 
-The dashboard reads the TODO list in the `README.md` next to the task file, following todo-system's rules for READMEs. The tasks are listed under `▸ README.md` in General and aren't copied into `todo.md`.
+The dashboard also reads the TODO list in the `README.md` next to your task file, following todo-system's rules for READMEs. You'll find its tasks under `▸ README.md` in General. They aren't copied into `todo.md`.
 
 ```md
 ## TODOs
@@ -274,12 +293,21 @@ The dashboard reads the TODO list in the `README.md` next to the task file, foll
 - [ ] Show the README's headings
 ```
 
-- Tasks are the list items (`- foo` or `- [ ] foo`) under a heading reading `TODO` or `TODOs`, with or without a `:`, in any case. The next heading at the same level or higher, such as `## Install` after `## TODOs`, ends the list.
-- Deeper headings inside the list, such as `### Dashboard`, group the tasks under them. `▸ README.md` lists a row for each heading, in the README's order, then the tasks under no heading. A heading inside another, such as a `####` under a `###`, is a group of its own. todo-system itself ends the list at any heading, so it doesn't see these tasks.
-- Nested list items are subtasks, such as `Check the other links`, shown indented under their task. Subtasks nested deeper show at the same indent, under the same task.
-- Plain items under a checkbox task, such as the 404 note above, aren't subtasks. Those, with any other text indented under the task, are its details, shown as for [todo.md's tasks](#markdown-format). Anything in a ` ``` ` code block is skipped.
-- `d` marks a task done or reopens it. It changes only the checkbox, adding one to a plain `- foo`, and leaves the README's order alone. While a task is done, its subtasks are greyed out but keep their own state. When the list re-sorts, they move with it.
-- Tasks show their [formatting](#markdown-format), and levels such as `todo0` show and sort as in the Files tab. `a`, `p`, `c`, `backspace`, `X` and the edit form don't apply; `e` opens the README in your editor at the task.
+Which tasks are read:
+
+- The list items (`- foo` or `- [ ] foo`) under a heading called `TODO` or `TODOs`, in any case, with or without a `:`. The list ends at the next heading of the same level or higher, such as `## Install` after `## TODOs`.
+- A deeper heading inside the list, such as `### Dashboard`, groups the tasks under it. `▸ README.md` shows a row for each heading, in the README's order, then the tasks that aren't under one. A heading inside another, such as a `####` under a `###`, is a group of its own. todo-system itself stops at any heading, so it won't see these tasks.
+- Nested list items are [subtasks](#subtasks), such as `Check the other links`. Anything nested deeper shows as a subtask of the same task.
+- Plain items under a checkbox task aren't subtasks. Like the 404 note above, they're the task's details, along with any other text indented under it.
+- Anything in a ` ``` ` code block is skipped.
+
+What you can do with them:
+
+- `d` marks a task done or reopens it. Only the checkbox changes, and one is added to a plain `- foo`. The README's order is left alone.
+- `e` opens the README in your editor at the task.
+- Nothing else changes your README: `a`, `p`, `c`, `backspace`, `X` and the edit form only work on your task file.
+
+The tasks show their [formatting](#markdown-format), and levels such as `todo0` show and sort as they do in the Files tab.
 
 ## todo-scan
 
