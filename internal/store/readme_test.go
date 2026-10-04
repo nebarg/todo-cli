@@ -76,6 +76,57 @@ func TestLoadReadmeFindsListItemsUnderTodoHeadings(t *testing.T) {
 	}
 }
 
+func TestLoadReadmeKeepsHeadingsInsideATodoSection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "README.md")
+	readme := "# Todo\n\n" +
+		"- loose\n\n" +
+		"## Backend\n\n" +
+		"- [ ] api\n" +
+		"### Database ##\n\n" +
+		"- [x] migrate\n" +
+		"## Frontend\n" +
+		"- todo0 styles\n" +
+		"# Install\n\n" +
+		"- not a task\n" +
+		"## TODOs\n" +
+		"- second section\n" +
+		"### Todo\n" +
+		"- under a nested todo heading\n" +
+		"## Usage\n" +
+		"- not a task either\n"
+	if err := os.WriteFile(path, []byte(readme), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := LoadReadme(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type want struct {
+		line    int
+		text    string
+		heading string
+		level   string
+		done    bool
+	}
+	wants := []want{
+		{2, "loose", "", "", false},
+		{6, "api", "Backend", "", false},
+		{9, "migrate", "Database", "", true},
+		{11, "styles", "Frontend", "0", false},
+		{16, "second section", "", "", false},
+		{18, "under a nested todo heading", "Todo", "", false},
+	}
+	if len(tasks) != len(wants) {
+		t.Fatalf("got %d tasks, want %d: %+v", len(tasks), len(wants), tasks)
+	}
+	for i, w := range wants {
+		got := tasks[i]
+		if got.Line != w.line || got.Text != w.text || got.Heading != w.heading || got.Level != w.level || got.Done != w.done {
+			t.Errorf("task %d = line %d %q heading %q level %q done %v, want %+v", i, got.Line, got.Text, got.Heading, got.Level, got.Done, w)
+		}
+	}
+}
+
 func TestLoadReadmeWithoutFileOrTodoSection(t *testing.T) {
 	dir := t.TempDir()
 	if tasks, err := LoadReadme(filepath.Join(dir, "README.md")); err != nil || tasks != nil {

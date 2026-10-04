@@ -301,7 +301,8 @@ func (m *model) selectedTask() (store.Task, bool) {
 	return store.Task{}, false
 }
 
-// selectedReadmeTask is the selected task while the README.md group is open.
+// selectedReadmeTask is the selected task while the README.md group or one
+// of its headings is open.
 func (m *model) selectedReadmeTask() (store.ReadmeTask, bool) {
 	if m.all != nil {
 		return store.ReadmeTask{}, false
@@ -320,10 +321,10 @@ func (m *model) activePane() pane {
 	return m.focus
 }
 
-// readmeSelected is true while the README.md group is open, where every
-// row is a README task.
+// readmeSelected is true while the README.md group or one of its headings
+// is open, where every row is a README task or heading.
 func (m *model) readmeSelected() bool {
-	return m.general.open.kind == rowReadme && m.all == nil && m.activePane() == generalPane
+	return m.general.open.inReadme() && m.all == nil && m.activePane() == generalPane
 }
 
 // readmeReadOnly is the status for anything but done and reopen on a README
@@ -525,11 +526,11 @@ func (m *model) readTasks(sort bool, changed []store.Task) error {
 	} else {
 		m.tasks.readme = keepReadmeOrder(m.tasks.readme, readme)
 	}
-	// A group whose tasks have all gone closes.
+	// A group whose tasks have all gone closes, as does a README.md group
+	// left empty by its heading closing.
 	for _, p := range []pane{generalPane, branchPane} {
 		l := m.list(p)
-		if len(m.rows(p)) == 0 {
-			l.leave()
+		for len(m.rows(p)) == 0 && l.leave() {
 		}
 		l.cursor = min(l.cursor, max(0, len(m.rows(p))-1))
 	}
@@ -668,7 +669,7 @@ func keepReadmeOrder(previous, loaded []store.ReadmeTask) []store.ReadmeTask {
 	ordered := make([]store.ReadmeTask, 0, len(loaded))
 	for _, old := range previous {
 		t, ok := byLine[old.Line]
-		if !ok || t.Text != old.Text {
+		if !ok || t.Text != old.Text || t.Heading != old.Heading {
 			return sortedReadme(loaded)
 		}
 		ordered = append(ordered, t)

@@ -212,3 +212,87 @@ func TestReadmeTasksWithoutLevelsKeepTheOpenBullet(t *testing.T) {
 		}
 	}
 }
+
+func TestReadmeHeadingsOpenFromTheReadmeGroup(t *testing.T) {
+	dir := t.TempDir()
+	readme := filepath.Join(dir, "README.md")
+	original := "# Todo\n\n- Loose task\n- [x] Loose done\n\n## Now\n\n- [ ] Ship it\n- [x] Tested\n\n## Later\n\n- todo0 Urgent later\n\n# Install\n\n- not a task\n"
+	if err := os.WriteFile(readme, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(filepath.Join(dir, "todo.md"), project.Context{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows := m.rows(generalPane); len(rows) != 1 || rows[0].kind != rowReadme || rows[0].count != 5 || rows[0].completed != 2 {
+		t.Fatalf("README group does not count the tasks under its headings: %+v", rows)
+	}
+
+	pressKey(t, m, "right")
+	view := ansi.Strip(m.renderNavigationPane(m.rows(generalPane), m.general.cursor, generalPane, 60, 20))
+	// Headings keep the README's order, though Later has the more urgent task.
+	for _, want := range []string{`General › README\.md  2/5`, `\n│ ▸ Now +1/2 *│\n│ ▸ Later +0/1 *│\n│ +│\n│ ○ Loose task`, `\n│ ✓ Loose done`} {
+		if !regexp.MustCompile(want).MatchString(view) {
+			t.Fatalf("README group is missing %q:\n%s", want, view)
+		}
+	}
+	if hints := ansi.Strip(m.theme.RenderHints(m.footerHints())); !strings.Contains(hints, "→ open") || !strings.Contains(hints, "← back") || strings.Contains(hints, "delete") {
+		t.Fatalf("heading row hints = %q", hints)
+	}
+	for _, key := range []string{"backspace", "X"} {
+		press(m, key)
+		if m.status != readmeReadOnly || isOpen[*deleteConfirmation](m) || isOpen[*clearConfirmation](m) {
+			t.Fatalf("%q on a README heading was not refused: %q", key, m.status)
+		}
+	}
+
+	pressKey(t, m, "j")
+	pressKey(t, m, "right")
+	if m.general.open != (group{kind: rowReadmeHeading, name: "Later"}) {
+		t.Fatalf("Later did not open: %+v", m.general.open)
+	}
+	view = ansi.Strip(m.renderNavigationPane(m.rows(generalPane), m.general.cursor, generalPane, 60, 20))
+	if !strings.Contains(view, "General › README.md › Later  0/1") || !strings.Contains(view, "0 Urgent later") || strings.Contains(view, "Ship it") {
+		t.Fatalf("Later heading:\n%s", view)
+	}
+	pressKey(t, m, "left")
+	if !m.general.open.inReadme() || m.general.open.kind != rowReadme || m.general.cursor != 1 {
+		t.Fatalf("← did not return to the Later row: %+v, cursor %d", m.general.open, m.general.cursor)
+	}
+
+	pressKey(t, m, "k")
+	pressKey(t, m, "right")
+	pressKey(t, m, "d")
+	want := "# Todo\n\n- Loose task\n- [x] Loose done\n\n## Now\n\n- [x] Ship it\n- [x] Tested\n\n## Later\n\n- todo0 Urgent later\n\n# Install\n\n- not a task\n"
+	if got := readFile(t, readme); got != want || m.status != "" {
+		t.Fatalf("README after marking Ship it done:\n%q\nwant\n%q\nstatus %q", got, want, m.status)
+	}
+	if selected, ok := m.selectedReadmeTask(); !ok || selected.Text != "Ship it" {
+		t.Fatalf("selection did not follow the toggled task: %+v", selected)
+	}
+
+	// A heading whose tasks go closes back to the README.md group, and 1
+	// goes back to the top from a heading.
+	if err := os.WriteFile(readme, []byte("# Todo\n\n- Loose task\n\n## Later\n\n- todo0 Urgent later\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	pressKey(t, m, "r")
+	if m.general.open.kind != rowReadme || m.general.cursor != 0 {
+		t.Fatalf("emptied heading did not close to its row: %+v, cursor %d", m.general.open, m.general.cursor)
+	}
+	pressKey(t, m, "right")
+	pressKey(t, m, "1")
+	if m.general.open != (group{}) || m.general.cursor != 0 {
+		t.Fatalf("1 did not go back to the top: %+v, cursor %d", m.general.open, m.general.cursor)
+	}
+
+	pressKey(t, m, "right")
+	pressKey(t, m, "right")
+	if err := os.WriteFile(readme, []byte("# Project\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	pressKey(t, m, "r")
+	if m.general.open != (group{}) {
+		t.Fatalf("README heading stayed open without tasks: %+v", m.general.open)
+	}
+}

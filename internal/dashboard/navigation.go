@@ -16,6 +16,7 @@ const (
 	rowCategory
 	rowBranch
 	rowReadme
+	rowReadmeHeading
 	rowReadmeTask
 )
 
@@ -46,10 +47,16 @@ func (r navigationRow) done() bool {
 }
 
 // group is a category, a branch or the README.md group, opened from the top
-// of a list. The zero group is the top level.
+// of a list, or a heading opened from the README.md group. The zero group is
+// the top level.
 type group struct {
-	kind navigationKind // rowCategory, rowBranch or rowReadme
+	kind navigationKind // rowCategory, rowBranch, rowReadme or rowReadmeHeading
 	name string
+}
+
+// inReadme reports whether g is the README.md group or one of its headings.
+func (g group) inReadme() bool {
+	return g.kind == rowReadme || g.kind == rowReadmeHeading
 }
 
 func categoryGroup(name string) group {
@@ -73,24 +80,35 @@ func (g group) openedBy(row navigationRow) bool {
 }
 
 // groupList is where a tab is in its list: at the top, among its groups and
-// loose tasks, or in the group opened from there.
+// loose tasks, in the group opened from there, or in a README.md heading.
 type groupList struct {
-	open       group
-	cursor     int
-	rootCursor int // the cursor at the top, to return to
+	open         group
+	cursor       int
+	rootCursor   int // the cursor at the top, to return to
+	readmeCursor int // the cursor in the README.md group, to return to from a heading
 }
 
-// enter opens g, remembering where the cursor was at the top.
+// enter opens g, remembering where the cursor was in the list it leaves.
 func (l *groupList) enter(g group) {
-	l.rootCursor, l.open, l.cursor = l.cursor, g, 0
+	if g.kind == rowReadmeHeading {
+		l.readmeCursor = l.cursor
+	} else {
+		l.rootCursor = l.cursor
+	}
+	l.open, l.cursor = g, 0
 }
 
-// leave goes back to the top, reporting false when the list was already there.
+// leave goes back one level, reporting false when the list was already at
+// the top.
 func (l *groupList) leave() bool {
-	if l.open == (group{}) {
+	switch {
+	case l.open.kind == rowReadmeHeading:
+		l.open, l.cursor = group{kind: rowReadme, name: readmeGroup}, l.readmeCursor
+	case l.open != (group{}):
+		l.open, l.cursor = group{}, l.rootCursor
+	default:
 		return false
 	}
-	l.open, l.cursor = group{}, l.rootCursor
 	return true
 }
 
@@ -142,11 +160,13 @@ func completedReadmeCount(tasks []store.ReadmeTask) int {
 }
 
 // generalRows lists General: at the top, its categories, the README.md group
-// and its tasks without a category; or the tasks of the group open.
+// and its tasks without a category; or what the group open lists.
 func generalRows(general []store.Task, readme []store.ReadmeTask, open group) []navigationRow {
 	switch open.kind {
 	case rowReadme:
 		return readmeRows(readme)
+	case rowReadmeHeading:
+		return readmeTaskRows(readme, open.name)
 	case rowCategory:
 		return taskRows(general, func(t store.Task) bool { return taskInCategory(t, open.name) })
 	}
@@ -208,11 +228,39 @@ func taskRows(tasks []store.Task, keep func(store.Task) bool) []navigationRow {
 	return rows
 }
 
-// readmeRows is a row for each README task, in the dashboard's order.
+// readmeRows lists the README.md group: a row for each heading inside its
+// TODO sections, in the README's order, then the tasks under no heading.
 func readmeRows(tasks []store.ReadmeTask) []navigationRow {
-	rows := make([]navigationRow, len(tasks))
-	for i, t := range tasks {
-		rows[i] = navigationRow{kind: rowReadmeTask, readme: t}
+	var rows []navigationRow
+	index := make(map[string]int)     // each heading's row
+	firstLine := make(map[string]int) // each heading's first task, to order the rows by
+	for _, t := range tasks {
+		if t.Heading == "" {
+			continue
+		}
+		i, ok := index[t.Heading]
+		if !ok {
+			i, index[t.Heading], firstLine[t.Heading] = len(rows), len(rows), t.Line
+			rows = append(rows, navigationRow{kind: rowReadmeHeading, name: t.Heading})
+		}
+		rows[i].count++
+		if t.Done {
+			rows[i].completed++
+		}
+		firstLine[t.Heading] = min(firstLine[t.Heading], t.Line)
+	}
+	slices.SortFunc(rows, func(a, b navigationRow) int { return cmp.Compare(firstLine[a.name], firstLine[b.name]) })
+	return append(rows, readmeTaskRows(tasks, "")...)
+}
+
+// readmeTaskRows is a row for each README task under heading, in the
+// dashboard's order.
+func readmeTaskRows(tasks []store.ReadmeTask, heading string) []navigationRow {
+	var rows []navigationRow
+	for _, t := range tasks {
+		if t.Heading == heading {
+			rows = append(rows, navigationRow{kind: rowReadmeTask, readme: t})
+		}
 	}
 	return rows
 }
@@ -243,7 +291,8 @@ func (m *model) selectNavigationTask(selected store.Task) {
 }
 
 // selectReadmeTask puts the cursor on t after a write, which can move it in
-// the open README.md group: the task with its text nearest its old line.
+// the open README.md group or heading: the task with its text nearest its
+// old line.
 func (m *model) selectReadmeTask(t store.ReadmeTask) {
 	best, distance := -1, math.MaxInt
 	for i, row := range m.rows(generalPane) {
@@ -353,8 +402,8 @@ func (m *model) selectedNavigationRow() (navigationRow, bool) {
 	return rows[l.cursor], true
 }
 
-// enterSelectedGroup opens the selected category, branch or README.md
-// group, reporting false when the selection isn't one.
+// enterSelectedGroup opens the selected category, branch, README.md group
+// or README heading, reporting false when the selection isn't one.
 func (m *model) enterSelectedGroup() bool {
 	if m.focus == detailPane {
 		return false
@@ -373,8 +422,8 @@ func (m *model) enterSelectedGroup() bool {
 	return true
 }
 
-// jumpToTab focuses a tab, or leaves its opened category or branch when it
-// already has focus. At the top of Branches it opens the current branch.
+// jumpToTab focuses a tab, or goes back to its top when it already has
+// focus. At the top of Branches it opens the current branch.
 func (m *model) jumpToTab(p pane) {
 	switch {
 	case m.focus != p:
@@ -384,16 +433,20 @@ func (m *model) jumpToTab(p pane) {
 	case p == branchPane && m.branch.open == (group{}):
 		m.openCurrentBranch()
 	default:
-		m.leaveGroup()
+		for m.leaveGroup() {
+		}
 	}
 }
 
-func (m *model) leaveGroup() {
+// leaveGroup goes back one level in the focused list, reporting false when
+// it was already at the top.
+func (m *model) leaveGroup() bool {
 	if l := m.list(m.focus); l == nil || !l.leave() {
-		return
+		return false
 	}
 	m.detailScroll = 0
 	m.status = ""
+	return true
 }
 
 // openCurrentBranch opens the current Git branch's tasks, if it has any.

@@ -142,7 +142,7 @@ Everything after the flags is the task.
 
 ![The README.md group, a task's details, the branch list, a branch's tasks, the Files tab and a TODO's details](docs/todo.gif)
 
-- **1 General**: tasks outside branch sections. `▸ category` rows open to show that category's tasks, and `▸ README.md` opens [your README's TODOs](#todos-in-readmemd); uncategorised tasks follow.
+- **1 General**: tasks outside branch sections. `▸ category` rows open to show that category's tasks, and `▸ README.md` opens [your README's TODOs](#todos-in-readmemd), grouped by their headings; uncategorised tasks follow.
 - **2 Branches**: every branch with tasks. At startup it opens on the current branch's tasks, if it has any.
 - **3 Files**: the [TODO comments](#todo-comments) in files under the working directory. Scanning runs in the background, and these are read only.
 
@@ -256,9 +256,14 @@ The dashboard reads the TODO list in the `README.md` next to the task file, foll
 
 - Write the install guide
 - [ ] todo0 Fix the broken example
+
+### Dashboard
+
+- [ ] Show the README's headings
 ```
 
-- Tasks are the list items (`- foo` or `- [ ] foo`) directly under a heading reading `TODO` or `TODOs`, with or without a `:`, in any case. The next heading ends the list.
+- Tasks are the list items (`- foo` or `- [ ] foo`) under a heading reading `TODO` or `TODOs`, with or without a `:`, in any case. The next heading at the same level or higher, such as `## Install` after `## TODOs`, ends the list.
+- Deeper headings inside the list, such as `### Dashboard`, group the tasks under them. `▸ README.md` lists a row for each heading, in the README's order, then the tasks under no heading. A heading inside another, such as a `####` under a `###`, is a group of its own. todo-system itself ends the list at any heading, so it doesn't see these tasks.
 - Nested list items are tasks too, and anything in a ` ``` ` code block is skipped.
 - `d` marks a task done or reopens it. It changes only the checkbox, adding one to a plain `- foo`, and leaves the README's order alone.
 - Tasks show their [formatting](#markdown-format), and levels such as `todo0` show and sort as in the Files tab. `p`, `c`, `backspace`, `X` and the edit form don't apply; `e` opens the README in your editor at the task.

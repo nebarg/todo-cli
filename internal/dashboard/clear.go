@@ -28,10 +28,10 @@ func (m *model) clearScope() ([]store.Task, string) {
 	}
 	switch m.activePane() {
 	case generalPane:
-		switch m.general.open.kind {
-		case rowReadme:
+		switch {
+		case m.general.open.inReadme():
 			return nil, readmeGroup
-		case rowCategory:
+		case m.general.open.kind == rowCategory:
 			return rowTasks(m.rows(generalPane)), "@" + m.general.open.name
 		}
 		return m.tasks.general, "General"

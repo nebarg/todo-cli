@@ -161,14 +161,17 @@ func (m *model) contextHints() []ui.KeyHint {
 	reload := ui.KeyHint{Key: "r", Label: "reload"}
 	index := ui.KeyHint{Key: "i", Label: "all tasks"}
 	remove := ui.KeyHint{Key: "⌫", Label: "delete"}
+	_, readmeTask := m.selectedReadmeTask()
 	switch {
 	case m.all != nil:
 		hints := []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, {Key: "s", Label: "sort"}, {Key: "c", Label: "category"}, remove, {Key: "a", Label: "add"}, {Key: "b", Label: "branch task"}}
 		return append(append(hints, m.clearHint()...), back, reload)
-	case m.focus == detailPane && m.readmeSelected():
+	case m.focus == detailPane && readmeTask:
 		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "open file"}, back}
-	case m.readmeSelected():
+	case readmeTask:
 		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "open file"}, back, {Key: "→", Label: "details"}, index, reload}
+	case m.readmeSelected():
+		return []ui.KeyHint{{Key: "→", Label: "open"}, back, index, reload}
 	case m.focus == detailPane && m.activePane() == branchPane:
 		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, remove, back}
 	case m.focus == detailPane:
@@ -224,6 +227,8 @@ func (m *model) breadcrumb(kind pane) []string {
 	switch m.general.open.kind {
 	case rowReadme:
 		return []string{"General", readmeGroup}
+	case rowReadmeHeading:
+		return []string{"General", readmeGroup, m.general.open.name}
 	case rowCategory:
 		return []string{"General", "@" + m.general.open.name}
 	}
@@ -296,11 +301,13 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 	if crumbs := m.breadcrumb(kind); len(crumbs) > 1 {
 		completed, count := 0, 0
 		for _, row := range rows {
-			if row.isTask() {
+			switch {
+			case !row.isTask():
+				completed, count = completed+row.completed, count+row.count
+			case row.done():
+				completed, count = completed+1, count+1
+			default:
 				count++
-				if row.done() {
-					completed++
-				}
 			}
 		}
 		lines = append(lines, m.theme.Breadcrumb(crumbs, fmt.Sprintf("%d/%d", completed, count), innerWidth), "")
@@ -470,6 +477,8 @@ func (m *model) groupDetails(row navigationRow, width int) []string {
 		scope = "branch tasks"
 	case rowReadme:
 		scope = "tasks under TODO headings"
+	case rowReadmeHeading:
+		scope = "tasks under this heading"
 	}
 	return ui.WrapLines([]string{m.theme.TaskTitleStyle.Render(groupName(row)), "", fmt.Sprintf("%d/%d %s", row.completed, row.count, scope), "", m.theme.MutedStyle.Render("enter or → to open")}, width)
 }
