@@ -31,8 +31,8 @@ var (
 		{Key: "p", Label: "cycle priority"},
 		{Key: "c", Label: "set category"},
 		{Key: "⌫", Label: "delete"},
-		{Key: "a", Label: "add task"},
-		{Key: "b", Label: "add branch task"},
+		{Key: "a b", Label: "add task/branch"},
+		{Key: "→ a", Label: "add subtask"},
 	}}
 	helpApp = []ui.KeyHint{{Key: "X / u", Label: "clear done / undo"}, {Key: "r", Label: "reload"}, {Key: "?", Label: "help"}, {Key: "q", Label: "quit"}}
 )

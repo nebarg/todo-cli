@@ -158,7 +158,13 @@ func (m *model) taskKey(key string) tea.Cmd {
 	case "?":
 		m.overlay = helpOverlay{}
 	case "a":
-		if m.all == nil && m.activePane() == branchPane {
+		switch {
+		case m.focus == detailPane && m.readmeSelected():
+			m.status = readmeReadOnly
+			return nil
+		case m.focus == detailPane:
+			return m.startTaskModal(modalAddSubtask)
+		case m.all == nil && m.activePane() == branchPane:
 			return m.startTaskModal(modalAddBranch)
 		}
 		return m.startTaskModal(modalAddGeneral)

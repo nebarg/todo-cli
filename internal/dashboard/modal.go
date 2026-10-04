@@ -20,12 +20,14 @@ type modalMode int
 const (
 	modalAddGeneral modalMode = iota
 	modalAddBranch
+	modalAddSubtask
 	modalEdit
 )
 
 type taskModal struct {
 	mode         modalMode
 	selected     store.Task
+	parent       store.Task // the task a subtask's form adds under, or edits under
 	file         string
 	target       store.Section
 	onCurrent    bool // target is the current Git branch, which Git's answer may update
@@ -71,6 +73,14 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 		}
 		modal.selected = selected
 		modal.target = selected.Section
+	}
+	if mode == modalAddSubtask || modal.selected.Subtask {
+		parent, ok := m.selectedParent()
+		if !ok {
+			m.status = "Open a Markdown task's details to add a subtask"
+			return nil
+		}
+		modal.parent, modal.target = parent, parent.Section
 	}
 	modal.title = textarea.New()
 	modal.scope = textinput.New()
@@ -269,7 +279,7 @@ func (f *taskModal) branchScope() bool {
 // subtaskForm is true for a subtask's form, which has only the Task field: a
 // subtask keeps its task's category or branch, and has no details to edit.
 func (f *taskModal) subtaskForm() bool {
-	return f.mode == modalEdit && f.selected.Subtask
+	return f.mode == modalAddSubtask || f.mode == modalEdit && f.selected.Subtask
 }
 
 // lastField is the form's last field: Details, or Task in a subtask's form.
@@ -298,7 +308,10 @@ func (f *taskModal) focusField(field int) tea.Cmd {
 }
 
 func (f *taskModal) save() error {
-	if f.subtaskForm() {
+	switch {
+	case f.mode == modalAddSubtask:
+		return store.AddSubtask(f.file, f.parent, f.taskTitle())
+	case f.subtaskForm():
 		return store.Edit(f.file, f.selected, f.taskTitle(), f.selected.Details, f.selected.Section)
 	}
 	if f.branchScope() {
@@ -317,7 +330,11 @@ func (f *taskModal) save() error {
 
 // saved describes the task save wrote, for the model to follow.
 func (f *taskModal) saved() taskSavedMsg {
-	task := store.Task{Text: f.taskTitle(), Section: f.target, Line: f.selected.Line, Done: f.selected.Done, Priority: f.selected.Priority, Subtask: f.selected.Subtask}
+	text, p := store.SplitPriority(f.taskTitle())
+	if p == store.PriorityNone {
+		p = f.selected.Priority
+	}
+	task := store.Task{Text: text, Section: f.target, Line: f.selected.Line, Done: f.selected.Done, Priority: p, Subtask: f.subtaskForm()}
 	moved := f.mode == modalEdit && !f.target.Same(f.selected.Section)
 	return taskSavedMsg{task: task, added: f.mode != modalEdit, moved: moved}
 }
@@ -552,22 +569,32 @@ func (f *taskModal) contentLines(theme ui.Theme, width, height int) []string {
 	return lines
 }
 
+// breadcrumb names what the form adds or edits, and where: a subtask's form
+// names its task too.
 func (f *taskModal) breadcrumb() []string {
-	edit := "Edit task"
-	if f.subtaskForm() {
-		edit = "Edit subtask"
-	}
-	switch {
-	case f.mode == modalAddGeneral:
+	switch f.mode {
+	case modalAddGeneral:
 		return []string{"General", "New task"}
-	case f.mode == modalAddBranch:
+	case modalAddBranch:
 		return []string{"Branches", "New task"}
-	case f.selected.Branch != "":
-		return []string{"Branches", branchIcon + " " + f.selected.Branch, edit}
-	case f.selected.Category != "":
-		return []string{"General", "@" + f.selected.Category, edit}
+	case modalAddSubtask:
+		return append(sectionCrumbs(f.parent.Section), ui.CleanDisplay(f.parent.Text), "New subtask")
 	}
-	return []string{"General", edit}
+	if f.subtaskForm() {
+		return append(sectionCrumbs(f.selected.Section), ui.CleanDisplay(f.parent.Text), "Edit subtask")
+	}
+	return append(sectionCrumbs(f.selected.Section), "Edit task")
+}
+
+// sectionCrumbs names a section as the dashboard's breadcrumbs do.
+func sectionCrumbs(s store.Section) []string {
+	switch {
+	case s.Branch != "":
+		return []string{"Branches", branchIcon + " " + s.Branch}
+	case s.Category != "":
+		return []string{"General", "@" + s.Category}
+	}
+	return []string{"General"}
 }
 
 func (f *taskModal) label(theme ui.Theme, name string, field int) string {

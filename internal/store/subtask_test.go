@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -157,5 +158,36 @@ func TestRemovingATaskWithItsSubtask(t *testing.T) {
 	}
 	if got, want := readFile(t, path), strings.Replace(subtaskSample, "- [ ] Ship login !high\n\n  Session notes.\n\n  - [ ] Write the form !low\n    Use the shared input.\r\n  - [x] Add the route\n\n  - plain note\n\n", "", 1); got != want {
 		t.Fatalf("after removing the task and its subtask:\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestAddSubtask(t *testing.T) {
+	for _, item := range []struct{ name, content, title, want string }{
+		{"after the last subtask", "- [ ] Task\n  - [ ] First\n\n- [ ] Next\n", "Second !high", "- [ ] Task\n  - [ ] First\n  - [ ] Second !high\n\n- [ ] Next\n"},
+		{"after the details", "- [ ] Task\n\n  Notes.\n\n- [ ] Next\n", "First", "- [ ] Task\n\n  Notes.\n\n  - [ ] First\n\n- [ ] Next\n"},
+		{"under a bare task", "# auth\n\n- Task", "First", "# auth\n\n- Task\n  - [ ] First"},
+		{"in a Windows file", "- [ ] Task\r\n\r\n  Notes.\r\n", "First", "- [ ] Task\r\n\r\n  Notes.\r\n\r\n  - [ ] First\r\n"},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			path, tasks := writeAndLoad(t, item.content)
+			if err := AddSubtask(path, tasks[0], item.title); err != nil {
+				t.Fatal(err)
+			}
+			if got := readFile(t, path); got != item.want {
+				t.Fatalf("file = %q, want %q", got, item.want)
+			}
+		})
+	}
+	path, tasks := writeAndLoad(t, "- [ ] Task\n  - [ ] First\n")
+	for _, err := range []error{AddSubtask(path, tasks[1], "Nested"), AddSubtask(path, tasks[0], " ")} {
+		if err == nil {
+			t.Fatal("a subtask of a subtask, or a blank one, was added")
+		}
+	}
+	if err := os.WriteFile(path, []byte("- [ ] Task, changed\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddSubtask(path, tasks[0], "Late"); !errors.Is(err, ErrTaskChanged) {
+		t.Fatalf("adding under a changed task = %v, want ErrTaskChanged", err)
 	}
 }

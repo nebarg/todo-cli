@@ -99,7 +99,7 @@ func TestSubtasksShowUnderTheirTask(t *testing.T) {
 	}
 	m = press(m, "e")
 	f := form(t, m)
-	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "General › Edit subtask") || strings.Contains(plain, "Category") || strings.Contains(plain, "Details") {
+	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "General › Ship login › Edit subtask") || strings.Contains(plain, "Category") || strings.Contains(plain, "Details") {
 		t.Fatalf("subtask form:\n%s", plain)
 	}
 	f.title.SetValue("Write the forms")
@@ -170,5 +170,56 @@ func TestATaskAndASubtaskAlikeKeepTheirPlaces(t *testing.T) {
 	}
 	if got := rowTitles(m); got != "x,Q,P,x" || !m.rows(generalPane)[3].todo.Subtask {
 		t.Fatalf("rows after p = %q", got)
+	}
+}
+
+func TestAddingASubtaskFromATasksDetails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("# auth\n\n- [ ] Ship login\n  - [x] Add the route\n- [x] Done task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project.Context{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = press(m, "enter")
+	pressKey(t, m, "right")
+	if hints := ansi.Strip(m.theme.RenderHints(m.footerHints())); m.focus != detailPane || !strings.Contains(hints, "a add subtask") {
+		t.Fatalf("details hints = %q", hints)
+	}
+	m = press(m, "a")
+	f := form(t, m)
+	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "General › @auth › Ship login › New subtask") || strings.Contains(plain, "Category") || strings.Contains(plain, "Details") {
+		t.Fatalf("new subtask form:\n%s", plain)
+	}
+	f.title.SetValue("Write the form !high")
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	want := "# auth\n\n- [ ] Ship login\n  - [x] Add the route\n  - [ ] Write the form !high\n- [x] Done task\n"
+	if got := readFile(t, path); got != want {
+		t.Fatalf("after adding a subtask:\n%q\nwant\n%q", got, want)
+	}
+	// The list shows the new subtask, selected, above its done sibling.
+	if selected, ok := m.selectedTask(); m.focus != generalPane || !ok || selected.Text != "Write the form" || !selected.Subtask {
+		t.Fatalf("new subtask not selected in the list: focus %v, %+v", m.focus, selected)
+	}
+	if got := rowTitles(m); got != "Ship login,Write the form,Add the route,Done task" {
+		t.Fatalf("rows = %q", got)
+	}
+
+	// From a subtask's details, a adds to the same task.
+	pressKey(t, m, "right")
+	m = press(m, "a")
+	f = form(t, m)
+	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "Ship login › New subtask") {
+		t.Fatalf("new subtask form from a subtask:\n%s", plain)
+	}
+	f.title.SetValue("Test it")
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	want = strings.Replace(want, "  - [ ] Write the form !high\n", "  - [ ] Write the form !high\n  - [ ] Test it\n", 1)
+	if got := readFile(t, path); got != want {
+		t.Fatalf("after adding a second subtask:\n%q\nwant\n%q", got, want)
+	}
+	if selected, ok := m.selectedTask(); !ok || selected.Text != "Test it" {
+		t.Fatalf("second subtask not selected: %+v", selected)
 	}
 }

@@ -271,6 +271,29 @@ func Add(path, title, details string, p Priority, to Section) error {
 	return replaceFile(path, []byte(bom+updated), mode)
 }
 
+// AddSubtask writes a new open subtask under parent, after its last subtask,
+// or after its details with a blank line between. A trailing !priority in
+// title sets its priority.
+func AddSubtask(path string, parent Task, title string) error {
+	if parent.Subtask {
+		return errors.New("subtasks don't have subtasks; add it to their task")
+	}
+	title, p := SplitPriority(strings.TrimSpace(title))
+	if title == "" || strings.ContainsAny(title, "\r\n") {
+		return errors.New("enter a single-line subtask")
+	}
+	return rewriteTask(path, parent, func(lines []string) string {
+		at, block := parent.Line+1, []string{taskIndent(parent.raw) + "  - [ ] " + title + priorityToken(p)}
+		if spans := subtaskSpans(lines, parent.bodyStart, parent.bodyEnd); len(spans) > 0 {
+			at = spans[len(spans)-1][1]
+		} else if parent.Details != "" {
+			at = trimBlankEnd(lines, parent.bodyEnd, parent.bodyStart)
+			block = append([]string{""}, block...)
+		}
+		return strings.Join(insertLines(lines, at, withEnding(block, lineEnding(lines))), "\n")
+	})
+}
+
 func formattedDetails(details string) []string {
 	details = strings.ReplaceAll(details, "\r\n", "\n")
 	rows := strings.Split(details, "\n")

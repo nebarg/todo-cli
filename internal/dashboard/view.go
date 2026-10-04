@@ -161,6 +161,7 @@ func (m *model) contextHints() []ui.KeyHint {
 	reload := ui.KeyHint{Key: "r", Label: "reload"}
 	index := ui.KeyHint{Key: "i", Label: "all tasks"}
 	remove := ui.KeyHint{Key: "⌫", Label: "delete"}
+	addSubtask := ui.KeyHint{Key: "a", Label: "add subtask"}
 	// A subtask keeps its task's category.
 	category := []ui.KeyHint{{Key: "c", Label: "category"}}
 	if t, ok := m.selectedTask(); ok && t.Subtask {
@@ -179,10 +180,10 @@ func (m *model) contextHints() []ui.KeyHint {
 	case m.readmeSelected():
 		return []ui.KeyHint{{Key: "→", Label: "open"}, back, index, reload}
 	case m.focus == detailPane && m.activePane() == branchPane:
-		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, remove, back}
+		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, remove, addSubtask, back}
 	case m.focus == detailPane:
 		hints := append([]ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}}, category...)
-		return append(hints, remove, back)
+		return append(hints, remove, addSubtask, back)
 	case m.focus == sourcePane && m.files.Details():
 		return m.files.Hints()
 	case m.focus == sourcePane:
@@ -285,31 +286,11 @@ func (m *model) subtaskStatus() string {
 // selectedSubtasks is how many of the selected task's subtasks are done, and
 // how many it has: the subtask rows that follow it. A subtask has none.
 func (m *model) selectedSubtasks() (done, total int) {
-	if m.all != nil {
-		tasks := m.all.sorted(m.tasks.all)
-		if m.all.cursor >= len(tasks) || tasks[m.all.cursor].Subtask {
-			return 0, 0
-		}
-		for _, t := range tasks[m.all.cursor+1:] {
-			if !t.Subtask {
-				break
-			}
-			total++
-			if t.Done {
-				done++
-			}
-		}
-		return done, total
-	}
-	l := m.list(m.activePane())
-	if l == nil {
+	rows, cursor := m.taskList()
+	if cursor >= len(rows) || !rows[cursor].isTask() || rows[cursor].subtask() {
 		return 0, 0
 	}
-	rows := m.rows(m.activePane())
-	if l.cursor >= len(rows) || rows[l.cursor].isTask() && rows[l.cursor].subtask() {
-		return 0, 0
-	}
-	for _, row := range rows[l.cursor+1:] {
+	for _, row := range rows[cursor+1:] {
 		if !row.isTask() || !row.subtask() {
 			break
 		}
@@ -319,6 +300,38 @@ func (m *model) selectedSubtasks() (done, total int) {
 		}
 	}
 	return done, total
+}
+
+// selectedParent is the selected todo.md task, or for a subtask, the task
+// it's under.
+func (m *model) selectedParent() (store.Task, bool) {
+	rows, cursor := m.taskList()
+	for i := min(cursor, len(rows)-1); i >= 0; i-- {
+		switch {
+		case rows[i].kind != rowTask:
+			return store.Task{}, false
+		case !rows[i].todo.Subtask:
+			return rows[i].todo, true
+		}
+	}
+	return store.Task{}, false
+}
+
+// taskList is the rows of the list holding the selection, with the cursor:
+// All tasks', as task rows, or the General or Branches tab's.
+func (m *model) taskList() ([]navigationRow, int) {
+	if m.all != nil {
+		tasks := m.all.sorted(m.tasks.all)
+		rows := make([]navigationRow, len(tasks))
+		for i, t := range tasks {
+			rows[i] = navigationRow{kind: rowTask, todo: t}
+		}
+		return rows, m.all.cursor
+	}
+	if l := m.list(m.activePane()); l != nil {
+		return m.rows(m.activePane()), l.cursor
+	}
+	return nil, 0
 }
 
 func taskStatus(theme ui.Theme, t store.Task) string {

@@ -175,6 +175,8 @@ Rows keep their place after edits, including marking a task done, so the list do
 
 `b` adds to the current Git branch from anywhere, or to the opened branch.
 
+On a task's details page (`→`), `a` adds a subtask to it, or, on a subtask's, to the same task. The new subtask goes after the task's others, and the list then shows it selected.
+
 In the form:
 
 - `tab` / `shift+tab` move between Task, Category or Branch, and Details.
@@ -182,7 +184,7 @@ In the form:
 - `enter` adds a new line in Task or Details, `ctrl+enter` saves, and `esc` cancels.
 - The Branch field suggests local Git branches as you type. A name Git doesn't have is offered last, marked `not in Git`, for a branch you haven't created yet.
 - When editing, changing the category or branch moves the task, with its subtasks. A heading left empty is removed.
-- A subtask's form has only the Task field, as a subtask keeps its task's category or branch.
+- A subtask's form has only the Task field, as a subtask keeps its task's category or branch. A trailing `!high`, `!medium` or `!low` sets its priority.
 
 `c` changes just the category of a general task, without the form, with the same suggestions.
 
@@ -203,7 +205,7 @@ Both show a dialog naming what will go, including headings left empty, and only 
 | `→` | Open a category or branch, or a task's details |
 | `←` / `esc` | Back |
 | `i` | All tasks (`s` to change the sort) |
-| `a` / `b` | Add a task / add a branch task |
+| `a` / `b` | Add a task / add a branch task. On a task's details, `a` adds a subtask |
 | `e` / `enter` | Edit a task, or open a file or README TODO in your editor. `enter` also opens a category or branch |
 | `d` / `space` | Mark done or reopen |
 | `p` / `c` | Cycle task priority / change task category |

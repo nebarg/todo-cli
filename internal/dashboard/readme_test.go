@@ -87,9 +87,9 @@ func TestReadmeTasksOpenFromGeneralAndOnlyToggle(t *testing.T) {
 	if m.focus != detailPane || !strings.Contains(details, "00 Urgent") || strings.Contains(details, "No details yet") || !strings.Contains(ansi.Strip(m.theme.RenderHints(m.footerHints())), "e open file") {
 		t.Fatalf("README task details:\n%s\nhints %v", details, m.footerHints())
 	}
-	for _, key := range []string{"p", "c", "X"} {
+	for _, key := range []string{"p", "c", "X", "a"} {
 		pressKey(t, m, key)
-		if m.status != readmeReadOnly || isOpen[*categoryPrompt](m) || isOpen[*clearConfirmation](m) {
+		if m.status != readmeReadOnly || isOpen[*categoryPrompt](m) || isOpen[*clearConfirmation](m) || isOpen[*taskModal](m) {
 			t.Fatalf("%s on a README task was not refused: %q", key, m.status)
 		}
 	}

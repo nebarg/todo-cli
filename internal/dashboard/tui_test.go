@@ -499,9 +499,10 @@ func TestNewTasksGoAboveDoneTasksUntilReload(t *testing.T) {
 		}
 		return strings.Join(names, ",")
 	}
-	for _, item := range []struct{ name, content, want string }{
-		{"after the open tasks", "# auth\n\n- [ ] One\n- [ ] Two\n- [x] Done\n", "One,Two,New,Done"},
-		{"before the done tasks", "# auth\n\n- [x] Done\n", "New,Done"},
+	for _, item := range []struct{ name, content, title, want string }{
+		{"after the open tasks", "# auth\n\n- [ ] One\n- [ ] Two\n- [x] Done\n", "New", "One,Two,New,Done"},
+		{"before the done tasks", "# auth\n\n- [x] Done\n", "New", "New,Done"},
+		{"with a priority", "# auth\n\n- [ ] One\n", "New !high", "One,New"},
 	} {
 		t.Run(item.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "todo.md")
@@ -514,7 +515,7 @@ func TestNewTasksGoAboveDoneTasksUntilReload(t *testing.T) {
 			}
 			m = press(m, "enter")
 			m = press(m, "a")
-			form(t, m).title.SetValue("New")
+			form(t, m).title.SetValue(item.title)
 			m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 			if got := titles(m); got != item.want {
 				t.Fatalf("rows after adding = %q, want %q", got, item.want)
