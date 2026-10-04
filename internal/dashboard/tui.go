@@ -159,7 +159,7 @@ func (m *model) taskKey(key string) tea.Cmd {
 		m.overlay = helpOverlay{}
 	case "a":
 		switch {
-		case m.focus == detailPane && m.readmeSelected():
+		case m.readmeSelected():
 			m.status = readmeReadOnly
 			return nil
 		case m.focus == detailPane:

@@ -143,10 +143,6 @@ func TestReadmeGroupClosesWhenItsTasksGo(t *testing.T) {
 	if m.general.open.kind != rowReadme {
 		t.Fatal("README group did not open")
 	}
-	if cmd := pressKey(t, m, "a"); !isOpen[*taskModal](m) || form(t, m).target.Category != "" {
-		t.Fatalf("a inside README.md should add a general task: %+v %v", m.overlay, cmd)
-	}
-	m.overlay = nil
 	if err := os.WriteFile(readme, []byte("# Project\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -156,21 +152,40 @@ func TestReadmeGroupClosesWhenItsTasksGo(t *testing.T) {
 	}
 }
 
-func TestAddingFromTheReadmeGroupShowsTheNewTask(t *testing.T) {
+func TestAddingIsRefusedInsideTheReadmeGroup(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("## Todo:\n\n- Only task\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# Todo\n\n- Loose task\n\n## Backend\n\n- Heading task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	m, err := newModel(filepath.Join(dir, "todo.md"), project.Context{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The README.md row is General's, where a adds a general task.
+	if pressKey(t, m, "a"); !isOpen[*taskModal](m) || form(t, m).mode != modalAddGeneral {
+		t.Fatalf("a on the README.md row did not add a general task: %T", m.overlay)
+	}
+	m.overlay = nil
 	pressKey(t, m, "right")
-	pressKey(t, m, "a")
-	form(t, m).title.SetValue("New general task")
-	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
-	if selected, ok := m.selectedTask(); m.general.open.kind == rowReadme || !ok || selected.Text != "New general task" {
-		t.Fatalf("new task not shown: README open %v, selected %+v", m.general.open.kind == rowReadme, selected)
+	for _, where := range []struct {
+		name string
+		keys []string
+	}{
+		{"on a heading row", nil},
+		{"on a task row", []string{"j"}},
+		{"in a heading", []string{"k", "right"}},
+		{"on a task's details", []string{"right"}},
+	} {
+		for _, key := range where.keys {
+			pressKey(t, m, key)
+		}
+		m.status = ""
+		if pressKey(t, m, "a"); m.status != readmeReadOnly || m.overlay != nil {
+			t.Fatalf("a %s was not refused: status %q, overlay %T", where.name, m.status, m.overlay)
+		}
+	}
+	if m.focus != detailPane || m.general.open.kind != rowReadmeHeading {
+		t.Fatalf("test did not reach a heading task's details: focus %v, open %+v", m.focus, m.general.open)
 	}
 }
 

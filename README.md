@@ -172,6 +172,7 @@ Rows keep their place after edits, including marking a task done, so the list do
 - in General, a general task, or one in the opened category
 - in Branches, to the opened branch, or the current Git branch at the top level
 - in Files or All tasks, a general task
+- in README.md, nothing, as it's read only
 
 `b` adds to the current Git branch from anywhere, or to the opened branch.
 
@@ -277,7 +278,7 @@ The dashboard reads the TODO list in the `README.md` next to the task file, foll
 - Nested list items are subtasks, such as `Check the other links`, shown indented under their task. Subtasks nested deeper show at the same indent, under the same task.
 - Plain items under a checkbox task, such as the 404 note above, aren't subtasks. Those, with any other text indented under the task, are its details, shown as for [todo.md's tasks](#markdown-format). Anything in a ` ``` ` code block is skipped.
 - `d` marks a task done or reopens it. It changes only the checkbox, adding one to a plain `- foo`, and leaves the README's order alone. While a task is done, its subtasks are greyed out but keep their own state. When the list re-sorts, they move with it.
-- Tasks show their [formatting](#markdown-format), and levels such as `todo0` show and sort as in the Files tab. `p`, `c`, `backspace`, `X` and the edit form don't apply; `e` opens the README in your editor at the task.
+- Tasks show their [formatting](#markdown-format), and levels such as `todo0` show and sort as in the Files tab. `a`, `p`, `c`, `backspace`, `X` and the edit form don't apply; `e` opens the README in your editor at the task.
 
 ## todo-scan
 
