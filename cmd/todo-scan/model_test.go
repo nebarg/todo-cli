@@ -59,8 +59,10 @@ func TestScreensFitTheTerminal(t *testing.T) {
 			if !strings.HasSuffix(footer, "q quit") || strings.Contains(footer, "r rescan") != (page == "list") {
 				t.Errorf("%s footer at %dx%d = %q", page, size[0], size[1], footer)
 			}
-			m.Update(key("left"))
-			m.Update(key("k"))
+			if page == "details" {
+				m.Update(key("left"))
+				m.Update(key("k"))
+			}
 		}
 	}
 	m.width, m.height = 50, 10

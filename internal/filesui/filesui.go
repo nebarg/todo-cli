@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/nebarg/todo-cli/internal/editor"
 	"github.com/nebarg/todo-cli/internal/scan"
+	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 // previewRadius is how many lines either side of a TODO are read, enough
@@ -212,8 +213,9 @@ func (m *Model) Loading() bool { return m.loading }
 // Total is how many TODOs the last scan found.
 func (m *Model) Total() int { return len(m.matches) }
 
+// move moves the selection a row up or down, wrapping past either end.
 func (m *Model) move(delta int) tea.Cmd {
-	next := max(0, min(m.cursor+delta, len(m.rows())-1))
+	next := ui.Wrap(m.cursor, delta, len(m.rows()))
 	if next == m.cursor {
 		return nil
 	}

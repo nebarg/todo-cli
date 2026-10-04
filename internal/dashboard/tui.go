@@ -283,11 +283,12 @@ func (m *model) editSelected() tea.Cmd {
 	return m.startTaskModal(modalEdit)
 }
 
+// moveCursor moves the selection a row up or down, wrapping past either end.
 func (m *model) moveCursor(delta int) {
 	if m.all != nil {
-		m.all.cursor = max(0, min(m.all.cursor+delta, len(m.tasks.all)-1))
+		m.all.cursor = ui.Wrap(m.all.cursor, delta, len(m.tasks.all))
 	} else if l := m.list(m.focus); l != nil {
-		l.cursor = max(0, min(l.cursor+delta, len(m.rows(m.focus))-1))
+		l.cursor = ui.Wrap(l.cursor, delta, len(m.rows(m.focus)))
 	}
 }
 

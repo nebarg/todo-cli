@@ -526,3 +526,40 @@ func TestNewTasksGoAboveDoneTasksUntilReload(t *testing.T) {
 		})
 	}
 }
+
+func TestUpAndDownWrapPastTheEndsOfAList(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("- [ ] One\n\n  Details.\n- [ ] Two\n- [ ] Three\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project.Context{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		key    string
+		cursor int
+	}{
+		{"k", 2}, // up from the top wraps to the end
+		{"j", 0}, // and down from the end to the top
+		{"j", 1},
+		{"k", 0},
+	} {
+		if m = press(m, step.key); m.general.cursor != step.cursor {
+			t.Fatalf("after %s the cursor is on %d, want %d", step.key, m.general.cursor, step.cursor)
+		}
+	}
+
+	m = press(m, "i")
+	if m = press(m, "k"); m.all.cursor != 2 {
+		t.Fatalf("All tasks did not wrap: cursor %d", m.all.cursor)
+	}
+	m = press(m, "esc")
+
+	// A task's details scroll, and don't wrap.
+	m.general.cursor = 0
+	pressKey(t, m, "right")
+	if m = press(m, "k"); m.focus != detailPane || m.detailScroll != 0 || m.general.cursor != 0 {
+		t.Fatalf("up on a task's details moved: focus %v, scroll %d, cursor %d", m.focus, m.detailScroll, m.general.cursor)
+	}
+}

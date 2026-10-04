@@ -202,7 +202,7 @@ Both show a dialog naming what will go, including subtasks and headings left emp
 | Key | Action |
 | --- | --- |
 | `1` `2` `3`, `tab` / `shift+tab` | Switch tab |
-| `↑` `↓` / `j` `k` | Move |
+| `↑` `↓` / `j` `k` | Move. Up from the first row goes to the last, and down from the last to the first |
 | `→` | Open a category or branch, or a task's details |
 | `←` / `esc` | Back |
 | `i` | All tasks (`s` to change the sort) |

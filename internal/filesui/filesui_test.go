@@ -282,3 +282,24 @@ func TestScanKeepsOnlyWhatTheFilterAccepts(t *testing.T) {
 		}
 	}
 }
+
+func TestUpAndDownWrapPastTheEnds(t *testing.T) {
+	m := scanned(
+		scan.Match{Path: "a.go", Line: 1, Note: "first"},
+		scan.Match{Path: "a.go", Line: 2, Note: "second"},
+		scan.Match{Path: "a.go", Line: 3, Note: "third"},
+	)
+	for _, step := range []struct {
+		key  string
+		want string
+	}{
+		{"k", "third"}, // up from the top wraps to the end
+		{"j", "first"}, // and down from the end to the top
+		{"j", "second"},
+	} {
+		press(&m, step.key)
+		if selected, ok := m.Selected(); !ok || selected.Note != step.want {
+			t.Fatalf("after %s, selected %q, want %q", step.key, selected.Note, step.want)
+		}
+	}
+}
