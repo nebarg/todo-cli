@@ -5,10 +5,11 @@ import (
 	"strings"
 )
 
-// sortSection orders the tasks of section s: open tasks by priority, then
-// done tasks, keeping the file's order among equals. Each task moves with its
-// details and subtasks, which keep their order; notes above the first task
-// and nested headings stay where they are.
+// sortSection orders the tasks of section s by priority, keeping the file's
+// order among equals. Being done doesn't move a task, so one reopened is back
+// where it was. Each task moves with its details and subtasks, which keep
+// their order; notes above the first task and nested headings stay where
+// they are.
 func sortSection(content string, s Section) string {
 	lines := strings.Split(content, "\n")
 	var runs [][]Task
@@ -54,7 +55,7 @@ func sortRun(lines []string, run []Task) []string {
 	for i := range order {
 		order[i] = i
 	}
-	slices.SortStableFunc(order, func(a, b int) int { return taskRank(run[a]) - taskRank(run[b]) })
+	slices.SortStableFunc(order, func(a, b int) int { return run[a].Priority.Rank() - run[b].Priority.Rank() })
 
 	result := slices.Clone(lines[:run[0].Line])
 	for i, index := range order {
@@ -65,12 +66,4 @@ func sortRun(lines []string, run []Task) []string {
 	}
 	result = append(result, trailer...)
 	return append(result, lines[last.bodyEnd:]...)
-}
-
-// taskRank puts open tasks in priority order, then every done task.
-func taskRank(t Task) int {
-	if t.Done {
-		return PriorityNone.Rank() + 1
-	}
-	return t.Priority.Rank()
 }

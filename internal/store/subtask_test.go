@@ -113,6 +113,24 @@ func TestTasksTakeTheirSubtasksAlong(t *testing.T) {
 	}
 }
 
+func TestReopeningATaskPutsItBackWhereItWas(t *testing.T) {
+	const content = "- [ ] A\n- [ ] B\n  - [ ] B1\n  - [x] B2\n- [ ] C\n"
+	path, tasks := writeAndLoad(t, content)
+	if err := Toggle(path, tasks[1]); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := readFile(t, path), strings.Replace(content, "- [ ] B", "- [x] B", 1); got != want {
+		t.Fatalf("after done:\n%q\nwant\n%q", got, want)
+	}
+	tasks, _ = Load(path)
+	if err := Toggle(path, tasks[1]); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, path); got != content {
+		t.Fatalf("after reopening:\n%q\nwant\n%q", got, content)
+	}
+}
+
 func TestRemovingSubtasks(t *testing.T) {
 	path, tasks := writeAndLoad(t, subtaskSample)
 	removal, err := PlanRemove(path, []Task{tasks[2]})

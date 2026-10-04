@@ -652,7 +652,7 @@ func TestPriorityIsATrailingToken(t *testing.T) {
 	if err := Toggle(path, find("Both agree")); err != nil {
 		t.Fatal(err)
 	}
-	want = "- [ ] Typed priority !medium\n\n- [ ] Flag priority\n\n- [x] Both agree !low\n"
+	want = "- [ ] Typed priority !medium\n\n- [x] Both agree !low\n\n- [ ] Flag priority\n"
 	if got := readFile(t, path); got != want {
 		t.Fatalf("file = %q, want %q", got, want)
 	}

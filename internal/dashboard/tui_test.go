@@ -461,8 +461,8 @@ func TestWritesKeepIdenticalTasksInPlace(t *testing.T) {
 		steps  []step
 	}{
 		{"done and reopened", 0, []step{
-			{"d", "- [ ] list\n\n- [ ] scan\n\n- [ ] need\n\n- [x] scan\n", []string{"scan:6✓", "list:0", "scan:2", "need:4"}, 0},
-			{"d", "- [ ] list\n\n- [ ] scan\n\n- [ ] need\n\n- [ ] scan\n", []string{"scan:6", "list:0", "scan:2", "need:4"}, 0},
+			{"d", "- [x] scan\n\n- [ ] list\n\n- [ ] scan\n\n- [ ] need\n", []string{"scan:0✓", "list:2", "scan:4", "need:6"}, 0},
+			{"d", content, []string{"scan:0", "list:2", "scan:4", "need:6"}, 0},
 		}},
 		{"priority", 2, []step{
 			{"p", "- [ ] scan !high\n\n- [ ] scan\n\n- [ ] list\n\n- [ ] need\n", []string{"scan:2", "list:4", "scan:0!high", "need:6"}, 2},

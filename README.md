@@ -249,8 +249,9 @@ File and README TODOs open in `$VISUAL`, then `$EDITOR`, falling back to `vi`. V
 - **Priority** is a trailing `!high`, `!medium` or `!low`. Only a last word that names a priority counts, so `Ship it!` and `Fix !important CSS` stay as they are.
 - **Plain list items** such as `- Buy milk` are read as tasks, and become `- [ ] Buy milk` when edited.
 
-When the app writes a task, it re-sorts that task's section: open tasks by priority (high, medium, low, none), then done tasks.
+When the app writes a task, it re-sorts that task's section by priority: high, medium, low, then none.
 
+- Marking a task done or reopening it doesn't move it, so a task you reopen is back where it was. The dashboard lists done tasks last when it sorts.
 - Tasks move with their details and subtasks, and tasks of equal priority keep your order. Subtasks keep the order they're written in.
 - Notes above the first task and nested headings stay put, as do other sections.
 - A compact list without blank lines stays compact.

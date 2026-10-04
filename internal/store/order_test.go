@@ -8,10 +8,16 @@ func TestWritesSortOnlyTheirSection(t *testing.T) {
 		change              func(path string, tasks []Task) error
 	}{
 		{
-			name:    "done task moves to the end with its details",
+			name:    "a task moves with its details",
 			content: "- [ ] First !low\n\n  About first.\n\n- [ ] Second !high\n\n# other\n\n- [ ] Unsorted\n\n- [ ] Hand order !high\n",
 			want:    "- [ ] Second !high\n\n- [x] First !low\n\n  About first.\n\n# other\n\n- [ ] Unsorted\n\n- [ ] Hand order !high\n",
 			change:  func(path string, tasks []Task) error { return Toggle(path, tasks[0]) },
+		},
+		{
+			name:    "being done doesn't move a task",
+			content: "- [ ] First !low\n- [ ] Second\n- [ ] Third\n",
+			want:    "- [ ] First !low\n- [x] Second\n- [ ] Third\n",
+			change:  func(path string, tasks []Task) error { return Toggle(path, tasks[1]) },
 		},
 		{
 			name:    "equal priorities keep their order",
@@ -33,9 +39,9 @@ func TestWritesSortOnlyTheirSection(t *testing.T) {
 		},
 		{
 			name:    "trailing blank lines before the next heading stay",
-			content: "- [x] Done\n- [ ] Open\n\n\n# next\n",
-			want:    "- [ ] Open\n- [x] Done\n\n\n# next\n",
-			change:  func(path string, tasks []Task) error { return SetPriority(path, tasks[1], PriorityNone) },
+			content: "- [ ] Low !low\n- [ ] Open\n\n\n# next\n",
+			want:    "- [ ] Open !high\n- [ ] Low !low\n\n\n# next\n",
+			change:  func(path string, tasks []Task) error { return SetPriority(path, tasks[1], PriorityHigh) },
 		},
 		{
 			name:    "windows line endings",

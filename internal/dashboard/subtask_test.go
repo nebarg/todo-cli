@@ -68,7 +68,7 @@ func TestSubtasksShowUnderTheirTask(t *testing.T) {
 	// Done on the task leaves it, and its subtasks, where they are, greying
 	// out the open one without ticking it.
 	m = press(m, "d")
-	wantFile := "- [ ] Other !low\n- [x] Ship login !high\n  - [ ] Write the form\n  - [x] Add the route\n- [x] Old task\n  - [ ] Left open\n\n# auth\n\n- [ ] Auth task\n  - [ ] Auth sub\n"
+	wantFile := strings.Replace(subtaskTasks, "- [ ] Ship login !high", "- [x] Ship login !high", 1)
 	if got := readFile(t, path); got != wantFile {
 		t.Fatalf("after d on the task:\n%q\nwant\n%q", got, wantFile)
 	}
