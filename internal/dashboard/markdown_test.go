@@ -47,7 +47,7 @@ func TestTaskListShowsMarkdownFormatting(t *testing.T) {
 	}
 
 	task := m.tasks.general[0]
-	selected := renderTaskRow(m.theme, task, 60, true)
+	selected := renderTaskRow(m.theme, navigationRow{todo: task}, 60, true)
 	text := lipgloss.NewStyle().Foreground(m.theme.ColorStrong).Background(m.theme.ColorSelection)
 	if !strings.Contains(selected, text.Bold(true).Render("login")) || !strings.Contains(selected, text.Background(m.theme.ColorField).Foreground(m.theme.ColorCode).Render(" auth.go ")) {
 		t.Errorf("selected row lost its formatting or its background: %q", selected)
@@ -55,12 +55,12 @@ func TestTaskListShowsMarkdownFormatting(t *testing.T) {
 	if got := ansi.StringWidth(selected); got != 60 {
 		t.Errorf("selected row width = %d, want 60", got)
 	}
-	if cut := ansi.Strip(renderTaskRow(m.theme, task, 15, false)); cut != "● Fix login…  ⋯" {
+	if cut := ansi.Strip(renderTaskRow(m.theme, navigationRow{todo: task}, 15, false)); cut != "● Fix login…  ⋯" {
 		t.Errorf("narrow row = %q", cut)
 	}
 	done := task
 	done.Done = true
-	if row := renderTaskRow(m.theme, done, 60, false); !strings.Contains(row, m.theme.MutedStyle.Bold(true).Render("login")) {
+	if row := renderTaskRow(m.theme, navigationRow{todo: done}, 60, false); !strings.Contains(row, m.theme.MutedStyle.Bold(true).Render("login")) {
 		t.Errorf("done row is not muted with its formatting: %q", row)
 	}
 }

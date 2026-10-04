@@ -155,8 +155,9 @@ A branch Git doesn't have locally, deleted or not created yet, shows as `⚠ bra
 - `●` in red, yellow or cyan: high, medium or low priority. `○`: no priority.
 - `✓`: done. Done tasks sit at the end of each group once the list re-sorts.
 - `⋯` at the end of a row: the task has details. Press `→` to read them.
-- Counts such as `1/2` are done/total, for tabs, categories and branches. Files shows its number of matches, or `…` while scanning.
-- The status bar under the list describes the highlighted row, and the footer shows the main keys for it.
+- Indented rows are [subtasks](#markdown-format), under their task. While a task is done, its subtasks are greyed out but keep their own state, and when the list re-sorts they move with it.
+- Counts such as `1/2` are done/total, for tabs, categories and branches, leaving out subtasks. Files shows its number of matches, or `…` while scanning.
+- The status bar under the list describes the highlighted row, such as how many of a task's subtasks are done, and the footer shows the main keys for it.
 
 Rows keep their place after edits, including marking a task done, so the list doesn't jump. The list re-sorts when it opens and when you press `r`. A new task goes after the open tasks of its group.
 
@@ -180,13 +181,14 @@ In the form:
 - Category suggests an existing category that starts with what you've typed, in grey. `tab` fills it in, `ctrl+n` / `ctrl+p` switch between the categories that match, and typing on ignores it.
 - `enter` adds a new line in Task or Details, `ctrl+enter` saves, and `esc` cancels.
 - The Branch field suggests local Git branches as you type. A name Git doesn't have is offered last, marked `not in Git`, for a branch you haven't created yet.
-- When editing, changing the category or branch moves the task. A heading left empty is removed.
+- When editing, changing the category or branch moves the task, with its subtasks. A heading left empty is removed.
+- A subtask's form has only the Task field, as a subtask keeps its task's category or branch.
 
 `c` changes just the category of a general task, without the form, with the same suggestions.
 
 #### Deleting and clearing
 
-`backspace` deletes the selected task with its details. On a category or branch row, it deletes every task in it, done or not, and the heading once nothing else is under it. The README.md group is read only.
+`backspace` deletes the selected task with its details and subtasks. On a category or branch row, it deletes every task in it, done or not, and the heading once nothing else is under it. The README.md group is read only.
 
 `X` (shift-x) clears done tasks from where you are: the opened category or branch, the whole tab, or everything in the All tasks view.
 
@@ -226,6 +228,9 @@ File and README TODOs open in `$VISUAL`, then `$EDITOR`, falling back to `vi`. V
   When a session expires, signing in again returns to the wrong page.
   Expected: return to the page the user was viewing.
 
+  - [ ] Reproduce it in a test
+  - [x] Find the redirect handler
+
 # Branches
 
 ## feature/login
@@ -235,14 +240,15 @@ File and README TODOs open in `$VISUAL`, then `$EDITOR`, falling back to `vi`. V
 
 - **Sections:** tasks before the first heading are general. `## branch-name` headings under `# Branches` are branch sections, and headings nested inside a branch stay part of it. Any other heading is a category.
 - **Categories** can contain spaces, and `Branches` is reserved. `auth`, `@auth` and `#auth` all mean the same category, and so do names differing only in case or spacing, such as `Release  Notes` and `release notes`.
-- **Details** are everything under a task until the next task or heading: paragraphs, lists, code, even indented checkboxes. The app writes them indented by two spaces.
+- **Details** are everything under a task until the next task or heading, apart from its subtasks: paragraphs, lists and code. The app writes them indented by two spaces.
+- **Subtasks** are checkboxes indented under a task, one level deep: anything indented under a subtask, checkboxes included, is its details. A subtask stays with its task, in its category or branch. A checkbox typed into the form's Details becomes a subtask.
 - **Formatting:** `**bold**`, `*italic*`, `~~strikethrough~~` and `` `code` `` show formatted in the dashboard, as do `__bold__`, `_italic_` and `~strikethrough~`. Struck-through text is greyed out too, for terminals that don't draw strikethrough, such as macOS Terminal. Underscores inside words, as in `user_id`, stay as written, and `\*` writes a literal `*`. Fenced code blocks in details show as written, and the edit form shows the Markdown itself.
 - **Priority** is a trailing `!high`, `!medium` or `!low`. Only a last word that names a priority counts, so `Ship it!` and `Fix !important CSS` stay as they are.
 - **Plain list items** such as `- Buy milk` are read as tasks, and become `- [ ] Buy milk` when edited.
 
 When the app writes a task, it re-sorts that task's section: open tasks by priority (high, medium, low, none), then done tasks.
 
-- Tasks move with their details, and tasks of equal priority keep your order.
+- Tasks move with their details and subtasks, and tasks of equal priority keep your order. Subtasks keep the order they're written in.
 - Notes above the first task and nested headings stay put, as do other sections.
 - A compact list without blank lines stays compact.
 - All other Markdown is preserved.

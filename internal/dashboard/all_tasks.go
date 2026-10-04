@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 
@@ -69,7 +68,8 @@ func (m *model) allTasksKey(key string) (tea.Cmd, bool) {
 }
 
 // sorted is tasks in the view's order: grouped by branch or category when
-// sorted by one, otherwise in the dashboard's order.
+// sorted by one, otherwise in the dashboard's order, with each task's
+// subtasks after it.
 func (v *allTasksView) sorted(tasks []store.Task) []store.Task {
 	tasks = slices.Clone(tasks)
 	slices.SortStableFunc(tasks, func(a, b store.Task) int {
@@ -95,7 +95,7 @@ func (v *allTasksView) sorted(tasks []store.Task) []store.Task {
 		}
 		return 0
 	})
-	return tasks
+	return nestSubtasks(tasks, func(t store.Task) int { return t.Line }, func(t store.Task) bool { return t.Subtask })
 }
 
 // compareGroup orders category or branch names, with tasks outside any last.
@@ -144,7 +144,7 @@ func (v *allTasksView) view(theme ui.Theme, tasks []store.Task, missing func(bra
 	tasks = v.sorted(tasks)
 	scopeWidth := min(24, max(17, innerWidth/3))
 	taskWidth := max(1, innerWidth-2-scopeWidth)
-	heading := theme.TitleStyle.Render("All tasks") + theme.MutedStyle.Render(fmt.Sprintf("  %d/%d", completedCount(tasks), len(tasks)))
+	heading := theme.TitleStyle.Render("All tasks") + theme.MutedStyle.Render("  "+countText(countTasks(tasks)))
 	sorted := theme.MutedStyle.Render("sorted by ") + lipgloss.NewStyle().Foreground(theme.ColorText).Render(string(v.sort))
 	if gap := innerWidth - ansi.StringWidth(heading) - ansi.StringWidth(sorted); gap >= 2 {
 		heading += strings.Repeat(" ", gap) + sorted
@@ -156,6 +156,12 @@ func (v *allTasksView) view(theme ui.Theme, tasks []store.Task, missing func(bra
 	start, end := ui.VisibleRange(v.cursor, len(tasks), visible)
 	if len(tasks) == 0 {
 		lines = append(lines, theme.MutedStyle.Render("No tasks in the Markdown file"))
+	}
+	parentDone := make([]bool, len(tasks)) // each subtask's task is done
+	for i, done := range tasks {
+		if done.Subtask && i > 0 {
+			parentDone[i] = parentDone[i-1] || !tasks[i-1].Subtask && tasks[i-1].Done
+		}
 	}
 	for i := start; i < end; i++ {
 		t := tasks[i]
@@ -175,9 +181,13 @@ func (v *allTasksView) view(theme ui.Theme, tasks []store.Task, missing func(bra
 			markStyle = priorityStyle(theme, t.Priority)
 		}
 		taskStyle := lipgloss.NewStyle().Foreground(theme.ColorStrong)
-		if t.Done {
+		switch {
+		case t.Done:
 			mark, markStyle, taskStyle = "✓ ", theme.MutedStyle, theme.MutedStyle
+		case parentDone[i]:
+			markStyle, taskStyle = theme.MutedStyle, theme.MutedStyle
 		}
+		mark = strings.Repeat(" ", rowIndent(t.Subtask)) + mark
 		selected := i == v.cursor
 		scopeStyle := theme.MutedStyle
 		switch {

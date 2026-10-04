@@ -112,8 +112,8 @@ func (m *model) renderTabs() string {
 		count string
 		pane  pane
 	}{
-		{"1", "General", fmt.Sprintf("%d/%d", completedCount(m.tasks.general)+completedReadmeCount(m.tasks.readme), len(m.tasks.general)+len(m.tasks.readme)), generalPane},
-		{"2", "Branches", fmt.Sprintf("%d/%d", completedCount(m.tasks.branches), len(m.tasks.branches)), branchPane},
+		{"1", "General", generalCount(m.tasks), generalPane},
+		{"2", "Branches", countText(countTasks(m.tasks.branches)), branchPane},
 		{"3", "Files", m.filesCount(), sourcePane},
 	}
 	var tabs strings.Builder
@@ -161,10 +161,16 @@ func (m *model) contextHints() []ui.KeyHint {
 	reload := ui.KeyHint{Key: "r", Label: "reload"}
 	index := ui.KeyHint{Key: "i", Label: "all tasks"}
 	remove := ui.KeyHint{Key: "⌫", Label: "delete"}
+	// A subtask keeps its task's category.
+	category := []ui.KeyHint{{Key: "c", Label: "category"}}
+	if t, ok := m.selectedTask(); ok && t.Subtask {
+		category = nil
+	}
 	_, readmeTask := m.selectedReadmeTask()
 	switch {
 	case m.all != nil:
-		hints := []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, {Key: "s", Label: "sort"}, {Key: "c", Label: "category"}, remove, {Key: "a", Label: "add"}, {Key: "b", Label: "branch task"}}
+		hints := append([]ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, {Key: "s", Label: "sort"}}, category...)
+		hints = append(hints, remove, ui.KeyHint{Key: "a", Label: "add"}, ui.KeyHint{Key: "b", Label: "branch task"})
 		return append(append(hints, m.clearHint()...), back, reload)
 	case m.focus == detailPane && readmeTask:
 		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "open file"}, back}
@@ -175,7 +181,8 @@ func (m *model) contextHints() []ui.KeyHint {
 	case m.focus == detailPane && m.activePane() == branchPane:
 		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, remove, back}
 	case m.focus == detailPane:
-		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, {Key: "c", Label: "category"}, remove, back}
+		hints := append([]ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}}, category...)
+		return append(hints, remove, back)
 	case m.focus == sourcePane && m.files.Details():
 		return m.files.Hints()
 	case m.focus == sourcePane:
@@ -194,7 +201,7 @@ func (m *model) contextHints() []ui.KeyHint {
 	}
 	hints := []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}}
 	if m.focus == generalPane {
-		hints = append(hints, ui.KeyHint{Key: "c", Label: "category"})
+		hints = append(hints, category...)
 	}
 	hints = append(hints, remove, ui.KeyHint{Key: "a", Label: "add"})
 	if m.focus == generalPane {
@@ -249,20 +256,69 @@ func (m *model) panelStatus() string {
 	return status + m.theme.MutedStyle.Render("  ·  ") + warning
 }
 
-// selectionStatus describes the selected row: a task's state, or how much of
-// a group is done.
+// selectionStatus describes the selected row: a task's state, with how
+// many of its subtasks are done, or how much of a group is done.
 func (m *model) selectionStatus() string {
 	if readme, ok := m.selectedReadmeTask(); ok {
-		return readmeTaskStatus(m.theme, readme)
+		return readmeTaskStatus(m.theme, readme) + m.subtaskStatus()
 	}
 	row, ok := m.selectedNavigationRow()
 	switch {
 	case !ok:
 		return ""
 	case row.kind == rowTask:
-		return taskStatus(m.theme, row.todo)
+		return taskStatus(m.theme, row.todo) + m.subtaskStatus()
 	}
 	return m.theme.MutedStyle.Render(fmt.Sprintf("%d of %d done", row.completed, row.count))
+}
+
+// subtaskStatus says how many of the selected task's subtasks are done, or
+// nothing for a task without any.
+func (m *model) subtaskStatus() string {
+	done, total := m.selectedSubtasks()
+	if total == 0 {
+		return ""
+	}
+	return m.theme.MutedStyle.Render(fmt.Sprintf("  ·  %d of %d subtasks done", done, total))
+}
+
+// selectedSubtasks is how many of the selected task's subtasks are done, and
+// how many it has: the subtask rows that follow it. A subtask has none.
+func (m *model) selectedSubtasks() (done, total int) {
+	if m.all != nil {
+		tasks := m.all.sorted(m.tasks.all)
+		if m.all.cursor >= len(tasks) || tasks[m.all.cursor].Subtask {
+			return 0, 0
+		}
+		for _, t := range tasks[m.all.cursor+1:] {
+			if !t.Subtask {
+				break
+			}
+			total++
+			if t.Done {
+				done++
+			}
+		}
+		return done, total
+	}
+	l := m.list(m.activePane())
+	if l == nil {
+		return 0, 0
+	}
+	rows := m.rows(m.activePane())
+	if l.cursor >= len(rows) || rows[l.cursor].isTask() && rows[l.cursor].subtask() {
+		return 0, 0
+	}
+	for _, row := range rows[l.cursor+1:] {
+		if !row.isTask() || !row.subtask() {
+			break
+		}
+		total++
+		if row.done() {
+			done++
+		}
+	}
+	return done, total
 }
 
 func taskStatus(theme ui.Theme, t store.Task) string {
@@ -304,6 +360,7 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 			switch {
 			case !row.isTask():
 				completed, count = completed+row.completed, count+row.count
+			case row.subtask():
 			case row.done():
 				completed, count = completed+1, count+1
 			default:
@@ -339,7 +396,7 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 		}
 		switch item.kind {
 		case rowTask:
-			lines = append(lines, renderTaskRow(m.theme, item.todo, innerWidth, selected))
+			lines = append(lines, renderTaskRow(m.theme, item, innerWidth, selected))
 		case rowReadmeTask:
 			lines = append(lines, renderReadmeTaskRow(m.theme, item, innerWidth, levelWidth, selected))
 		default:
@@ -378,8 +435,10 @@ func renderGroupRow(theme ui.Theme, item navigationRow, width int, selected, cur
 	return row.Render(theme, width, selected)
 }
 
-// renderTaskRow shows a todo.md task with its priority.
-func renderTaskRow(theme ui.Theme, t store.Task, width int, selected bool) string {
+// renderTaskRow shows a todo.md task row with its priority. A subtask is
+// indented, and greyed out while its task is done.
+func renderTaskRow(theme ui.Theme, row navigationRow, width int, selected bool) string {
+	t := row.todo
 	mark, markStyle := priorityMark(t.Priority), theme.MutedStyle
 	if t.Priority != store.PriorityNone {
 		markStyle = priorityStyle(theme, t.Priority)
@@ -388,7 +447,27 @@ func renderTaskRow(theme ui.Theme, t store.Task, width int, selected bool) strin
 	if strings.TrimSpace(t.Details) != "" {
 		suffix = "⋯"
 	}
-	return taskRow{mark: mark, markStyle: markStyle, text: t.Text, suffix: suffix, done: t.Done}.Render(theme, width, selected)
+	return taskRow{indent: rowIndent(t.Subtask), mark: mark, markStyle: markStyle, text: t.Text, suffix: suffix, done: t.Done, muted: row.parentDone}.Render(theme, width, selected)
+}
+
+// rowIndent is the indent of a subtask's row under its task's.
+func rowIndent(subtask bool) int {
+	if subtask {
+		return subtaskIndent
+	}
+	return 0
+}
+
+// generalCount is General's count: its tasks and README.md's, done of all.
+func generalCount(tasks taskSet) string {
+	done, total := countTasks(tasks.general)
+	readmeDone, readmeTotal := countReadmeTasks(tasks.readme)
+	return countText(done+readmeDone, total+readmeTotal)
+}
+
+// countText writes a count as "done/total".
+func countText(done, total int) string {
+	return fmt.Sprintf("%d/%d", done, total)
 }
 
 // renderReadmeTaskRow shows a README task row with its level in a column
@@ -405,11 +484,7 @@ func renderReadmeTaskRow(theme ui.Theme, row navigationRow, width, levelWidth in
 	if t.Details != "" {
 		suffix = "⋯"
 	}
-	indent := 0
-	if t.Subtask {
-		indent = subtaskIndent
-	}
-	return taskRow{indent: indent, mark: mark, markStyle: markStyle, markWidth: levelWidth, text: t.Text, suffix: suffix, done: t.Done, muted: row.parentDone}.Render(theme, width, selected)
+	return taskRow{indent: rowIndent(t.Subtask), mark: mark, markStyle: markStyle, markWidth: levelWidth, text: t.Text, suffix: suffix, done: t.Done, muted: row.parentDone}.Render(theme, width, selected)
 }
 
 // subtaskIndent is how far a subtask's row is indented under its parent's.

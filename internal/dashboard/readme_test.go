@@ -347,9 +347,13 @@ func TestReadmeSubtasksShowUnderTheirParents(t *testing.T) {
 	}
 	// Subtasks follow their parent, open ones first, one level in however
 	// deep they're nested; the most urgent task, Deep sub, doesn't leave it.
-	want := `General › README\.md  2/7 *│\n│ *│\n│ 1 Parent +│\n│   0 Deep sub +│\n│   · First sub +│\n│   ✓ Done sub +│\n│ · Other +│\n│ ✓ Finished parent +│\n│   · Open under finished +│`
+	// The count leaves out subtasks.
+	want := `General › README\.md  1/3 *│\n│ *│\n│ 1 Parent +│\n│   0 Deep sub +│\n│   · First sub +│\n│   ✓ Done sub +│\n│ · Other +│\n│ ✓ Finished parent +│\n│   · Open under finished +│`
 	if !regexp.MustCompile(want).MatchString(view()) {
 		t.Fatalf("README rows are not grouped under their parents:\n%s", view())
+	}
+	if status := ansi.Strip(m.panelStatus()); status != "Open  ·  README.md:3  ·  1 of 3 subtasks done" {
+		t.Fatalf("parent status = %q", status)
 	}
 	raw := m.renderNavigationPane(m.rows(generalPane), m.general.cursor, generalPane, 60, 20)
 	muted := func(text string) bool { return strings.Contains(raw, m.theme.Inline(text, m.theme.MutedStyle)) }

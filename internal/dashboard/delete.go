@@ -12,8 +12,9 @@ import (
 // deleteConfirmation is a planned delete of one task with its details, or of
 // every task in a category or branch, waiting for the user to confirm it.
 type deleteConfirmation struct {
-	removal store.Removal
-	group   string // the category or branch that goes, such as the "docs" category, or "" for one task
+	removal  store.Removal
+	group    string // the category or branch that goes, such as the "docs" category, or "" for one task
+	subtasks int    // how many subtasks go with one task
 }
 
 // startDelete asks to delete the selected task of todo.md, or every task of
@@ -43,7 +44,8 @@ func (m *model) startDelete() {
 		m.status = errorStatus(err)
 		return
 	}
-	m.overlay = &deleteConfirmation{removal: removal}
+	_, subtasks := m.selectedSubtasks()
+	m.overlay = &deleteConfirmation{removal: removal, subtasks: subtasks}
 	m.status = ""
 }
 
@@ -87,12 +89,24 @@ func (d deleteConfirmation) render(theme ui.Theme) string {
 		title := fmt.Sprintf("Delete %s and its %s?", d.group, taskCount(len(d.removal.Tasks)))
 		return renderConfirmation(theme, title, []string{openAndDone(d.removal.Tasks)}, "delete")
 	}
-	var details string
-	if strings.TrimSpace(d.removal.Tasks[0].Details) != "" {
-		details = "Its details go too."
-	}
 	title := fmt.Sprintf("Delete \"%s\"?", d.text())
-	return renderConfirmation(theme, title, []string{details, emptiedGroups(d.removal)}, "delete")
+	return renderConfirmation(theme, title, []string{d.goesWithIt(), emptiedGroups(d.removal)}, "delete")
+}
+
+// goesWithIt names what a task takes with it, as in "Its details and 2
+// subtasks go too.", or is "" for a task with neither.
+func (d deleteConfirmation) goesWithIt() string {
+	var parts []string
+	if strings.TrimSpace(d.removal.Tasks[0].Details) != "" {
+		parts = append(parts, "details")
+	}
+	if d.subtasks > 0 {
+		parts = append(parts, ui.Plural(d.subtasks, "subtask", "subtasks"))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Its " + strings.Join(parts, " and ") + " go too."
 }
 
 // openAndDone counts tasks as "2 open, 1 done", leaving out a count of none.

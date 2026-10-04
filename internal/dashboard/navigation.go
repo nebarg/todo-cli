@@ -31,7 +31,7 @@ type navigationRow struct {
 	missingGitBranch bool
 	todo             store.Task       // a rowTask's task
 	readme           store.ReadmeTask // a rowReadmeTask's task
-	parentDone       bool             // a README subtask's parent is done, so it shows greyed out
+	parentDone       bool             // a subtask's task is done, so it shows greyed out
 }
 
 // isTask reports whether row is a task of todo.md or README.md, not a group.
@@ -45,6 +45,22 @@ func (r navigationRow) done() bool {
 		return r.readme.Done
 	}
 	return r.todo.Done
+}
+
+// line is a task row's line in its file.
+func (r navigationRow) line() int {
+	if r.kind == rowReadmeTask {
+		return r.readme.Line
+	}
+	return r.todo.Line
+}
+
+// subtask reports whether a task row's task is a subtask.
+func (r navigationRow) subtask() bool {
+	if r.kind == rowReadmeTask {
+		return r.readme.Subtask
+	}
+	return r.todo.Subtask
 }
 
 // group is a category, a branch or the README.md group, opened from the top
@@ -150,14 +166,33 @@ func completedCount(tasks []store.Task) int {
 	return count
 }
 
-func completedReadmeCount(tasks []store.ReadmeTask) int {
-	count := 0
+// countTasks is how many of tasks are done, and how many there are, as the
+// dashboard's counts show them: leaving out subtasks.
+func countTasks(tasks []store.Task) (done, total int) {
 	for _, t := range tasks {
+		if t.Subtask {
+			continue
+		}
+		total++
 		if t.Done {
-			count++
+			done++
 		}
 	}
-	return count
+	return done, total
+}
+
+// countReadmeTasks is countTasks for README tasks.
+func countReadmeTasks(tasks []store.ReadmeTask) (done, total int) {
+	for _, t := range tasks {
+		if t.Subtask {
+			continue
+		}
+		total++
+		if t.Done {
+			done++
+		}
+	}
+	return done, total
 }
 
 // generalRows lists General: at the top, its categories, the README.md group
@@ -175,7 +210,7 @@ func generalRows(general []store.Task, readme []store.ReadmeTask, open group) []
 	completed := make(map[string]int)
 	display := make(map[string]string)
 	for _, t := range general {
-		if t.Category == "" {
+		if t.Category == "" || t.Subtask {
 			continue
 		}
 		key := strings.ToLower(t.Category)
@@ -192,7 +227,8 @@ func generalRows(general []store.Task, readme []store.ReadmeTask, open group) []
 		rows = append(rows, navigationRow{kind: rowCategory, name: display[key], count: counts[key], completed: completed[key]})
 	}
 	if len(readme) > 0 {
-		rows = append(rows, navigationRow{kind: rowReadme, name: readmeGroup, count: len(readme), completed: completedReadmeCount(readme)})
+		completed, count := countReadmeTasks(readme)
+		rows = append(rows, navigationRow{kind: rowReadme, name: readmeGroup, count: count, completed: completed})
 	}
 	return append(rows, taskRows(general, func(t store.Task) bool { return t.Category == "" })...)
 }
@@ -206,6 +242,9 @@ func branchRows(branches []store.Task, open group, missing func(branch string) b
 	counts := make(map[string]int)
 	completed := make(map[string]int)
 	for _, t := range branches {
+		if t.Subtask {
+			continue
+		}
 		counts[t.Branch]++
 		if t.Done {
 			completed[t.Branch]++
@@ -218,7 +257,8 @@ func branchRows(branches []store.Task, open group, missing func(branch string) b
 	return rows
 }
 
-// taskRows is a row for each task keep accepts, in the dashboard's order.
+// taskRows is a row for each task keep accepts, in the dashboard's order,
+// with each task's subtasks after it.
 func taskRows(tasks []store.Task, keep func(store.Task) bool) []navigationRow {
 	var rows []navigationRow
 	for _, t := range tasks {
@@ -226,7 +266,51 @@ func taskRows(tasks []store.Task, keep func(store.Task) bool) []navigationRow {
 			rows = append(rows, navigationRow{kind: rowTask, todo: t})
 		}
 	}
+	return nestedRows(rows)
+}
+
+// nestedRows puts each subtask's row after its task's, noting those whose
+// task is done.
+func nestedRows(rows []navigationRow) []navigationRow {
+	rows = nestSubtasks(rows, navigationRow.line, navigationRow.subtask)
+	parentDone := false
+	for i, row := range rows {
+		if row.subtask() {
+			rows[i].parentDone = parentDone
+		} else {
+			parentDone = row.done()
+		}
+	}
 	return rows
+}
+
+// nestSubtasks orders items for a list: each item that isn't a subtask, in
+// the order given, followed by its subtasks in the order given. A subtask's
+// task is the last item before it in its file that isn't a subtask.
+func nestSubtasks[T any](items []T, line func(T) int, subtask func(T) bool) []T {
+	inFile := slices.SortedFunc(slices.Values(items), func(a, b T) int { return cmp.Compare(line(a), line(b)) })
+	parents := make(map[int]int) // each subtask's line to its task's
+	parent := -1
+	for _, item := range inFile {
+		if subtask(item) {
+			parents[line(item)] = parent
+		} else {
+			parent = line(item)
+		}
+	}
+	children := make(map[int][]T)
+	for _, item := range items {
+		if subtask(item) {
+			children[parents[line(item)]] = append(children[parents[line(item)]], item)
+		}
+	}
+	nested := make([]T, 0, len(items))
+	for _, item := range items {
+		if !subtask(item) {
+			nested = append(append(nested, item), children[line(item)]...)
+		}
+	}
+	return nested
 }
 
 // readmeRows lists the README.md group: a row for each heading inside its
@@ -236,7 +320,7 @@ func readmeRows(tasks []store.ReadmeTask) []navigationRow {
 	index := make(map[string]int)     // each heading's row
 	firstLine := make(map[string]int) // each heading's first task, to order the rows by
 	for _, t := range tasks {
-		if t.Heading == "" {
+		if t.Heading == "" || t.Subtask {
 			continue
 		}
 		i, ok := index[t.Heading]
@@ -257,40 +341,13 @@ func readmeRows(tasks []store.ReadmeTask) []navigationRow {
 // readmeTaskRows is a row for each README task under heading, in the
 // dashboard's order, with each task's subtasks after it.
 func readmeTaskRows(tasks []store.ReadmeTask, heading string) []navigationRow {
-	parents := readmeParents(tasks)
-	subtasks := make(map[int][]store.ReadmeTask) // by their parent's line
-	for _, t := range tasks {
-		if t.Heading == heading && t.Subtask {
-			subtasks[parents[t.Line]] = append(subtasks[parents[t.Line]], t)
-		}
-	}
 	var rows []navigationRow
 	for _, t := range tasks {
-		if t.Heading != heading || t.Subtask {
-			continue
-		}
-		rows = append(rows, navigationRow{kind: rowReadmeTask, readme: t})
-		for _, sub := range subtasks[t.Line] {
-			rows = append(rows, navigationRow{kind: rowReadmeTask, readme: sub, parentDone: t.Done})
+		if t.Heading == heading {
+			rows = append(rows, navigationRow{kind: rowReadmeTask, readme: t})
 		}
 	}
-	return rows
-}
-
-// readmeParents maps each subtask's line to its parent's line: the last task
-// before it in the README that isn't a subtask.
-func readmeParents(tasks []store.ReadmeTask) map[int]int {
-	inFile := slices.SortedFunc(slices.Values(tasks), func(a, b store.ReadmeTask) int { return cmp.Compare(a.Line, b.Line) })
-	parents := make(map[int]int)
-	parent := -1
-	for _, t := range inFile {
-		if t.Subtask {
-			parents[t.Line] = parent
-		} else {
-			parent = t.Line
-		}
-	}
-	return parents
+	return nestedRows(rows)
 }
 
 func (m *model) branchMissing(name string) bool {
@@ -357,7 +414,7 @@ func (m *model) reveal(t store.Task) {
 func nearestTask(tasks []store.Task, t store.Task) int {
 	best, bestDiffers, distance := -1, math.MaxInt, math.MaxInt
 	for i, candidate := range tasks {
-		if candidate.Text != t.Text || !candidate.Same(t.Section) {
+		if candidate.Text != t.Text || !candidate.Same(t.Section) || candidate.Subtask != t.Subtask {
 			continue
 		}
 		differs := 0

@@ -73,6 +73,8 @@ func plural(n int, one, many string) string {
 // Removal is a planned deletion of tasks. Apply writes it, and Undo puts
 // the file back as long as nothing else has changed it in between.
 type Removal struct {
+	// Tasks are the tasks removed, leaving out subtasks that go with their
+	// task.
 	Tasks      []Task
 	Categories []string
 	Branches   []string
@@ -92,7 +94,7 @@ func PlanRemove(path string, tasks []Task) (Removal, error) {
 	if err != nil {
 		return Removal{}, err
 	}
-	r := Removal{Tasks: slices.Clone(tasks), path: path, before: string(data), mode: info.Mode().Perm()}
+	r := Removal{Tasks: withoutNested(tasks), path: path, before: string(data), mode: info.Mode().Perm()}
 	// Removing from the bottom up keeps the line numbers of the tasks and
 	// headings still to come valid.
 	slices.SortFunc(r.Tasks, func(a, b Task) int { return cmp.Compare(b.Line, a.Line) })
@@ -140,6 +142,14 @@ func (r Removal) replace(expected, updated string) error {
 		return ErrFileChanged
 	}
 	return replaceFile(r.path, []byte(updated), r.mode)
+}
+
+// withoutNested is tasks without those inside another of them, such as a
+// subtask of a task also given, which goes with it.
+func withoutNested(tasks []Task) []Task {
+	return slices.DeleteFunc(slices.Clone(tasks), func(t Task) bool {
+		return slices.ContainsFunc(tasks, func(other Task) bool { return other.Line < t.Line && t.Line < other.bodyEnd })
+	})
 }
 
 func removeEmptyBranchesHeading(lines []string) []string {

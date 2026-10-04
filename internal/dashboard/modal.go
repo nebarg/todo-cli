@@ -66,7 +66,7 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 			m.status = "Select a Markdown task to edit"
 			return nil
 		}
-		if selected.Branch != "" {
+		if selected.Branch != "" && !selected.Subtask {
 			modal.branches, check = m.localBranches, m.checkBranches()
 		}
 		modal.selected = selected
@@ -174,9 +174,9 @@ func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 		case completeCategory(&f.scope):
 			return f, nil, nil
 		}
-		return f, nil, f.focusField((f.field + 1) % (detailsField + 1))
+		return f, nil, f.focusField((f.field + 1) % (f.lastField() + 1))
 	case "shift+tab":
-		return f, nil, f.focusField((f.field + detailsField) % (detailsField + 1))
+		return f, nil, f.focusField((f.field + f.lastField()) % (f.lastField() + 1))
 	case "down":
 		if f.branchScope() && f.field == scopeField {
 			if count := len(f.branchChoices()); count > 0 {
@@ -187,7 +187,7 @@ func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 		if f.field == titleField && f.title.Line() < strings.Count(f.title.Value(), "\n") {
 			break
 		}
-		if f.field < detailsField {
+		if f.field < f.lastField() {
 			return f, nil, f.focusField(f.field + 1)
 		}
 	case "enter":
@@ -263,7 +263,21 @@ func (f *taskModal) paste(msg tea.PasteMsg) tea.Cmd {
 // branchScope is true when the task is filed under a branch, so the scope
 // field picks a local branch rather than taking a category.
 func (f *taskModal) branchScope() bool {
-	return f.mode == modalAddBranch || f.mode == modalEdit && f.selected.Branch != ""
+	return !f.subtaskForm() && (f.mode == modalAddBranch || f.mode == modalEdit && f.selected.Branch != "")
+}
+
+// subtaskForm is true for a subtask's form, which has only the Task field: a
+// subtask keeps its task's category or branch, and has no details to edit.
+func (f *taskModal) subtaskForm() bool {
+	return f.mode == modalEdit && f.selected.Subtask
+}
+
+// lastField is the form's last field: Details, or Task in a subtask's form.
+func (f *taskModal) lastField() int {
+	if f.subtaskForm() {
+		return titleField
+	}
+	return detailsField
 }
 
 func (f *taskModal) focusField(field int) tea.Cmd {
@@ -284,6 +298,9 @@ func (f *taskModal) focusField(field int) tea.Cmd {
 }
 
 func (f *taskModal) save() error {
+	if f.subtaskForm() {
+		return store.Edit(f.file, f.selected, f.taskTitle(), f.selected.Details, f.selected.Section)
+	}
 	if f.branchScope() {
 		f.target.Branch = f.chosenBranch()
 		if f.target.Branch == "" {
@@ -300,7 +317,7 @@ func (f *taskModal) save() error {
 
 // saved describes the task save wrote, for the model to follow.
 func (f *taskModal) saved() taskSavedMsg {
-	task := store.Task{Text: f.taskTitle(), Section: f.target, Line: f.selected.Line, Done: f.selected.Done, Priority: f.selected.Priority}
+	task := store.Task{Text: f.taskTitle(), Section: f.target, Line: f.selected.Line, Done: f.selected.Done, Priority: f.selected.Priority, Subtask: f.selected.Subtask}
 	moved := f.mode == modalEdit && !f.target.Same(f.selected.Section)
 	return taskSavedMsg{task: task, added: f.mode != modalEdit, moved: moved}
 }
@@ -439,14 +456,24 @@ func (f *taskModal) branchSuggestions(theme ui.Theme, width int) []string {
 
 func (f *taskModal) dimensions(width, height int) (int, int) {
 	modalHeight := min(height-4, 20)
-	if f.branchScope() {
+	switch {
+	case f.subtaskForm():
+		modalHeight = min(height, subtaskFormHeight)
+	case f.branchScope():
 		modalHeight = min(height, max(modalHeight, 13))
 	}
 	return min(width-2, 76), modalHeight
 }
 
+// subtaskFormHeight fits a subtask's form, with its spacer lines, in its
+// border.
+const subtaskFormHeight = 8
+
 // isCompact drops spacer lines so add forms still fit short terminals.
 func (f *taskModal) isCompact(height int) bool {
+	if f.subtaskForm() {
+		return height < subtaskFormHeight
+	}
 	return height < 15 || f.branchScope() && height < 18
 }
 
@@ -496,6 +523,13 @@ func (f *taskModal) contentLines(theme ui.Theme, width, height int) []string {
 		gap()
 	}
 	add(f.field == titleField, ui.OnBackground(f.title.View(), theme.ColorField))
+	if f.subtaskForm() {
+		if !compact {
+			gap()
+		}
+		add(false, f.footer(theme, innerWidth))
+		return lines
+	}
 	if !f.branchScope() || !compact {
 		gap()
 	}
@@ -519,17 +553,21 @@ func (f *taskModal) contentLines(theme ui.Theme, width, height int) []string {
 }
 
 func (f *taskModal) breadcrumb() []string {
+	edit := "Edit task"
+	if f.subtaskForm() {
+		edit = "Edit subtask"
+	}
 	switch {
 	case f.mode == modalAddGeneral:
 		return []string{"General", "New task"}
 	case f.mode == modalAddBranch:
 		return []string{"Branches", "New task"}
 	case f.selected.Branch != "":
-		return []string{"Branches", branchIcon + " " + f.selected.Branch, "Edit task"}
+		return []string{"Branches", branchIcon + " " + f.selected.Branch, edit}
 	case f.selected.Category != "":
-		return []string{"General", "@" + f.selected.Category, "Edit task"}
+		return []string{"General", "@" + f.selected.Category, edit}
 	}
-	return []string{"General", "Edit task"}
+	return []string{"General", edit}
 }
 
 func (f *taskModal) label(theme ui.Theme, name string, field int) string {
@@ -544,6 +582,9 @@ func (f *taskModal) footer(theme ui.Theme, width int) string {
 		return errorText(theme, f.err, width)
 	}
 	hints := []ui.KeyHint{{Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}, {Key: "tab", Label: "next field"}}
+	if f.subtaskForm() {
+		hints = hints[:2]
+	}
 	if f.field == scopeField && canCompleteCategory(f.scope) {
 		hints = []ui.KeyHint{completeHint, {Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}}
 	}

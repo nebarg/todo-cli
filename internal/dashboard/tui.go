@@ -327,6 +327,10 @@ func (m *model) readmeSelected() bool {
 	return m.general.open.inReadme() && m.all == nil && m.activePane() == generalPane
 }
 
+// subtaskStaysPut is the status for c on a subtask, which goes wherever its
+// task does.
+const subtaskStaysPut = "A subtask keeps its task's category; c on the task moves both"
+
 // readmeReadOnly is the status for anything but done and reopen on a README
 // task; the README is edited in an editor.
 const readmeReadOnly = "README.md tasks can only be marked done or reopened; e opens the file"
@@ -557,11 +561,11 @@ func preserveTaskOrder(previous, loaded, changed []store.Task) []store.Task {
 	}
 	type key struct {
 		text, branch, category string
-		done                   bool
+		done, subtask          bool
 		priority               store.Priority
 	}
 	identity := func(item store.Task) key {
-		return key{item.Text, item.Branch, strings.ToLower(item.Category), item.Done, item.Priority}
+		return key{item.Text, item.Branch, strings.ToLower(item.Category), item.Done, item.Subtask, item.Priority}
 	}
 	positions := make(map[key][]int, len(loaded))
 	for i, item := range loaded {
@@ -595,7 +599,7 @@ func preserveTaskOrder(previous, loaded, changed []store.Task) []store.Task {
 		}
 		best, distance := -1, math.MaxInt
 		for i, candidate := range loaded {
-			if used[i] || !candidate.Same(old.Section) {
+			if used[i] || !candidate.Same(old.Section) || candidate.Subtask != old.Subtask {
 				continue
 			}
 			if d := abs(candidate.Line - old.Line); d < distance {

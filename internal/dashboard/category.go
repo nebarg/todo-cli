@@ -36,6 +36,10 @@ func (m *model) startCategoryInput() tea.Cmd {
 		m.status = "Select a Markdown task to edit its category"
 		return nil
 	}
+	if selected.Subtask {
+		m.status = subtaskStaysPut
+		return nil
+	}
 	if selected.Branch != "" {
 		m.status = "Categories are only for general tasks"
 		return nil

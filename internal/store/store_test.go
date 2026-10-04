@@ -306,11 +306,12 @@ func TestTaskDetailsAreParsedAndPreserved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tasks) != 3 {
-		t.Fatalf("got %d tasks, want 3: %+v", len(tasks), tasks)
+	if len(tasks) != 4 {
+		t.Fatalf("got %d tasks, want 4: %+v", len(tasks), tasks)
 	}
-	wantDetails := "When a session expires, return to the previous page.\n\n- [ ] Add a regression test"
-	if tasks[0].Details != wantDetails || tasks[2].Details != "Branch-specific context." {
+	// The indented checkbox is a subtask, not part of the details.
+	wantDetails := "When a session expires, return to the previous page."
+	if tasks[0].Details != wantDetails || !tasks[1].Subtask || tasks[1].Text != "Add a regression test" || tasks[3].Details != "Branch-specific context." {
 		t.Fatalf("parsed details: %+v", tasks)
 	}
 	if err := SetPriority(path, tasks[0], "low"); err != nil {
@@ -324,7 +325,7 @@ func TestTaskDetailsAreParsedAndPreserved(t *testing.T) {
 		t.Fatalf("details changed while editing priority: %s", updated)
 	}
 	tasks, err = Load(path)
-	if err != nil || len(tasks) != 3 {
+	if err != nil || len(tasks) != 4 {
 		t.Fatalf("reloaded details: %v, %+v", err, tasks)
 	}
 	var selected Task
@@ -370,16 +371,17 @@ func TestEditTaskContentPreservesMetadataAndOtherTasks(t *testing.T) {
 			t.Fatalf("missing %q after edit: %s", want, updated)
 		}
 	}
+	// A checkbox written into the details reads back as a subtask, which
+	// clearing the details leaves alone.
 	tasks, err = Load(path)
-	if err != nil || len(tasks) != 2 || tasks[0].Priority != "high" || tasks[0].Details != "New context.\n\n- [ ] Nested step" {
+	if err != nil || len(tasks) != 3 || tasks[0].Priority != "high" || tasks[0].Details != "New context." || !tasks[1].Subtask || tasks[1].Text != "Nested step" {
 		t.Fatalf("reloaded tasks: %v, %+v", err, tasks)
 	}
 	if err := Edit(path, tasks[0], "Renamed task", "", tasks[0].Section); err != nil {
 		t.Fatal(err)
 	}
-	tasks, err = Load(path)
-	if err != nil || len(tasks) != 2 || tasks[0].Details != "" {
-		t.Fatalf("details were not removed: %v, %+v", err, tasks)
+	if got, want := readFile(t, path), "## General\n\n- [ ] Renamed task !high\n  - [ ] Nested step\n\n- [ ] Second task\n"; got != want {
+		t.Fatalf("after clearing the details:\n%q\nwant\n%q", got, want)
 	}
 }
 

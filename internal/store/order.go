@@ -7,12 +7,13 @@ import (
 
 // sortSection orders the tasks of section s: open tasks by priority, then
 // done tasks, keeping the file's order among equals. Each task moves with its
-// details; notes above the first task and nested headings stay where they are.
+// details and subtasks, which keep their order; notes above the first task
+// and nested headings stay where they are.
 func sortSection(content string, s Section) string {
 	lines := strings.Split(content, "\n")
 	var runs [][]Task
 	for _, t := range parseTasks(lines) {
-		if !t.Same(s) {
+		if t.Subtask || !t.Same(s) {
 			continue
 		}
 		if n := len(runs); n > 0 && runs[n-1][len(runs[n-1])-1].bodyEnd == t.Line {

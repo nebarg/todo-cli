@@ -28,7 +28,12 @@ type Task struct {
 	Done bool
 	Section
 	Priority Priority
-	Details  string
+	// Details is the text under the task, without its subtasks.
+	Details string
+	// Subtask is true for a checkbox indented under another task, whose
+	// section it shares. Its task is the last one before it that isn't a
+	// subtask, and the lines indented under it are its details.
+	Subtask bool
 
 	raw          string
 	categoryLine int
@@ -131,8 +136,6 @@ func parseTasks(lines []string) []Task {
 		t.Text, t.Priority = SplitPriority(strings.TrimSuffix(parts[3], "\r"))
 		indent := taskIndent(raw)
 		j := i + 1
-		t.bodyStart = j
-		start := j
 		for ; j < len(lines); j++ {
 			line := strings.TrimSuffix(lines[j], "\r")
 			if _, _, heading := parseHeading(line); heading {
@@ -142,25 +145,91 @@ func parseTasks(lines []string) []Task {
 				break
 			}
 		}
-		t.bodyEnd = j
+		t.bodyStart, t.bodyEnd = i+1, j
 		t.bodyRaw = slices.Clone(lines[t.bodyStart:t.bodyEnd])
-		end := j
-		for start < end && strings.TrimSpace(lines[start]) == "" {
-			start++
-		}
-		for end > start && strings.TrimSpace(lines[end-1]) == "" {
-			end--
-		}
-		var body []string
-		for _, line := range lines[start:end] {
-			line = strings.TrimSuffix(line, "\r")
-			body = append(body, strings.TrimPrefix(line, indent+"  "))
-		}
-		t.Details = strings.Join(body, "\n")
+		spans := subtaskSpans(lines, t.bodyStart, t.bodyEnd)
+		t.Details = detailText(outsideSpans(lines, t.bodyStart, t.bodyEnd, spans), indent)
 		tasks = append(tasks, t)
+		for _, span := range spans {
+			tasks = append(tasks, subtask(lines, span, t))
+		}
 		i = j - 1
 	}
 	return tasks
+}
+
+// subtaskSpans finds the subtasks in lines[start:end], a task's body: each
+// checkbox item in it, from its line up to the next line indented no deeper,
+// or to the body's last line that isn't blank.
+func subtaskSpans(lines []string, start, end int) [][2]int {
+	var spans [][2]int
+	for i := start; i < end; i++ {
+		parts := taskLine.FindStringSubmatch(lines[i])
+		if parts == nil || parts[2] == "" || strings.TrimSpace(parts[3]) == "" {
+			continue
+		}
+		indent := len(taskIndent(lines[i]))
+		spanEnd := trimBlankEnd(lines, end, i+1)
+		for j := i + 1; j < spanEnd; j++ {
+			if strings.TrimSpace(lines[j]) != "" && len(taskIndent(lines[j])) <= indent {
+				spanEnd = j
+				break
+			}
+		}
+		spans = append(spans, [2]int{i, spanEnd})
+		i = spanEnd - 1
+	}
+	return spans
+}
+
+// outsideSpans is lines[start:end] without the lines of spans.
+func outsideSpans(lines []string, start, end int, spans [][2]int) []string {
+	var outside []string
+	for _, span := range spans {
+		outside = append(outside, lines[start:span[0]]...)
+		start = span[1]
+	}
+	return append(outside, lines[start:end]...)
+}
+
+// subtask is the subtask of parent on the lines span covers.
+func subtask(lines []string, span [2]int, parent Task) Task {
+	raw := lines[span[0]]
+	parts := taskLine.FindStringSubmatch(raw)
+	s := Task{
+		Line: span[0], raw: raw, Done: parts[2] == "x" || parts[2] == "X", Subtask: true,
+		Section: parent.Section, categoryLine: parent.categoryLine,
+		bodyStart: span[0] + 1, bodyEnd: span[1],
+	}
+	s.Text, s.Priority = SplitPriority(strings.TrimSuffix(parts[3], "\r"))
+	s.bodyRaw = slices.Clone(lines[s.bodyStart:s.bodyEnd])
+	s.Details = detailText(s.bodyRaw, taskIndent(raw))
+	return s
+}
+
+// detailText is a task's details from the lines under it: without the blank
+// lines around them, or the indent of the task's text.
+func detailText(lines []string, indent string) string {
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	body := make([]string, len(lines))
+	for i, line := range lines {
+		body[i] = strings.TrimPrefix(strings.TrimSuffix(line, "\r"), indent+"  ")
+	}
+	return strings.Join(body, "\n")
+}
+
+// subtaskLines is the lines of the subtasks in a task's body, as written.
+func subtaskLines(body []string) []string {
+	var lines []string
+	for _, span := range subtaskSpans(body, 0, len(body)) {
+		lines = append(lines, body[span[0]:span[1]]...)
+	}
+	return lines
 }
 
 func taskIndent(raw string) string {
@@ -224,7 +293,7 @@ func formattedDetails(details string) []string {
 
 // Edit replaces the title and details of selected, keeping its priority
 // unless title ends with a new !priority, and files it under to. A task that
-// keeps its section is edited in place.
+// keeps its section is edited in place, and its subtasks go wherever it does.
 func Edit(path string, selected Task, title, details string, to Section) error {
 	title, p := SplitPriority(strings.TrimSpace(title))
 	if title == "" || strings.ContainsAny(title, "\r\n") {
@@ -237,6 +306,9 @@ func Edit(path string, selected Task, title, details string, to Section) error {
 	if err != nil {
 		return err
 	}
+	if selected.Subtask && !to.Same(selected.Section) {
+		return errSubtaskSection
+	}
 	return rewriteTask(path, selected, func(lines []string) string {
 		if to.Same(selected.Section) {
 			return sortSection(strings.Join(editedTaskLines(lines, selected, title, details), "\n"), to)
@@ -244,6 +316,9 @@ func Edit(path string, selected Task, title, details string, to Section) error {
 		return sortSection(movedTaskLines(lines, selected, taskBlock(selected, title, details), to), to)
 	})
 }
+
+// errSubtaskSection refuses to move a subtask out from under its task.
+var errSubtaskSection = errors.New("a subtask stays with its task; move the task instead")
 
 // taskBlock is selected's lines with a new title and details, keeping the
 // original details text when it has not changed.
@@ -256,11 +331,24 @@ func taskBlock(selected Task, title, details string) []string {
 		}
 		return append(block, body...)
 	}
-	if body := formattedDetails(details); len(body) > 0 {
-		block = append(block, "")
-		block = append(block, body...)
+	return append(block, newBody(selected, details)...)
+}
+
+// newBody is the lines under selected with details in place of its own: a
+// blank line and the details, as the app writes them, then its subtasks as
+// they were.
+func newBody(selected Task, details string) []string {
+	var body []string
+	if formatted := formattedDetails(details); len(formatted) > 0 {
+		body = append(append(body, ""), formatted...)
 	}
-	return block
+	if subtasks := subtaskLines(selected.bodyRaw); len(subtasks) > 0 {
+		if len(body) > 0 {
+			body = append(body, "")
+		}
+		body = append(body, subtasks...)
+	}
+	return body
 }
 
 // movedTaskLines removes selected from lines, drops a heading it leaves empty,
@@ -280,8 +368,7 @@ func editedTaskLines(lines []string, selected Task, title, details string) []str
 	eol := lineEnding(lines)
 	if strings.Join(formattedDetails(details), "\n") == strings.Join(formattedDetails(selected.Details), "\n") {
 		updated = append(updated, selected.bodyRaw...)
-	} else if body := formattedDetails(details); len(body) > 0 {
-		updated = append(updated, eol)
+	} else if body := newBody(selected, details); len(body) > 0 {
 		updated = append(updated, withEnding(body, eol)...)
 		updated = append(updated, eol)
 	} else if selected.bodyEnd < len(lines) {
@@ -578,6 +665,9 @@ func SetPriority(path string, selected Task, p Priority) error {
 // SetCategory moves selected under the heading for category, or to the
 // general list when category is blank.
 func SetCategory(path string, selected Task, category string) error {
+	if selected.Subtask {
+		return errSubtaskSection
+	}
 	if selected.Branch != "" {
 		return errors.New("branch tasks do not have categories")
 	}

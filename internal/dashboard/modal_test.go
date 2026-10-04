@@ -657,7 +657,8 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	m = opened.(*model)
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = opened.(*model)
-	if isOpen[*taskModal](m) || len(m.tasks.general) != 1 || m.tasks.general[0].Details != "Added in modal.\n- [ ] Nested step" {
+	// The checkbox written into the details reads back as a subtask.
+	if isOpen[*taskModal](m) || len(m.tasks.general) != 2 || m.tasks.general[0].Details != "Added in modal." || !m.tasks.general[1].Subtask || m.tasks.general[1].Text != "Nested step" {
 		t.Fatalf("task was not saved: %+v", m.tasks.general)
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
@@ -669,8 +670,8 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	form(t, m).details.SetValue("Revised details.")
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = opened.(*model)
-	if len(m.tasks.general) != 1 || m.tasks.general[0].Text != "Renamed task" || m.tasks.general[0].Details != "Revised details." {
-		t.Fatalf("edit was not saved: %+v", m.tasks.general)
+	if len(m.tasks.general) != 2 || m.tasks.general[0].Text != "Renamed task" || m.tasks.general[0].Details != "Revised details." || m.tasks.general[1].Text != "Nested step" {
+		t.Fatalf("edit was not saved, or lost the subtask: %+v", m.tasks.general)
 	}
 }
 
