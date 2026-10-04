@@ -354,7 +354,7 @@ func TestPriorityReadsFromShapeAsWellAsColour(t *testing.T) {
 func TestStatusBarDescribesTheHighlightedRow(t *testing.T) {
 	m := &model{
 		theme: ui.NewTheme(true),
-		tasks: taskSet{general: []store.Task{{Text: "Loose", Priority: store.PriorityMedium}, {Text: "Filed", Category: "Docs", Done: true}, {Text: "Open filed", Category: "Docs"}}},
+		tasks: taskSet{general: []store.Task{{Text: "Loose", Priority: store.PriorityMedium}, {Text: "Open filed", Category: "Docs"}, {Text: "Filed", Category: "Docs", Done: true}}},
 		width: 80, height: 20,
 	}
 	m.files.Update(filesui.ScannedMsg{Matches: []scan.Match{{Path: "main.go", Line: 1, Text: "// TODO"}}})

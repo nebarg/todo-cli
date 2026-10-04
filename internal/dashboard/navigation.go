@@ -197,7 +197,7 @@ func branchRows(branches []store.Task, open group, missing func(branch string) b
 	return rows
 }
 
-// taskRows is a row for each task keep accepts, open tasks first.
+// taskRows is a row for each task keep accepts, in the dashboard's order.
 func taskRows(tasks []store.Task, keep func(store.Task) bool) []navigationRow {
 	var rows []navigationRow
 	for _, t := range tasks {
@@ -205,27 +205,21 @@ func taskRows(tasks []store.Task, keep func(store.Task) bool) []navigationRow {
 			rows = append(rows, navigationRow{kind: rowTask, todo: t})
 		}
 	}
-	openTasksFirst(rows)
 	return rows
 }
 
-// readmeRows is a row for each README task, open tasks first.
+// readmeRows is a row for each README task, in the dashboard's order.
 func readmeRows(tasks []store.ReadmeTask) []navigationRow {
 	rows := make([]navigationRow, len(tasks))
 	for i, t := range tasks {
 		rows[i] = navigationRow{kind: rowReadmeTask, readme: t}
 	}
-	openTasksFirst(rows)
 	return rows
 }
 
 func (m *model) branchMissing(name string) bool {
 	_, listed := slices.BinarySearch(m.localBranches, name)
 	return name != "" && m.branchesVerified && !listed
-}
-
-func openTasksFirst(rows []navigationRow) {
-	slices.SortStableFunc(rows, func(a, b navigationRow) int { return compareDone(a.done(), b.done()) })
 }
 
 // compareDone orders open tasks before done ones.
@@ -332,9 +326,13 @@ func sortedNames(counts map[string]int) []string {
 	return names
 }
 
-func sortedTasksByPriority(tasks []store.Task) []store.Task {
+// sortedTasks is tasks as the dashboard shows them after loading: open
+// tasks by priority, then done tasks by priority.
+func sortedTasks(tasks []store.Task) []store.Task {
 	sorted := slices.Clone(tasks)
-	slices.SortStableFunc(sorted, func(a, b store.Task) int { return cmp.Compare(a.Priority.Rank(), b.Priority.Rank()) })
+	slices.SortStableFunc(sorted, func(a, b store.Task) int {
+		return cmp.Or(compareDone(a.Done, b.Done), cmp.Compare(a.Priority.Rank(), b.Priority.Rank()))
+	})
 	return sorted
 }
 

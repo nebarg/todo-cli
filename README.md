@@ -153,16 +153,16 @@ A branch Git doesn't have locally, deleted or not created yet, shows as `⚠ bra
 #### Reading the list
 
 - `●` in red, yellow or cyan: high, medium or low priority. `○`: no priority.
-- `✓`: done. Done tasks sit at the end of each group.
+- `✓`: done. Done tasks sit at the end of each group once the list re-sorts.
 - `⋯` at the end of a row: the task has details. Press `→` to read them.
 - Counts such as `1/2` are done/total, for tabs, categories and branches. Files shows its number of matches, or `…` while scanning.
 - The status bar under the list describes the highlighted row, and the footer shows the main keys for it.
 
-Rows keep their place after edits. The list re-sorts when it opens and when you press `r`.
+Rows keep their place after edits, including marking a task done, so the list doesn't jump. The list re-sorts when it opens and when you press `r`. A new task goes after the open tasks of its group.
 
 #### All tasks
 
-`i` opens a full-screen list of every Markdown task, with its category (`@auth`) or branch in the last column. `s` cycles between priority, branch and category order, and `i`, `esc` or `←` returns to the dashboard. The task keys work here too, with `enter` opening the edit form.
+`i` opens a full-screen list of every Markdown task, with its category (`@auth`) or branch in the last column. `s` cycles between priority, branch and category order, keeping the dashboard's order within each, and `i`, `esc` or `←` returns to the dashboard. The task keys work here too, with `enter` opening the edit form.
 
 #### Adding and editing
 

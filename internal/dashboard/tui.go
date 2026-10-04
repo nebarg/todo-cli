@@ -496,9 +496,10 @@ func (m *model) refreshFrom(previous []store.Task) error {
 }
 
 // readTasks also drops any pending undo of a clear or delete: whatever
-// caused the reload may have changed the file since. changed is as refresh
-// takes it.
-func (m *model) readTasks(sortByPriority bool, changed []store.Task) error {
+// caused the reload may have changed the file since. With sort, the tasks
+// are sorted afresh, as at startup and on r; otherwise each keeps its place.
+// changed is as refresh takes it.
+func (m *model) readTasks(sort bool, changed []store.Task) error {
 	m.lastRemoval = nil
 	previous, hadSelection := m.selectedTask()
 	i := slices.IndexFunc(changed, func(t store.Task) bool { return t.Line == previous.Line })
@@ -510,16 +511,19 @@ func (m *model) readTasks(sortByPriority bool, changed []store.Task) error {
 	if err != nil {
 		return err
 	}
-	if sortByPriority {
-		m.tasks.setAll(sortedTasksByPriority(tasks))
-		if m.all != nil {
-			m.all.byPriority = false
-		}
+	if sort {
+		m.tasks.setAll(sortedTasks(tasks))
 	} else {
 		m.tasks.setAll(preserveTaskOrder(m.tasks.all, tasks, changed))
 	}
-	if m.tasks.readme, err = loadReadme(m.readmeFile()); err != nil {
+	readme, err := store.LoadReadme(m.readmeFile())
+	if err != nil {
 		return err
+	}
+	if sort {
+		m.tasks.readme = sortedReadme(readme)
+	} else {
+		m.tasks.readme = keepReadmeOrder(m.tasks.readme, readme)
 	}
 	// A group whose tasks have all gone closes.
 	for _, p := range []pane{generalPane, branchPane} {
@@ -543,9 +547,9 @@ func (m *model) readTasks(sortByPriority bool, changed []store.Task) error {
 // preserveTaskOrder orders loaded as previous was shown. Each task takes the
 // place of the previous task most like it: first one alike in text, section,
 // done state and priority, then any in its section, nearest its line either
-// way. Tasks without a place go last. The changed tasks, at their previous
-// lines, only get places in the second round, so an identical task left as
-// it was can't take theirs.
+// way. Tasks without a place go in as placeNew puts them. The changed tasks,
+// at their previous lines, only get places in the second round, so an
+// identical task left as it was can't take theirs.
 func preserveTaskOrder(previous, loaded, changed []store.Task) []store.Task {
 	if len(previous) == 0 || len(loaded) == 0 {
 		return loaded
@@ -610,20 +614,66 @@ func preserveTaskOrder(previous, loaded, changed []store.Task) []store.Task {
 	}
 	for i, item := range loaded {
 		if !used[i] {
-			ordered = append(ordered, item)
+			ordered = placeNew(ordered, item)
 		}
 	}
 	return ordered
 }
 
-// loadReadme reads the README's tasks with todo-system levels first, most
+// placeNew adds t, a task new to the list or moved into its section, to
+// tasks. An open task goes after the open tasks of its section, so it isn't
+// shown among the done ones; a done task goes last.
+func placeNew(tasks []store.Task, t store.Task) []store.Task {
+	afterOpen, firstDone := -1, -1
+	for i, other := range tasks {
+		switch {
+		case t.Done || !other.Same(t.Section):
+		case !other.Done:
+			afterOpen = i + 1
+		case firstDone < 0:
+			firstDone = i
+		}
+	}
+	switch {
+	case afterOpen >= 0:
+		return slices.Insert(tasks, afterOpen, t)
+	case firstDone >= 0:
+		return slices.Insert(tasks, firstDone, t)
+	}
+	return append(tasks, t)
+}
+
+// sortedReadme is README tasks as the dashboard shows them after loading:
+// open tasks, then done ones, each with todo-system levels first, most
 // urgent at the top, as the Files tab lists them.
-func loadReadme(path string) ([]store.ReadmeTask, error) {
-	tasks, err := store.LoadReadme(path)
-	slices.SortStableFunc(tasks, func(a, b store.ReadmeTask) int {
-		return cmp.Compare(level.Rank(a.Level), level.Rank(b.Level))
+func sortedReadme(tasks []store.ReadmeTask) []store.ReadmeTask {
+	sorted := slices.Clone(tasks)
+	slices.SortStableFunc(sorted, func(a, b store.ReadmeTask) int {
+		return cmp.Or(compareDone(a.Done, b.Done), cmp.Compare(level.Rank(a.Level), level.Rank(b.Level)))
 	})
-	return tasks, err
+	return sorted
+}
+
+// keepReadmeOrder orders loaded as previous was shown when it's the same
+// tasks on the same lines, as after a toggle. A README changed in other ways,
+// such as in an editor, is sorted afresh.
+func keepReadmeOrder(previous, loaded []store.ReadmeTask) []store.ReadmeTask {
+	if len(previous) != len(loaded) {
+		return sortedReadme(loaded)
+	}
+	byLine := make(map[int]store.ReadmeTask, len(loaded))
+	for _, t := range loaded {
+		byLine[t.Line] = t
+	}
+	ordered := make([]store.ReadmeTask, 0, len(loaded))
+	for _, old := range previous {
+		t, ok := byLine[old.Line]
+		if !ok || t.Text != old.Text {
+			return sortedReadme(loaded)
+		}
+		ordered = append(ordered, t)
+	}
+	return ordered
 }
 
 // taskSet is the tasks the dashboard shows, as last read.
@@ -631,7 +681,7 @@ type taskSet struct {
 	all      []store.Task       // todo.md's tasks, in the dashboard's order
 	general  []store.Task       // all's tasks without a branch
 	branches []store.Task       // all's tasks with one
-	readme   []store.ReadmeTask // README.md's tasks, most urgent first
+	readme   []store.ReadmeTask // README.md's tasks, in the dashboard's order
 }
 
 func (s *taskSet) setAll(tasks []store.Task) {

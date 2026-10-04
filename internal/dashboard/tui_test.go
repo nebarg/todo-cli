@@ -299,15 +299,15 @@ func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 		updated, _ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 		m = updated.(*model)
 	}
-	if got := indexTitles(m.all.sorted(m.tasks.all)); !strings.HasPrefix(got, "Urgent,Bare,Routine") {
-		t.Fatalf("cycling the full-list sort back to priority failed: %q", got)
+	if got := indexTitles(m.all.sorted(m.tasks.all)); !strings.HasPrefix(got, "Urgent,Routine,Bare,Another unprioritized") {
+		t.Fatalf("cycling the full-list sort back to priority moved tasks before a reload: %q", got)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = updated.(*model)
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = updated.(*model)
-	if rows := m.rows(generalPane); rows[3].todo.Text != "Routine" || rows[4].todo.Text != "Another unprioritized" || rows[5].todo.Text != "Bare" || m.general.cursor != 5 {
-		t.Fatalf("completed task did not move after open tasks while staying selected: %+v", rows)
+	if rows := m.rows(generalPane); rows[3].todo.Text != "Routine" || rows[4].todo.Text != "Bare" || !rows[4].todo.Done || rows[5].todo.Text != "Another unprioritized" || m.general.cursor != 4 {
+		t.Fatalf("completed task did not stay in place and selected: %+v", rows)
 	}
 	updated, _ = m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
 	m = updated.(*model)
@@ -461,7 +461,7 @@ func TestWritesKeepIdenticalTasksInPlace(t *testing.T) {
 		steps  []step
 	}{
 		{"done and reopened", 0, []step{
-			{"d", "- [ ] list\n\n- [ ] scan\n\n- [ ] need\n\n- [x] scan\n", []string{"list:0", "scan:2", "need:4", "scan:6✓"}, 3},
+			{"d", "- [ ] list\n\n- [ ] scan\n\n- [ ] need\n\n- [x] scan\n", []string{"scan:6✓", "list:0", "scan:2", "need:4"}, 0},
 			{"d", "- [ ] list\n\n- [ ] scan\n\n- [ ] need\n\n- [ ] scan\n", []string{"scan:6", "list:0", "scan:2", "need:4"}, 0},
 		}},
 		{"priority", 2, []step{
@@ -486,6 +486,41 @@ func TestWritesKeepIdenticalTasksInPlace(t *testing.T) {
 				if got := taskOrder(m); !slices.Equal(got, s.rows) || m.general.cursor != s.cursor {
 					t.Fatalf("after %s rows = %v with the cursor on %d, want %v on %d", s.key, got, m.general.cursor, s.rows, s.cursor)
 				}
+			}
+		})
+	}
+}
+
+func TestNewTasksGoAboveDoneTasksUntilReload(t *testing.T) {
+	titles := func(m *model) string {
+		var names []string
+		for _, row := range m.rows(generalPane) {
+			names = append(names, row.todo.Text)
+		}
+		return strings.Join(names, ",")
+	}
+	for _, item := range []struct{ name, content, want string }{
+		{"after the open tasks", "# auth\n\n- [ ] One\n- [ ] Two\n- [x] Done\n", "One,Two,New,Done"},
+		{"before the done tasks", "# auth\n\n- [x] Done\n", "New,Done"},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "todo.md")
+			if err := os.WriteFile(path, []byte(item.content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			m, err := newModel(path, project.Context{}, testFiles())
+			if err != nil {
+				t.Fatal(err)
+			}
+			m = press(m, "enter")
+			m = press(m, "a")
+			form(t, m).title.SetValue("New")
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+			if got := titles(m); got != item.want {
+				t.Fatalf("rows after adding = %q, want %q", got, item.want)
+			}
+			if selected, ok := m.selectedTask(); !ok || selected.Text != "New" {
+				t.Fatalf("new task not selected: %+v", selected)
 			}
 		})
 	}

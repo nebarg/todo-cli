@@ -69,8 +69,8 @@ func TestReadmeTasksOpenFromGeneralAndOnlyToggle(t *testing.T) {
 	}
 	m.general.cursor = 1
 	pressKey(t, m, "right")
-	if got := readmeTitles(m.tasks.readme); got != "Urgent,Later,Finished,Write docs" {
-		t.Fatalf("README tasks are not in level order: %q", got)
+	if got := readmeTitles(m.tasks.readme); got != "Urgent,Later,Write docs,Finished" {
+		t.Fatalf("README tasks are not open then done, each in level order: %q", got)
 	}
 	view := ansi.Strip(m.renderNavigationPane(m.rows(generalPane), m.general.cursor, generalPane, 60, 20))
 	for _, want := range []string{`General › README\.md  1/4`, `\n│ 00 Urgent`, `\n│ 1  Later`, `\n│ ·  Write docs`, `\n│ ✓  Finished`} {
@@ -98,10 +98,18 @@ func TestReadmeTasksOpenFromGeneralAndOnlyToggle(t *testing.T) {
 	}
 	pressKey(t, m, "left")
 
-	// Done, reopen, then done again, each adding the checkbox a plain item lacks.
+	// Done, reopen, then done again, each adding the checkbox a plain item
+	// lacks, with every row staying where it is.
 	m.general.cursor = 2
-	for _, key := range []string{"d", "k", "d", "k", "k", "d"} {
+	for _, key := range []string{"d", "j", "d", "k", "k", "k", "d"} {
 		pressKey(t, m, key)
+	}
+	var shown []string
+	for _, row := range m.rows(generalPane) {
+		shown = append(shown, row.readme.Text)
+	}
+	if got := strings.Join(shown, ","); got != "Urgent,Later,Write docs,Finished" || m.general.cursor != 0 {
+		t.Fatalf("toggles moved README rows: %q, cursor %d", got, m.general.cursor)
 	}
 	want := "# Project\n\n## TODOs\n\n- [ ] Finished\n- [x] Write docs\n- todo1 Later\n- [x] todo00 Urgent\n\n## Usage\n\n- not a task\n"
 	if got := readFile(t, readme); got != want {

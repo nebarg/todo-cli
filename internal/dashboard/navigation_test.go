@@ -254,8 +254,12 @@ func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 	}
 	m.branch.cursor = 0
 	m.toggleSelected()
-	if selected, ok := m.selectedTask(); !ok || selected.Text != "Branch open first" || !selected.Done || m.branch.cursor != 2 {
-		t.Fatalf("completed branch task did not stay selected at the end: %+v", m.rows(branchPane))
+	if selected, ok := m.selectedTask(); !ok || selected.Text != "Branch open first" || !selected.Done || m.branch.cursor != 0 {
+		t.Fatalf("completed branch task did not stay in place: %+v", m.rows(branchPane))
+	}
+	m = press(m, "r")
+	if rows := m.rows(branchPane); rows[0].todo.Text != "Branch open second" || rows[2].todo.Text != "Branch open first" {
+		t.Fatalf("reload did not move the completed task after the open ones: %+v", rows)
 	}
 }
 

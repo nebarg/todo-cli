@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -16,12 +15,8 @@ import (
 // allTasksView is the All tasks view, opened with i: every Markdown task in
 // one list, sorted by priority, branch or category.
 type allTasksView struct {
-	sort sortOrder
-	// byPriority re-sorts by priority after every write, once s has chosen
-	// priority order. Until then the list keeps its order, sorted by
-	// priority when loaded, so a task whose priority changes stays put.
-	byPriority bool
-	cursor     int
+	sort   sortOrder
+	cursor int
 }
 
 type sortOrder string
@@ -62,7 +57,6 @@ func (m *model) allTasksKey(key string) (tea.Cmd, bool) {
 	case "s":
 		selected, ok := m.selectedTask()
 		m.all.sort = m.all.sort.next()
-		m.all.byPriority = m.all.sort == sortPriority
 		if ok {
 			m.selectInAllTasks(selected)
 		}
@@ -75,7 +69,7 @@ func (m *model) allTasksKey(key string) (tea.Cmd, bool) {
 }
 
 // sorted is tasks in the view's order: grouped by branch or category when
-// sorted by one, then open before done.
+// sorted by one, otherwise in the dashboard's order.
 func (v *allTasksView) sorted(tasks []store.Task) []store.Task {
 	tasks = slices.Clone(tasks)
 	slices.SortStableFunc(tasks, func(a, b store.Task) int {
@@ -98,12 +92,6 @@ func (v *allTasksView) sorted(tasks []store.Task) []store.Task {
 					return c
 				}
 			}
-		}
-		if c := compareDone(a.Done, b.Done); c != 0 {
-			return c
-		}
-		if v.sort == sortPriority && v.byPriority {
-			return cmp.Compare(a.Priority.Rank(), b.Priority.Rank())
 		}
 		return 0
 	})
