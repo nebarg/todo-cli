@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -124,6 +125,62 @@ func TestLoadReadmeKeepsHeadingsInsideATodoSection(t *testing.T) {
 		if got.Line != w.line || got.Text != w.text || got.Heading != w.heading || got.Level != w.level || got.Done != w.done {
 			t.Errorf("task %d = line %d %q heading %q level %q done %v, want %+v", i, got.Line, got.Text, got.Heading, got.Level, got.Done, w)
 		}
+	}
+}
+
+func TestLoadReadmeReadsPlainItemsUnderACheckboxTaskAsDetails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "README.md")
+	readme := "## TODOs\n\n" +
+		"- [ ] **Slug stability.** Renaming a workspace regenerates its slug.\n" +
+		"    Decide between:\n" +
+		"    - a slug fixed at creation, or\n" +
+		"      wrapped onto a second line\n" +
+		"    - editable slugs with a history table\n" +
+		"        - [ ] Draft the migration\n" +
+		"    - consider a rename limit\n\n" +
+		"- Plain parent\n" +
+		"    - plain child\n" +
+		"        - grandchild\n" +
+		"- [x] Done with notes\r\n" +
+		"  - a note\r\n" +
+		"Unindented text\n" +
+		"  - after the text\n"
+	if err := os.WriteFile(path, []byte(readme), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := LoadReadme(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type want struct {
+		line    int
+		text    string
+		details string
+	}
+	wants := []want{
+		{2, "**Slug stability.** Renaming a workspace regenerates its slug.", "Decide between:\n- a slug fixed at creation, or\n  wrapped onto a second line\n- editable slugs with a history table\n- consider a rename limit"},
+		{7, "Draft the migration", ""},
+		// todo-system reads items nested under a plain item as to-dos.
+		{10, "Plain parent", ""},
+		{11, "plain child", ""},
+		{12, "grandchild", ""},
+		{13, "Done with notes", "- a note"},
+		{16, "after the text", ""},
+	}
+	if len(tasks) != len(wants) {
+		t.Fatalf("got %d tasks, want %d: %+v", len(tasks), len(wants), tasks)
+	}
+	for i, w := range wants {
+		if got := tasks[i]; got.Line != w.line || got.Text != w.text || got.Details != w.details {
+			t.Errorf("task %d = line %d %q details %q, want %+v", i, got.Line, got.Text, got.Details, w)
+		}
+	}
+
+	if err := ToggleReadme(path, tasks[0]); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := readFile(t, path), strings.Replace(readme, "- [ ] **Slug", "- [x] **Slug", 1); got != want {
+		t.Fatalf("toggle changed more than the checkbox:\n%q\nwant\n%q", got, want)
 	}
 }
 

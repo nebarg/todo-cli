@@ -296,3 +296,29 @@ func TestReadmeHeadingsOpenFromTheReadmeGroup(t *testing.T) {
 		t.Fatalf("README heading stayed open without tasks: %+v", m.general.open)
 	}
 }
+
+func TestReadmeTaskDetailsShowLikeATaskFilesDetails(t *testing.T) {
+	dir := t.TempDir()
+	readme := "## TODOs\n\n- [ ] **Slug stability.** Renaming changes its URLs.\n    - a slug fixed at creation, or\n    - editable slugs\n- [ ] No notes\n"
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(readme), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(filepath.Join(dir, "todo.md"), project.Context{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pressKey(t, m, "right")
+	view := ansi.Strip(m.renderNavigationPane(m.rows(generalPane), m.general.cursor, generalPane, 60, 20))
+	for _, want := range []string{`General › README\.md  0/2`, `\n│ ○ Slug stability\. Renaming changes its URLs\. +⋯ │`, `\n│ ○ No notes +│`} {
+		if !regexp.MustCompile(want).MatchString(view) {
+			t.Fatalf("README list is missing %q:\n%s", want, view)
+		}
+	}
+	pressKey(t, m, "right")
+	details := ansi.Strip(m.renderDetailPane(60, 12))
+	for _, want := range []string{"Slug stability. Renaming changes its URLs.", "- a slug fixed at creation, or", "- editable slugs"} {
+		if !strings.Contains(details, want) {
+			t.Fatalf("details are missing %q:\n%s", want, details)
+		}
+	}
+}

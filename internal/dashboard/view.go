@@ -399,7 +399,11 @@ func renderReadmeTaskRow(theme ui.Theme, t store.ReadmeTask, width, levelWidth i
 	if levelWidth > 0 {
 		mark, markStyle = theme.LevelMark(t.Level)
 	}
-	return taskRow{mark: mark, markStyle: markStyle, markWidth: levelWidth, text: t.Text, done: t.Done}.Render(theme, width, selected)
+	suffix := ""
+	if t.Details != "" {
+		suffix = "⋯"
+	}
+	return taskRow{mark: mark, markStyle: markStyle, markWidth: levelWidth, text: t.Text, suffix: suffix, done: t.Done}.Render(theme, width, selected)
 }
 
 // taskRow is a row for a task: its mark, then its text, with a suffix at the
@@ -485,7 +489,11 @@ func (m *model) groupDetails(row navigationRow, width int) []string {
 
 func (m *model) taskDetails(width int) []string {
 	if readme, ok := m.selectedReadmeTask(); ok {
-		return ui.WrapLines([]string{m.theme.LeveledTitle(m.theme.Inline(readme.Text, m.theme.TaskTitleStyle), readme.Level)}, width)
+		result := []string{m.theme.LeveledTitle(m.theme.Inline(readme.Text, m.theme.TaskTitleStyle), readme.Level)}
+		if readme.Details != "" {
+			result = append(append(result, ""), m.theme.MarkdownLines(readme.Details)...)
+		}
+		return ui.WrapLines(result, width)
 	}
 	t, ok := m.selectedTask()
 	if !ok {

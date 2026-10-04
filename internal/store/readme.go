@@ -25,6 +25,9 @@ type ReadmeTask struct {
 	// Heading is the heading the task is under inside its TODO section, or
 	// "" for a task directly under the TODO heading.
 	Heading string
+	// Details is the text indented under a checkbox task, such as plain
+	// list items, without the indent it shares.
+	Details string
 
 	raw string
 }
@@ -47,11 +50,26 @@ func LoadReadme(path string) ([]ReadmeTask, error) {
 		return nil, err
 	}
 	_, text := splitBOM(data)
+	return parseReadme(strings.Split(text, "\n")), nil
+}
+
+// readmeItem is a list item enclosing the line parseReadme is on.
+type readmeItem struct {
+	indent int
+	owner  int // the task whose details take plain items nested here, or -1
+}
+
+// parseReadme reads the tasks in lines. Checkbox items are always tasks.
+// Plain items are too, except under a checkbox task: there they're its
+// details, with the rest of the text indented under it.
+func parseReadme(lines []string) []ReadmeTask {
 	var tasks []ReadmeTask
+	var details [][]string                     // each task's detail lines, as written
+	var parents []readmeItem                   // the list items enclosing a line, outermost first
 	todoLevel, heading, inCode := 0, "", false // todoLevel is 0 outside a TODO section
-	for i, raw := range strings.Split(text, "\n") {
+	for i, raw := range lines {
 		if strings.HasPrefix(raw, "```") {
-			inCode = !inCode
+			inCode, parents = !inCode, nil
 			continue
 		}
 		if inCode {
@@ -68,17 +86,79 @@ func LoadReadme(path string) ([]ReadmeTask, error) {
 			default:
 				todoLevel = 0
 			}
+			parents = nil
+			continue
+		}
+		if todoLevel == 0 {
 			continue
 		}
 		parts := taskLine.FindStringSubmatch(raw)
-		if todoLevel == 0 || parts == nil || strings.TrimSpace(parts[3]) == "" {
+		isItem := parts != nil && strings.TrimSpace(parts[3]) != ""
+		indent := len(taskIndent(raw))
+		if strings.TrimSpace(raw) != "" {
+			parents = enclosing(parents, indent)
+		}
+		owner := -1
+		if len(parents) > 0 {
+			owner = parents[len(parents)-1].owner
+		}
+		checkbox := isItem && parts[2] != ""
+		if owner >= 0 && !checkbox {
+			details[owner] = append(details[owner], raw)
+			if isItem {
+				parents = append(parents, readmeItem{indent: indent, owner: owner})
+			}
+			continue
+		}
+		if !isItem {
 			continue
 		}
 		t := ReadmeTask{Line: i, Heading: heading, raw: raw, Done: parts[2] == "x" || parts[2] == "X"}
 		t.Text, t.Level = splitReadmeLevel(strings.TrimSpace(parts[3]))
-		tasks = append(tasks, t)
+		tasks, details = append(tasks, t), append(details, nil)
+		item := readmeItem{indent: indent, owner: -1}
+		if checkbox {
+			item.owner = len(tasks) - 1
+		}
+		parents = append(parents, item)
 	}
-	return tasks, nil
+	for i := range tasks {
+		tasks[i].Details = dedent(details[i])
+	}
+	return tasks
+}
+
+// enclosing is parents without the items a line indented by indent is
+// outside of, so an unindented line is outside every list.
+func enclosing(parents []readmeItem, indent int) []readmeItem {
+	for len(parents) > 0 && parents[len(parents)-1].indent >= indent {
+		parents = parents[:len(parents)-1]
+	}
+	return parents
+}
+
+// dedent joins lines without the blank lines around them or the indent
+// they share.
+func dedent(lines []string) string {
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	shared := -1
+	for _, line := range lines {
+		if indent := len(taskIndent(line)); strings.TrimSpace(line) != "" && (shared < 0 || indent < shared) {
+			shared = indent
+		}
+	}
+	result := make([]string, len(lines))
+	for i, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			result[i] = strings.TrimSuffix(line[shared:], "\r")
+		}
+	}
+	return strings.Join(result, "\n")
 }
 
 // isTodoHeading reports whether a heading's name reads "TODO" or "TODOs",
