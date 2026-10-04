@@ -646,7 +646,8 @@ func placeNew(tasks []store.Task, t store.Task) []store.Task {
 
 // sortedReadme is README tasks as the dashboard shows them after loading:
 // open tasks, then done ones, each with todo-system levels first, most
-// urgent at the top, as the Files tab lists them.
+// urgent at the top, as the Files tab lists them. Subtasks show under their
+// parents, so a parent's place decides where its subtasks go.
 func sortedReadme(tasks []store.ReadmeTask) []store.ReadmeTask {
 	sorted := slices.Clone(tasks)
 	slices.SortStableFunc(sorted, func(a, b store.ReadmeTask) int {
@@ -669,7 +670,7 @@ func keepReadmeOrder(previous, loaded []store.ReadmeTask) []store.ReadmeTask {
 	ordered := make([]store.ReadmeTask, 0, len(loaded))
 	for _, old := range previous {
 		t, ok := byLine[old.Line]
-		if !ok || t.Text != old.Text || t.Heading != old.Heading {
+		if !ok || t.Text != old.Text || t.Heading != old.Heading || t.Subtask != old.Subtask {
 			return sortedReadme(loaded)
 		}
 		ordered = append(ordered, t)

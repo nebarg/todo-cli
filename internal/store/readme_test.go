@@ -156,23 +156,24 @@ func TestLoadReadmeReadsPlainItemsUnderACheckboxTaskAsDetails(t *testing.T) {
 		line    int
 		text    string
 		details string
+		subtask bool
 	}
 	wants := []want{
-		{2, "**Slug stability.** Renaming a workspace regenerates its slug.", "Decide between:\n- a slug fixed at creation, or\n  wrapped onto a second line\n- editable slugs with a history table\n- consider a rename limit"},
-		{7, "Draft the migration", ""},
+		{2, "**Slug stability.** Renaming a workspace regenerates its slug.", "Decide between:\n- a slug fixed at creation, or\n  wrapped onto a second line\n- editable slugs with a history table\n- consider a rename limit", false},
+		{7, "Draft the migration", "", true},
 		// todo-system reads items nested under a plain item as to-dos.
-		{10, "Plain parent", ""},
-		{11, "plain child", ""},
-		{12, "grandchild", ""},
-		{13, "Done with notes", "- a note"},
-		{16, "after the text", ""},
+		{10, "Plain parent", "", false},
+		{11, "plain child", "", true},
+		{12, "grandchild", "", true},
+		{13, "Done with notes", "- a note", false},
+		{16, "after the text", "", false},
 	}
 	if len(tasks) != len(wants) {
 		t.Fatalf("got %d tasks, want %d: %+v", len(tasks), len(wants), tasks)
 	}
 	for i, w := range wants {
-		if got := tasks[i]; got.Line != w.line || got.Text != w.text || got.Details != w.details {
-			t.Errorf("task %d = line %d %q details %q, want %+v", i, got.Line, got.Text, got.Details, w)
+		if got := tasks[i]; got.Line != w.line || got.Text != w.text || got.Details != w.details || got.Subtask != w.subtask {
+			t.Errorf("task %d = line %d %q details %q subtask %v, want %+v", i, got.Line, got.Text, got.Details, got.Subtask, w)
 		}
 	}
 

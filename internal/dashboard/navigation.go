@@ -31,6 +31,7 @@ type navigationRow struct {
 	missingGitBranch bool
 	todo             store.Task       // a rowTask's task
 	readme           store.ReadmeTask // a rowReadmeTask's task
+	parentDone       bool             // a README subtask's parent is done, so it shows greyed out
 }
 
 // isTask reports whether row is a task of todo.md or README.md, not a group.
@@ -254,15 +255,42 @@ func readmeRows(tasks []store.ReadmeTask) []navigationRow {
 }
 
 // readmeTaskRows is a row for each README task under heading, in the
-// dashboard's order.
+// dashboard's order, with each task's subtasks after it.
 func readmeTaskRows(tasks []store.ReadmeTask, heading string) []navigationRow {
+	parents := readmeParents(tasks)
+	subtasks := make(map[int][]store.ReadmeTask) // by their parent's line
+	for _, t := range tasks {
+		if t.Heading == heading && t.Subtask {
+			subtasks[parents[t.Line]] = append(subtasks[parents[t.Line]], t)
+		}
+	}
 	var rows []navigationRow
 	for _, t := range tasks {
-		if t.Heading == heading {
-			rows = append(rows, navigationRow{kind: rowReadmeTask, readme: t})
+		if t.Heading != heading || t.Subtask {
+			continue
+		}
+		rows = append(rows, navigationRow{kind: rowReadmeTask, readme: t})
+		for _, sub := range subtasks[t.Line] {
+			rows = append(rows, navigationRow{kind: rowReadmeTask, readme: sub, parentDone: t.Done})
 		}
 	}
 	return rows
+}
+
+// readmeParents maps each subtask's line to its parent's line: the last task
+// before it in the README that isn't a subtask.
+func readmeParents(tasks []store.ReadmeTask) map[int]int {
+	inFile := slices.SortedFunc(slices.Values(tasks), func(a, b store.ReadmeTask) int { return cmp.Compare(a.Line, b.Line) })
+	parents := make(map[int]int)
+	parent := -1
+	for _, t := range inFile {
+		if t.Subtask {
+			parents[t.Line] = parent
+		} else {
+			parent = t.Line
+		}
+	}
+	return parents
 }
 
 func (m *model) branchMissing(name string) bool {

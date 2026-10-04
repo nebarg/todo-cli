@@ -322,3 +322,60 @@ func TestReadmeTaskDetailsShowLikeATaskFilesDetails(t *testing.T) {
 		}
 	}
 }
+
+func TestReadmeSubtasksShowUnderTheirParents(t *testing.T) {
+	dir := t.TempDir()
+	readme := filepath.Join(dir, "README.md")
+	original := "## TODOs\n\n" +
+		"- [ ] todo1 Parent\n" +
+		"    - [ ] First sub\n" +
+		"    - [x] Done sub\n" +
+		"        - [ ] todo0 Deep sub\n" +
+		"- [ ] Other\n" +
+		"- [x] Finished parent\n" +
+		"    - [ ] Open under finished\n"
+	if err := os.WriteFile(readme, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(filepath.Join(dir, "todo.md"), project.Context{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pressKey(t, m, "right")
+	view := func() string {
+		return ansi.Strip(m.renderNavigationPane(m.rows(generalPane), m.general.cursor, generalPane, 60, 20))
+	}
+	// Subtasks follow their parent, open ones first, one level in however
+	// deep they're nested; the most urgent task, Deep sub, doesn't leave it.
+	want := `General › README\.md  2/7 *│\n│ *│\n│ 1 Parent +│\n│   0 Deep sub +│\n│   · First sub +│\n│   ✓ Done sub +│\n│ · Other +│\n│ ✓ Finished parent +│\n│   · Open under finished +│`
+	if !regexp.MustCompile(want).MatchString(view()) {
+		t.Fatalf("README rows are not grouped under their parents:\n%s", view())
+	}
+	raw := m.renderNavigationPane(m.rows(generalPane), m.general.cursor, generalPane, 60, 20)
+	muted := func(text string) bool { return strings.Contains(raw, m.theme.Inline(text, m.theme.MutedStyle)) }
+	if !muted("Open under finished") || muted("First sub") {
+		t.Fatal("only the subtasks of a done parent should be greyed out")
+	}
+
+	// Done on the parent changes only its line, and nothing moves.
+	pressKey(t, m, "d")
+	if got, want := readFile(t, readme), strings.Replace(original, "- [ ] todo1 Parent", "- [x] todo1 Parent", 1); got != want {
+		t.Fatalf("README after d:\n%q\nwant\n%q", got, want)
+	}
+	if !regexp.MustCompile(`\n│ ✓ Parent +│\n│   0 Deep sub +│\n│   · First sub +│`).MatchString(view()) || m.general.cursor != 0 {
+		t.Fatalf("done parent moved:\n%s", view())
+	}
+	raw = m.renderNavigationPane(m.rows(generalPane), m.general.cursor, generalPane, 60, 20)
+	if !muted("First sub") || !muted("Deep sub") {
+		t.Fatal("subtasks of a parent just marked done are not greyed out")
+	}
+	if rows := m.rows(generalPane); rows[2].readme.Done {
+		t.Fatal("marking the parent done marked a subtask done")
+	}
+
+	// A reload moves the parent, with every subtask, to the done tasks.
+	pressKey(t, m, "r")
+	if !regexp.MustCompile(`\n│ · Other +│\n│ ✓ Parent +│\n│   0 Deep sub +│\n│   · First sub +│\n│   ✓ Done sub +│\n│ ✓ Finished parent +│\n│   · Open under finished +│`).MatchString(view()) {
+		t.Fatalf("reload did not move the done parent with its subtasks:\n%s", view())
+	}
+}

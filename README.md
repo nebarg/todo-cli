@@ -257,6 +257,7 @@ The dashboard reads the TODO list in the `README.md` next to the task file, foll
 - Write the install guide
 - [ ] todo0 Fix the broken example
   - the link to the API docs is a 404
+  - [ ] Check the other links
 
 ### Dashboard
 
@@ -265,8 +266,9 @@ The dashboard reads the TODO list in the `README.md` next to the task file, foll
 
 - Tasks are the list items (`- foo` or `- [ ] foo`) under a heading reading `TODO` or `TODOs`, with or without a `:`, in any case. The next heading at the same level or higher, such as `## Install` after `## TODOs`, ends the list.
 - Deeper headings inside the list, such as `### Dashboard`, group the tasks under them. `▸ README.md` lists a row for each heading, in the README's order, then the tasks under no heading. A heading inside another, such as a `####` under a `###`, is a group of its own. todo-system itself ends the list at any heading, so it doesn't see these tasks.
-- Nested list items are tasks too, except plain items under a checkbox task, such as the 404 note above. Those, with any other text indented under the task, are its details, shown as for [todo.md's tasks](#markdown-format). Anything in a ` ``` ` code block is skipped.
-- `d` marks a task done or reopens it. It changes only the checkbox, adding one to a plain `- foo`, and leaves the README's order alone.
+- Nested list items are subtasks, such as `Check the other links`, shown indented under their task. Subtasks nested deeper show at the same indent, under the same task.
+- Plain items under a checkbox task, such as the 404 note above, aren't subtasks. Those, with any other text indented under the task, are its details, shown as for [todo.md's tasks](#markdown-format). Anything in a ` ``` ` code block is skipped.
+- `d` marks a task done or reopens it. It changes only the checkbox, adding one to a plain `- foo`, and leaves the README's order alone. While a task is done, its subtasks are greyed out but keep their own state. When the list re-sorts, they move with it.
 - Tasks show their [formatting](#markdown-format), and levels such as `todo0` show and sort as in the Files tab. `p`, `c`, `backspace`, `X` and the edit form don't apply; `e` opens the README in your editor at the task.
 
 ## todo-scan

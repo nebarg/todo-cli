@@ -341,7 +341,7 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 		case rowTask:
 			lines = append(lines, renderTaskRow(m.theme, item.todo, innerWidth, selected))
 		case rowReadmeTask:
-			lines = append(lines, renderReadmeTaskRow(m.theme, item.readme, innerWidth, levelWidth, selected))
+			lines = append(lines, renderReadmeTaskRow(m.theme, item, innerWidth, levelWidth, selected))
 		default:
 			lines = append(lines, renderGroupRow(m.theme, item, innerWidth, selected, item.kind == rowBranch && item.name == m.project.Branch))
 		}
@@ -391,10 +391,12 @@ func renderTaskRow(theme ui.Theme, t store.Task, width int, selected bool) strin
 	return taskRow{mark: mark, markStyle: markStyle, text: t.Text, suffix: suffix, done: t.Done}.Render(theme, width, selected)
 }
 
-// renderReadmeTaskRow shows a README task with its level in a column
+// renderReadmeTaskRow shows a README task row with its level in a column
 // levelWidth wide. A list without levels has a levelWidth of 0, and shows the
-// open bullet instead.
-func renderReadmeTaskRow(theme ui.Theme, t store.ReadmeTask, width, levelWidth int, selected bool) string {
+// open bullet instead. A subtask is indented, and greyed out while its parent
+// is done.
+func renderReadmeTaskRow(theme ui.Theme, row navigationRow, width, levelWidth int, selected bool) string {
+	t := row.readme
 	mark, markStyle := priorityMark(store.PriorityNone), theme.MutedStyle
 	if levelWidth > 0 {
 		mark, markStyle = theme.LevelMark(t.Level)
@@ -403,18 +405,27 @@ func renderReadmeTaskRow(theme ui.Theme, t store.ReadmeTask, width, levelWidth i
 	if t.Details != "" {
 		suffix = "⋯"
 	}
-	return taskRow{mark: mark, markStyle: markStyle, markWidth: levelWidth, text: t.Text, suffix: suffix, done: t.Done}.Render(theme, width, selected)
+	indent := 0
+	if t.Subtask {
+		indent = subtaskIndent
+	}
+	return taskRow{indent: indent, mark: mark, markStyle: markStyle, markWidth: levelWidth, text: t.Text, suffix: suffix, done: t.Done, muted: row.parentDone}.Render(theme, width, selected)
 }
+
+// subtaskIndent is how far a subtask's row is indented under its parent's.
+const subtaskIndent = 2
 
 // taskRow is a row for a task: its mark, then its text, with a suffix at the
 // right edge.
 type taskRow struct {
+	indent    int // cells before the mark
 	mark      string
 	markStyle lipgloss.Style
 	markWidth int // the width the mark is padded to, to line up a column of marks
 	text      string
 	suffix    string
 	done      bool
+	muted     bool // greyed out as a done task is, but keeping its mark
 }
 
 // Render draws the row in width cells. A done task shows a check mark and
@@ -422,10 +433,13 @@ type taskRow struct {
 func (r taskRow) Render(theme ui.Theme, width int, selected bool) string {
 	mark, markStyle := r.mark, r.markStyle
 	textStyle := lipgloss.NewStyle().Foreground(theme.ColorStrong)
-	if r.done {
+	switch {
+	case r.done:
 		mark, markStyle, textStyle = "✓", theme.MutedStyle, theme.MutedStyle
+	case r.muted:
+		markStyle, textStyle = theme.MutedStyle, theme.MutedStyle
 	}
-	mark += strings.Repeat(" ", max(0, r.markWidth-ansi.StringWidth(mark))+1)
+	mark = strings.Repeat(" ", r.indent) + mark + strings.Repeat(" ", max(0, r.markWidth-ansi.StringWidth(mark))+1)
 	reserved := ansi.StringWidth(mark)
 	if r.suffix != "" {
 		reserved += ansi.StringWidth(r.suffix) + 2
@@ -434,7 +448,7 @@ func (r taskRow) Render(theme ui.Theme, width int, selected bool) string {
 	if selected {
 		markStyle = markStyle.Background(theme.ColorSelection)
 		textStyle = textStyle.Background(theme.ColorSelection)
-		if r.done {
+		if r.done || r.muted {
 			textStyle = theme.SelectedDoneStyle
 		}
 		suffixStyle, fillStyle = theme.SelectedDoneStyle, theme.SelectedStyle

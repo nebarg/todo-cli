@@ -28,6 +28,9 @@ type ReadmeTask struct {
 	// Details is the text indented under a checkbox task, such as plain
 	// list items, without the indent it shares.
 	Details string
+	// Subtask is true for a task nested under another, at any depth. Its
+	// parent is the last task before it that isn't a subtask.
+	Subtask bool
 
 	raw string
 }
@@ -61,7 +64,8 @@ type readmeItem struct {
 
 // parseReadme reads the tasks in lines. Checkbox items are always tasks.
 // Plain items are too, except under a checkbox task: there they're its
-// details, with the rest of the text indented under it.
+// details, with the rest of the text indented under it. A task nested under
+// another is a subtask.
 func parseReadme(lines []string) []ReadmeTask {
 	var tasks []ReadmeTask
 	var details [][]string                     // each task's detail lines, as written
@@ -113,7 +117,7 @@ func parseReadme(lines []string) []ReadmeTask {
 		if !isItem {
 			continue
 		}
-		t := ReadmeTask{Line: i, Heading: heading, raw: raw, Done: parts[2] == "x" || parts[2] == "X"}
+		t := ReadmeTask{Line: i, Heading: heading, Subtask: len(parents) > 0, raw: raw, Done: parts[2] == "x" || parts[2] == "X"}
 		t.Text, t.Level = splitReadmeLevel(strings.TrimSpace(parts[3]))
 		tasks, details = append(tasks, t), append(details, nil)
 		item := readmeItem{indent: indent, owner: -1}
