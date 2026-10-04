@@ -44,10 +44,11 @@ func (m *model) clearScope() ([]store.Task, string) {
 	return nil, ""
 }
 
-// clearHint offers X only when there is something for it to clear.
+// clearHint offers X only when there is something for it to clear, counting
+// the done tasks and subtasks it would remove on their own.
 func (m *model) clearHint() []ui.KeyHint {
 	tasks, _ := m.clearScope()
-	if done := completedCount(tasks); done > 0 {
+	if done := len(doneTargets(tasks).Tasks); done > 0 {
 		return []ui.KeyHint{{Key: "X", Label: fmt.Sprintf("clear %d done", done)}}
 	}
 	return nil
@@ -179,7 +180,7 @@ func taskCount(n int) string { return ui.Plural(n, "task", "tasks") }
 
 func (c clearConfirmation) render(theme ui.Theme) string {
 	title := fmt.Sprintf("Remove %s from %s?", c.targets.Summary(), c.scope)
-	return renderConfirmation(theme, title, []string{emptiedGroups(c.removal)}, "remove")
+	return renderConfirmation(theme, title, []string{c.targets.SubtaskNote(), emptiedGroups(c.removal)}, "remove")
 }
 
 // renderConfirmation draws a dialog asking to go ahead with action, with

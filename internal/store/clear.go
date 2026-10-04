@@ -14,22 +14,33 @@ import (
 var ErrFileChanged = errors.New("file changed on disk")
 
 // ClearTargets is what a clear removes: every done task, and every task of a
-// branch Git doesn't have.
+// branch Git doesn't have, each with its subtasks.
 type ClearTargets struct {
-	// Tasks are the tasks to remove, in the order given.
+	// Tasks are the tasks to remove, in the order given, leaving out
+	// subtasks that go with their task.
 	Tasks []Task
-	// Done is how many of Tasks are done tasks of branches that still exist.
-	Done int
+	// Done is how many of Tasks are done tasks of branches that still exist,
+	// and DoneSubtasks how many of those are subtasks of open tasks.
+	Done, DoneSubtasks int
+	// Subtasks is how many subtasks go with the tasks they're under, and
+	// OpenSubtasks how many of those are open.
+	Subtasks, OpenSubtasks int
 	// Branches are the missing branches whose tasks are removed, sorted.
 	Branches []string
 }
 
 // PickClearTargets picks out of tasks the done tasks, and every task of a
-// branch missing reports gone.
+// branch missing reports gone. A task's subtasks go with it.
 func PickClearTargets(tasks []Task, missing func(branch string) bool) ClearTargets {
+	picked := slices.DeleteFunc(slices.Clone(tasks), func(t Task) bool { return !t.Done && !missing(t.Branch) })
 	var c ClearTargets
 	for _, t := range tasks {
 		switch {
+		case slices.ContainsFunc(picked, func(p Task) bool { return p.Holds(t) }):
+			c.Subtasks++
+			if !t.Done {
+				c.OpenSubtasks++
+			}
 		case missing(t.Branch):
 			c.Tasks = append(c.Tasks, t)
 			if !slices.Contains(c.Branches, t.Branch) {
@@ -38,18 +49,24 @@ func PickClearTargets(tasks []Task, missing func(branch string) bool) ClearTarge
 		case t.Done:
 			c.Tasks = append(c.Tasks, t)
 			c.Done++
+			if t.Subtask {
+				c.DoneSubtasks++
+			}
 		}
 	}
 	slices.Sort(c.Branches)
 	return c
 }
 
-// Summary reads like "3 done tasks and unknown branch feature/x with its 2
-// tasks", naming the branches Git doesn't have.
+// Summary reads like "3 done tasks, 1 done subtask and unknown branch
+// feature/x with its 2 tasks", naming the branches Git doesn't have.
 func (c ClearTargets) Summary() string {
 	var parts []string
-	if c.Done > 0 {
-		parts = append(parts, plural(c.Done, "done task", "done tasks"))
+	if n := c.Done - c.DoneSubtasks; n > 0 {
+		parts = append(parts, plural(n, "done task", "done tasks"))
+	}
+	if c.DoneSubtasks > 0 {
+		parts = append(parts, plural(c.DoneSubtasks, "done subtask", "done subtasks"))
 	}
 	tasks := plural(len(c.Tasks)-c.Done, "task", "tasks")
 	switch len(c.Branches) {
@@ -59,7 +76,28 @@ func (c ClearTargets) Summary() string {
 	default:
 		parts = append(parts, fmt.Sprintf("unknown branches %s with their %s", strings.Join(c.Branches, ", "), tasks))
 	}
-	return strings.Join(parts, " and ")
+	if len(parts) < 2 {
+		return strings.Join(parts, "")
+	}
+	return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
+}
+
+// SubtaskNote says how many subtasks go with the tasks they're under, as in
+// "3 subtasks go with their tasks, 1 of them open.", or is "" when none do.
+func (c ClearTargets) SubtaskNote() string {
+	subtasks, verb, theirs := plural(c.Subtasks, "subtask", "subtasks"), "go", "their tasks"
+	if c.Subtasks == 1 {
+		verb, theirs = "goes", "its task"
+	}
+	switch {
+	case c.Subtasks == 0:
+		return ""
+	case c.OpenSubtasks == c.Subtasks:
+		subtasks = plural(c.Subtasks, "open subtask", "open subtasks")
+	case c.OpenSubtasks > 0:
+		return fmt.Sprintf("%s %s with %s, %d of them open.", subtasks, verb, theirs, c.OpenSubtasks)
+	}
+	return fmt.Sprintf("%s %s with %s.", subtasks, verb, theirs)
 }
 
 // plural reads like "1 task" or "3 tasks".
@@ -144,11 +182,11 @@ func (r Removal) replace(expected, updated string) error {
 	return replaceFile(r.path, []byte(updated), r.mode)
 }
 
-// withoutNested is tasks without those inside another of them, such as a
+// withoutNested is tasks without those another of them holds, such as a
 // subtask of a task also given, which goes with it.
 func withoutNested(tasks []Task) []Task {
 	return slices.DeleteFunc(slices.Clone(tasks), func(t Task) bool {
-		return slices.ContainsFunc(tasks, func(other Task) bool { return other.Line < t.Line && t.Line < other.bodyEnd })
+		return slices.ContainsFunc(tasks, func(other Task) bool { return other.Holds(t) })
 	})
 }
 

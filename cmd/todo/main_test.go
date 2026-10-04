@@ -265,6 +265,23 @@ func TestClearDoneCommand(t *testing.T) {
 	}
 }
 
+func TestClearDoneListsSubtasksUnderTheirTask(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("- [x] Old task\n  - [ ] Left open\n- [ ] Ship login\n  - [x] Add the route\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := clearTasks(&out, path, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if want := "Removed 1 done task and 1 done subtask:\n  Old task\n    Left open\n  Add the route\n"; out.String() != want {
+		t.Fatalf("output = %q, want %q", out.String(), want)
+	}
+	if got := fileContent(t, path); got != "- [ ] Ship login\n" {
+		t.Fatalf("file = %q", got)
+	}
+}
+
 func TestClearDoneAndMissingTogether(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
 	if err := os.WriteFile(path, []byte(missingContent), 0644); err != nil {

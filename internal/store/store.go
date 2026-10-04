@@ -42,6 +42,12 @@ type Task struct {
 	bodyRaw      []string
 }
 
+// Holds reports whether other, from the same read of the file, is one of t's
+// subtasks, or anything else under t, which goes wherever t does.
+func (t Task) Holds(other Task) bool {
+	return t.Line < other.Line && other.Line < t.bodyEnd
+}
+
 // Section is where a task is filed: under a category, under a branch, or
 // with both blank, in the general list. A branch task has no category.
 type Section struct {

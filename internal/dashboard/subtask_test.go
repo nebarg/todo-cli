@@ -223,3 +223,32 @@ func TestAddingASubtaskFromATasksDetails(t *testing.T) {
 		t.Fatalf("second subtask not selected: %+v", selected)
 	}
 }
+
+func TestClearingDoneTasksTakesTheirSubtasks(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	original := "- [x] Old task\n  - [ ] Left open\n  - [x] Done under done\n- [ ] Ship login\n  - [x] Add the route\n"
+	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project.Context{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A done task's subtasks go with it, so the done one isn't counted again.
+	if hints := ansi.Strip(m.theme.RenderHints(m.footerHints())); !strings.Contains(hints, "X clear 2 done") {
+		t.Fatalf("hints = %q", hints)
+	}
+	m = press(m, "X")
+	dialog := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(confirmation(t, m).render(m.theme)), "│", " ")), " ")
+	if !strings.Contains(dialog, "Remove 1 done task and 1 done subtask from General? 2 subtasks go with their tasks, 1 of them open.") {
+		t.Fatalf("clear dialog = %q", dialog)
+	}
+	m = press(m, "y")
+	if got := readFile(t, path); got != "- [ ] Ship login\n" || m.status != "Removed 1 done task and 1 done subtask" {
+		t.Fatalf("after clearing: %q, status %q", got, m.status)
+	}
+	m = press(m, "u")
+	if got := readFile(t, path); got != original || m.status != "Restored 2 tasks" {
+		t.Fatalf("after undo: %q, status %q", got, m.status)
+	}
+}

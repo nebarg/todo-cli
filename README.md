@@ -130,7 +130,7 @@ Everything after the flags is the task.
 | `-b`, `--branch name` | Git branch of the new task. `.` means the current branch. A branch Git doesn't have locally still adds the task, the output will say it went to an unknown branch |
 | `-f`, `--file path` | Use another task file instead of `todo.md` |
 | `-e`, `--exclude dir` | Skip a directory in the dashboard's Files tab. See [Skipping directories](#skipping-directories) |
-| `--clear-done` | Remove every done task, and list what went |
+| `--clear-done` | Remove every done task, with its subtasks, and every done subtask, and list what went |
 | `--clear-missing` | Remove every task, open or done, of branches Git doesn't have locally, with their headings. That includes branches not created yet. Git branches aren't changed. Needs Git |
 | `--version` | Print the version |
 | `-h`, `--help` | Show usage |
@@ -192,9 +192,9 @@ In the form:
 
 `backspace` deletes the selected task with its details and subtasks. On a category or branch row, it deletes every task in it, done or not, and the heading once nothing else is under it. The README.md group is read only.
 
-`X` (shift-x) clears done tasks from where you are: the opened category or branch, the whole tab, or everything in the All tasks view.
+`X` (shift-x) clears done tasks from where you are: the opened category or branch, the whole tab, or everything in the All tasks view. A done task goes with all its subtasks, open ones too, and a done subtask of an open task goes on its own.
 
-Both show a dialog naming what will go, including headings left empty, and only `y` goes ahead. Afterwards `u` undoes it, until the file next changes.
+Both show a dialog naming what will go, including subtasks and headings left empty, and only `y` goes ahead. Afterwards `u` undoes it, until the file next changes.
 
 #### Keys
 
