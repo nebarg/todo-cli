@@ -1,10 +1,38 @@
-# todo-cli
+# Simple task management in the terminal
 
-`todo` keeps tasks in a Markdown file and shows them in a terminal dashboard, alongside the TODO comments in your code and the TODO list in your README. `todo-scan` lists the TODO comments on their own, to browse or to check in CI. Both read [todo-system](https://github.com/archtechx/todo-system)'s categories (`todo@auth`) and levels (`todo0`, `todo1`).
+`todo` is a simple terminal user interface (TUI) that lets you manage tasks from where you work in the terminal. Tasks are kept in a Markdown file for simplicity. Tasks in your README are also captured, alongside the file scanner to find TODO comments in your code. 
+
+`todo-scan` is a separate file scanner that lists the TODO comments found in your code on their own. It can be used in CI/CD pipelines or with the user interface. This is essentially a standalone "Files" tab from the todo app.
+
+Both read [todo-system](https://github.com/archtechx/todo-system)'s categories (`todo@auth`) and levels (`todo0`, `todo1`). You can [read why this is a pretty cool system](https://stancl.substack.com/p/organizing-todos-in-code) on Samuel's blog.
 
 ![The General tab of todo's dashboard](docs/todo.png)
 
-The Git and branch icons need a [Nerd Font](https://www.nerdfonts.com/) in your terminal; without one they show as empty boxes.
+> [!WARNING]
+> The Git and branch icons need a [Nerd Font](https://www.nerdfonts.com/) in your terminal; without one they show as empty boxes.
+
+## Index
+
+- [Install](#install)
+  - [Download](#download)
+  - [Add them to your PATH](#add-them-to-your-path)
+  - [With Go](#with-go)
+  - [zsh completion](#zsh-completion)
+- [Try it](#try-it)
+- [todo](#todo)
+  - [Dashboard](#dashboard)
+    - [Reading the list](#reading-the-list)
+    - [All tasks](#all-tasks)
+    - [Adding and editing](#adding-and-editing)
+    - [Deleting and clearing](#deleting-and-clearing)
+    - [Keys](#keys)
+  - [Markdown format](#markdown-format)
+  - [TODOs in README.md](#todos-in-readmemd)
+- [todo-scan](#todo-scan)
+- [TODO comments](#todo-comments)
+  - [Skipping directories](#skipping-directories)
+  - [todo-system syntax](#todo-system-syntax)
+- [Development](#development)
 
 ## Install
 
@@ -41,7 +69,7 @@ sudo mkdir -p /usr/local/bin
 sudo mv todo todo-scan /usr/local/bin/
 ```
 
-### With Go
+### Using Go
 
 ```sh
 go install github.com/nebarg/todo-cli/cmd/todo@latest
@@ -52,7 +80,7 @@ go install github.com/nebarg/todo-cli/cmd/todo-scan@latest
 
 ### zsh completion
 
-zsh ships a completion for DevTodo, a different program also called `todo`. Pressing Tab after `todo` runs this `todo` with DevTodo's flags, which prints `unknown flag: --format`. To turn that completion off, add this to `~/.zshrc` after `compinit`:
+zsh ships a completion for DevTodo, a different program also called `todo`. Pressing Tab after `todo` runs this with DevTodo's flags, which prints `unknown flag: --format`. To turn that completion off, add this to `~/.zshrc` after `compinit`:
 
 ```zsh
 compdef -d todo
@@ -93,13 +121,13 @@ todo --clear-missing                   # remove the tasks of branches not in Git
 todo -e dist -e node_modules           # open the dashboard, skipping these in Files
 ```
 
-Flags come first; everything after them is the task.
+Everything after the flags is the task.
 
 | Flag | Effect |
 | --- | --- |
 | `-p`, `--priority h\|high\|m\|medium\|l\|low` | Priority of the new task |
-| `-c`, `--category name` | Category of the new task. A leading `@name` word does the same for a one-word category; use one or the other. Quote a name with spaces |
-| `-b`, `--branch name` | Git branch of the new task. `.` means the current branch. A branch Git doesn't have locally, such as one not created yet, is fine: the task is added, and the output says it went to an unknown branch |
+| `-c`, `--category name` | Category of the new task. For categories without spaces, you can use the shortcut `@category-name`. Use quotes for categories with spaces |
+| `-b`, `--branch name` | Git branch of the new task. `.` means the current branch. A branch Git doesn't have locally still adds the task, the output will say it went to an unknown branch |
 | `-f`, `--file path` | Use another task file instead of `todo.md` |
 | `-e`, `--exclude dir` | Skip a directory in the dashboard's Files tab. See [Skipping directories](#skipping-directories) |
 | `--clear-done` | Remove every done task, and list what went |
@@ -160,7 +188,7 @@ In the form:
 
 `backspace` deletes the selected task with its details. On a category or branch row, it deletes every task in it, done or not, and the heading once nothing else is under it. The README.md group is read only.
 
-`X` clears done tasks from where you are: the opened category or branch, the whole tab, or everything in the All tasks view.
+`X` (shift-x) clears done tasks from where you are: the opened category or branch, the whole tab, or everything in the All tasks view.
 
 Both show a dialog naming what will go, including headings left empty, and only `y` goes ahead. Afterwards `u` undoes it, until the file next changes.
 
@@ -176,9 +204,10 @@ Both show a dialog naming what will go, including headings left empty, and only 
 | `a` / `b` | Add a task / add a branch task |
 | `e` / `enter` | Edit a task, or open a file or README TODO in your editor. `enter` also opens a category or branch |
 | `d` / `space` | Mark done or reopen |
-| `p` / `c` | Cycle priority / change category |
+| `p` / `c` | Cycle task priority / change task category |
 | `backspace` | Delete a task, or a category or branch with all of its tasks |
-| `X` / `u` | Clear done / undo the clear or delete |
+| `X` (shift+x) | Clear done tasks |
+| `u` | Undo the last clear or delete |
 | `r` | Reload the file and Git branches, and rescan files |
 | `?` | Help |
 | `q` / `ctrl+c` | Quit |
@@ -252,6 +281,8 @@ todo-scan --level 0+ --check    # only todo0, todo00 and so on, and exit 1 if an
 todo-scan --level 0,1 --list    # only todo0 and todo1
 ```
 
+`--check` exits with 1 if any TODOs are found, allowing you to fail your CI/CD pipeline.
+
 | Flag | Effect |
 | --- | --- |
 | `--list` | Print every TODO as `path:line: text`, most urgent first |
@@ -295,7 +326,7 @@ todo-scan -e ./web/generated
 
 - A bare name, such as `dist`, skips every directory with that name.
 - Anything with a slash, such as `./web/generated`, is a path from the working directory.
-- Giving `-e` replaces the defaults, so list `node_modules` and `vendor` again if you still want them skipped.
+- Using `-e` replaces the defaults, so you will need to exclude `node_modules` and `vendor` again if you still want them skipped.
 
 ### todo-system syntax
 
@@ -324,9 +355,3 @@ go tool -modfile=tools/go.mod govulncheck ./...
 ```
 
 The linter and govulncheck versions are pinned in their own module, `tools/go.mod`, and the linter is configured in `.golangci.yml`.
-
-CI runs the tests on Linux and macOS, the linter and govulncheck on every push to `main` and every pull request.
-
-### Releasing
-
-Pushing a tag such as `v0.1.0` runs the release workflow. It tests, then [GoReleaser](https://goreleaser.com) builds the archives for macOS and Linux, configured in `.goreleaser.yaml`, and publishes them with a checksum file as a GitHub release. `--version` prints the tag.
