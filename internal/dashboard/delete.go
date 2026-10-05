@@ -41,7 +41,7 @@ func (m *model) startDelete() {
 	}
 	removal, err := store.PlanRemove(m.file, []store.Task{selected})
 	if err != nil {
-		m.status = errorStatus(err)
+		m.writeFailed(err)
 		return
 	}
 	_, subtasks := m.selectedSubtasks()
@@ -59,7 +59,7 @@ func (m *model) startGroupDelete(row navigationRow) {
 	tasks := rowTasks(m.rowsIn(m.activePane(), group{kind: row.kind, name: row.name}))
 	removal, err := store.PlanRemove(m.file, tasks)
 	if err != nil {
-		m.status = errorStatus(err)
+		m.writeFailed(err)
 		return
 	}
 	name := `the "` + ui.CleanDisplay(row.name) + `" category`

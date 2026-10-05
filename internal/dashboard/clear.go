@@ -77,7 +77,7 @@ func (m *model) startClearDone() {
 	}
 	removal, err := store.PlanRemove(m.file, targets.Tasks)
 	if err != nil {
-		m.status = errorStatus(err)
+		m.writeFailed(err)
 		return
 	}
 	m.overlay = &clearConfirmation{removal: removal, targets: targets, scope: scope}
@@ -126,7 +126,7 @@ type removalUndo struct {
 // removal so u can undo it.
 func (m *model) applyRemoval(msg removalConfirmedMsg) (tea.Model, tea.Cmd) {
 	if err := msg.removal.Apply(); err != nil {
-		m.status = errorStatus(err)
+		m.writeFailed(err)
 		return m, nil
 	}
 	if m.focus == detailPane {

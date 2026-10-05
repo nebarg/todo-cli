@@ -385,7 +385,7 @@ func (m *model) toggleSelected() {
 		changed = append(changed, toggled)
 	}
 	if err := toggle(); err != nil {
-		m.status = errorStatus(err)
+		m.writeFailed(err)
 		return
 	}
 	if err := m.refresh(changed...); err != nil {
@@ -398,9 +398,28 @@ func (m *model) toggleSelected() {
 	m.status = ""
 }
 
+// writeFailed shows why changing the file failed. When it changed on disk
+// since it was read, the tasks are reloaded straight away, rather than at the
+// next check for changes, so the action can be tried again on them as they
+// now are.
+func (m *model) writeFailed(err error) {
+	if !errors.Is(err, store.ErrTaskChanged) && !errors.Is(err, store.ErrFileChanged) {
+		m.status = err.Error()
+		return
+	}
+	if err := m.refresh(); err != nil {
+		m.status = err.Error()
+		return
+	}
+	m.status = "File changed on disk and was reloaded; try again"
+}
+
+// errorStatus is a failed save as the task form and the category prompt show
+// it. They keep the task as it was when they opened, so one changed on disk
+// since can only be saved once they are closed and opened on it again.
 func errorStatus(err error) string {
 	if errors.Is(err, store.ErrTaskChanged) {
-		return "Task changed on disk; press r to reload"
+		return "Task changed on disk; esc and try again"
 	}
 	return err.Error()
 }
@@ -418,7 +437,7 @@ func (m *model) cyclePriority() {
 	changed := selected
 	changed.Priority = selected.Priority.Next()
 	if err := store.SetPriority(m.file, selected, changed.Priority); err != nil {
-		m.status = errorStatus(err)
+		m.writeFailed(err)
 		return
 	}
 	if err := m.refresh(changed); err != nil {

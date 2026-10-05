@@ -127,7 +127,7 @@ func TestCategoryPromptShowsAFailedSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	m = press(m, "enter")
-	if footer := ansi.Strip(m.renderFooter(100)); !isOpen[*categoryPrompt](m) || !strings.Contains(footer, "Task changed on disk; press r to reload") {
+	if footer := ansi.Strip(m.renderFooter(100)); !isOpen[*categoryPrompt](m) || !strings.Contains(footer, "Task changed on disk; esc and try again") {
 		t.Fatalf("failed save: prompt open %v, footer %q", isOpen[*categoryPrompt](m), footer)
 	}
 	if footer := ansi.Strip(press(m, "x").renderFooter(100)); strings.Contains(footer, "Task changed") || !strings.Contains(footer, "cancel") {
@@ -398,8 +398,54 @@ func TestChangedTaskErrorLeavesUIHintsToCaller(t *testing.T) {
 	if strings.Contains(store.ErrTaskChanged.Error(), "press") {
 		t.Fatalf("store error mentions a UI key: %q", store.ErrTaskChanged)
 	}
-	if got := errorStatus(fmt.Errorf("save: %w", store.ErrTaskChanged)); !strings.Contains(got, "press r to reload") {
-		t.Fatalf("TUI status lost the reload hint: %q", got)
+	if got := errorStatus(fmt.Errorf("save: %w", store.ErrTaskChanged)); !strings.Contains(got, "esc and try again") {
+		t.Fatalf("TUI status lost the hint to try again: %q", got)
+	}
+}
+
+// TestAChangedFileIsReloadedForTheNextTry changes the selected task on disk
+// before each action that writes it. The action is refused, the tasks reload
+// at once, without waiting for the next check for changes, with the changed
+// task still selected, and the same key then works on it as it now is.
+func TestAChangedFileIsReloadedForTheNextTry(t *testing.T) {
+	const reloaded = "File changed on disk and was reloaded; try again"
+	for _, c := range []struct {
+		name, key string
+		worked    func(m *model, file string) bool
+	}{
+		{"done", "d", func(_ *model, file string) bool { return strings.Contains(file, "- [x] One edited") }},
+		{"priority", "p", func(_ *model, file string) bool { return strings.Contains(file, "- [ ] One edited !high") }},
+		{"delete", "backspace", func(m *model, _ string) bool { return isOpen[*deleteConfirmation](m) }},
+		{"confirmed delete", "y", func(_ *model, file string) bool { return !strings.Contains(file, "One") }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "todo.md")
+			if err := os.WriteFile(path, []byte("- [ ] One\n\n- [ ] Two\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			m, err := newModel(path, project.Repo{}, testFiles())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.key == "y" {
+				m = press(m, "backspace")
+			}
+			if err := os.WriteFile(path, []byte("- [ ] One edited\n\n- [ ] Two\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if m = press(m, c.key); m.status != reloaded || c.worked(m, fileContent(t, path)) {
+				t.Fatalf("status %q, file %q", m.status, fileContent(t, path))
+			}
+			if selected, ok := m.selectedTask(); !ok || selected.Text != "One edited" {
+				t.Fatalf("after the reload the selected task is %+v", selected)
+			}
+			if c.key == "y" {
+				m = press(m, "backspace")
+			}
+			if m = press(m, c.key); !c.worked(m, fileContent(t, path)) {
+				t.Fatalf("trying again: status %q, file %q", m.status, fileContent(t, path))
+			}
+		})
 	}
 }
 
