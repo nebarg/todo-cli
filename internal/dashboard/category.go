@@ -3,6 +3,7 @@ package dashboard
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -16,7 +17,7 @@ const minCategoryInputWidth = 24
 
 // promptKeys are the category prompt's keys, after tab while it shows a
 // suggestion.
-var promptKeys = []ui.KeyHint{{Key: "enter", Label: "save"}, {Key: "esc", Label: "cancel"}}
+var promptKeys = []ui.KeyHint{ui.Hint(formKeys.Enter, "save"), ui.Hint(formKeys.Cancel, "cancel")}
 
 // categoryPrompt edits a general task's category in the footer.
 type categoryPrompt struct {
@@ -90,13 +91,13 @@ func (p *categoryPrompt) update(msg tea.Msg) (overlay, tea.Msg, tea.Cmd) {
 }
 
 func (p *categoryPrompt) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
+	switch {
+	case key.Matches(msg, formKeys.Cancel):
 		return nil, nil, nil
-	case "tab":
+	case key.Matches(msg, formKeys.Tab):
 		completeCategory(&p.input)
 		return p, nil, nil
-	case "enter":
+	case key.Matches(msg, formKeys.Enter):
 		if err := store.SetCategory(p.file, p.task, p.input.Value()); err != nil {
 			p.err = err
 			return p, nil, nil
@@ -114,8 +115,8 @@ func (p *categoryPrompt) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 // resize gives the input the footer's width less its keys, leaving room
 // for tab, so the keys sit at the right edge.
 func (p *categoryPrompt) resize(theme ui.Theme, width int) {
-	keys := ansi.StringWidth(theme.RenderHints(append([]ui.KeyHint{completeHint}, promptKeys...)))
-	p.input.SetWidth(max(minCategoryInputWidth, width-ansi.StringWidth(p.input.Prompt)-keys-3))
+	hints := ansi.StringWidth(theme.RenderHints(append([]ui.KeyHint{completeHint}, promptKeys...)))
+	p.input.SetWidth(max(minCategoryInputWidth, width-ansi.StringWidth(p.input.Prompt)-hints-3))
 }
 
 // footer takes the dashboard's footer while the prompt is open: the input,
@@ -145,7 +146,7 @@ func (p *categoryPrompt) keys() []ui.KeyHint {
 }
 
 // completeHint offers tab while a category input shows a completion.
-var completeHint = ui.KeyHint{Key: "tab", Label: "complete"}
+var completeHint = ui.Hint(formKeys.Tab, "complete")
 
 // categoryNames lists General's categories, in the order its rows show them.
 func (m *model) categoryNames() []string {

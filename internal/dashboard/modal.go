@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -164,19 +165,19 @@ func (f *taskModal) view(theme ui.Theme, width, height int) string {
 }
 
 func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
+	switch {
+	case key.Matches(msg, formKeys.Cancel):
 		f.title.Blur()
 		f.scope.Blur()
 		f.details.Blur()
 		return nil, nil, nil
-	case "ctrl+enter":
+	case key.Matches(msg, formKeys.Save):
 		if err := f.save(); err != nil {
 			f.err = err
 			return f, nil, nil
 		}
 		return nil, f.saved(), nil
-	case "tab":
+	case key.Matches(msg, formKeys.Tab):
 		switch {
 		case f.field != scopeField:
 		case f.branchScope():
@@ -185,9 +186,9 @@ func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 			return f, nil, nil
 		}
 		return f, nil, f.focusField((f.field + 1) % (f.lastField() + 1))
-	case "shift+tab":
+	case key.Matches(msg, formKeys.ShiftTab):
 		return f, nil, f.focusField((f.field + f.lastField()) % (f.lastField() + 1))
-	case "down":
+	case key.Matches(msg, formKeys.Down):
 		if f.branchScope() && f.field == scopeField {
 			if count := len(f.branchChoices()); count > 0 {
 				f.branchCursor = (f.branchCursor + 1) % count
@@ -200,14 +201,14 @@ func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 		if f.field < f.lastField() {
 			return f, nil, f.focusField(f.field + 1)
 		}
-	case "enter":
+	case key.Matches(msg, formKeys.Enter):
 		if f.field == scopeField {
 			if f.branchScope() {
 				f.acceptBranch()
 			}
 			return f, nil, f.focusField(detailsField)
 		}
-	case "up":
+	case key.Matches(msg, formKeys.Up):
 		if f.field == titleField && f.title.Line() == 0 {
 			return f, nil, nil
 		}
@@ -608,15 +609,16 @@ func (f *taskModal) footer(theme ui.Theme, width int) string {
 	if f.err != nil {
 		return errorText(theme, f.err, width)
 	}
-	hints := []ui.KeyHint{{Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}, {Key: "tab", Label: "next field"}}
+	save, cancel := ui.Hint(formKeys.Save, "save"), ui.Hint(formKeys.Cancel, "cancel")
+	hints := []ui.KeyHint{save, cancel, ui.Hint(formKeys.Tab, "next field")}
 	if f.subtaskForm() {
 		hints = hints[:2]
 	}
 	if f.field == scopeField && canCompleteCategory(f.scope) {
-		hints = []ui.KeyHint{completeHint, {Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}}
+		hints = []ui.KeyHint{completeHint, save, cancel}
 	}
 	if f.branchScope() && f.field == scopeField {
-		hints = []ui.KeyHint{{Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}, {Key: "↑↓", Label: "choose"}, {Key: "tab", Label: "accept"}}
+		hints = []ui.KeyHint{save, cancel, {Key: "↑↓", Label: "choose"}, ui.Hint(formKeys.Tab, "accept")}
 	}
 	return theme.FitHints(hints, width)
 }

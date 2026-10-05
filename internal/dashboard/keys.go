@@ -28,6 +28,18 @@ type keyMap struct {
 	Quit             key.Binding
 }
 
+// formKeyMap is the keys of the task form and the category prompt, which take
+// the keyboard while they are open. The same key can do different things in
+// each, such as tab, which the labels beside it say.
+type formKeyMap struct {
+	Save     key.Binding // saves the form
+	Cancel   key.Binding
+	Tab      key.Binding // moves to the next field, or accepts or completes a suggestion
+	ShiftTab key.Binding
+	Up, Down key.Binding
+	Enter    key.Binding // moves from the category field on, or saves the prompt
+}
+
 var keys = keyMap{
 	Tab1:      key.NewBinding(key.WithKeys("1")),
 	Tab2:      key.NewBinding(key.WithKeys("2")),
@@ -53,4 +65,14 @@ var keys = keyMap{
 	Reload:    key.NewBinding(key.WithKeys("r")),
 	Help:      key.NewBinding(key.WithKeys("?")),
 	Quit:      key.NewBinding(key.WithKeys("q")),
+}
+
+var formKeys = formKeyMap{
+	Save:     key.NewBinding(key.WithKeys("ctrl+enter")),
+	Cancel:   key.NewBinding(key.WithKeys("esc")),
+	Tab:      key.NewBinding(key.WithKeys("tab")),
+	ShiftTab: key.NewBinding(key.WithKeys("shift+tab")),
+	Up:       key.NewBinding(key.WithKeys("up")),
+	Down:     key.NewBinding(key.WithKeys("down")),
+	Enter:    key.NewBinding(key.WithKeys("enter")),
 }
