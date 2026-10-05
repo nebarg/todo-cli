@@ -466,3 +466,45 @@ func TestReloadFollowsASwitchedGitBranch(t *testing.T) {
 		}
 	})
 }
+
+func TestTabAndShiftTabCycleThroughTheTabs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("- [ ] Task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project.Repo{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cycle := func(key tea.KeyPressMsg, from pane) pane {
+		m.focus = from
+		updated, _ := m.Update(key)
+		return updated.(*model).focus
+	}
+	tab, shiftTab := tea.KeyPressMsg{Code: tea.KeyTab}, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	for _, c := range []struct {
+		key        tea.KeyPressMsg
+		from, want pane
+	}{
+		{tab, generalPane, branchPane},
+		{tab, branchPane, sourcePane},
+		{tab, sourcePane, generalPane},
+		{shiftTab, generalPane, sourcePane},
+		{shiftTab, branchPane, generalPane},
+		{shiftTab, sourcePane, branchPane},
+	} {
+		if got := cycle(c.key, c.from); got != c.want {
+			t.Errorf("%s from pane %d = pane %d, want %d", c.key, c.from, got, c.want)
+		}
+	}
+	// Details open over the tab they came from, and the keys move on from it.
+	m.detailFrom = branchPane
+	for _, c := range []struct {
+		key  tea.KeyPressMsg
+		want pane
+	}{{tab, sourcePane}, {shiftTab, branchPane}} {
+		if got := cycle(c.key, detailPane); got != c.want {
+			t.Errorf("%s from the details = pane %d, want %d", c.key, got, c.want)
+		}
+	}
+}

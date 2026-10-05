@@ -29,6 +29,10 @@ const (
 	detailPane
 )
 
+// tabCount is how many panes are tabs: those before detailPane, which opens
+// over whichever of them has focus. tab and shift+tab cycle through them.
+const tabCount = detailPane
+
 type model struct {
 	file             string
 	project          project.Repo
@@ -216,9 +220,9 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.openAllTasks()
 	case "tab":
 		if m.focus == detailPane {
-			m.focus = (m.detailFrom + 1) % 3
+			m.focus = (m.detailFrom + 1) % tabCount
 		} else {
-			m.focus = (m.focus + 1) % 3
+			m.focus = (m.focus + 1) % tabCount
 		}
 		m.detailScroll = 0
 		m.files.CloseDetails()
@@ -226,7 +230,7 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if m.focus == detailPane {
 			m.focus = m.detailFrom
 		} else {
-			m.focus = (m.focus + 2) % 3
+			m.focus = (m.focus + tabCount - 1) % tabCount
 		}
 		m.detailScroll = 0
 		m.files.CloseDetails()
