@@ -180,7 +180,8 @@ func TestLoadReadmeReadsPlainItemsUnderACheckboxTaskAsDetails(t *testing.T) {
 	if err := ToggleReadme(path, tasks[0]); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := readFile(t, path), strings.Replace(readme, "- [ ] **Slug", "- [x] **Slug", 1); got != want {
+	// The README's first line ends in "\n", so its "\r\n" lines are written back with it.
+	if got, want := readFile(t, path), strings.ReplaceAll(strings.Replace(readme, "- [ ] **Slug", "- [x] **Slug", 1), "\r\n", "\n"); got != want {
 		t.Fatalf("toggle changed more than the checkbox:\n%q\nwant\n%q", got, want)
 	}
 }
@@ -205,14 +206,16 @@ func TestToggleReadmeOnlyChangesTheCheckbox(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
+	// The README's first line ends in "\n", so the "\r\n" of its done item is
+	// written as "\n" along with the first toggle.
 	steps := []struct {
 		task int
 		want string
 	}{
-		{0, "# Todo\n\n- [x] todo0 plain item !high\n  - [ ] nested\n- [x] done item\r\n\n## Next\n"},
-		{0, "# Todo\n\n- [ ] todo0 plain item !high\n  - [ ] nested\n- [x] done item\r\n\n## Next\n"},
-		{1, "# Todo\n\n- [ ] todo0 plain item !high\n  - [x] nested\n- [x] done item\r\n\n## Next\n"},
-		{2, "# Todo\n\n- [ ] todo0 plain item !high\n  - [x] nested\n- [ ] done item\r\n\n## Next\n"},
+		{0, "# Todo\n\n- [x] todo0 plain item !high\n  - [ ] nested\n- [x] done item\n\n## Next\n"},
+		{0, "# Todo\n\n- [ ] todo0 plain item !high\n  - [ ] nested\n- [x] done item\n\n## Next\n"},
+		{1, "# Todo\n\n- [ ] todo0 plain item !high\n  - [x] nested\n- [x] done item\n\n## Next\n"},
+		{2, "# Todo\n\n- [ ] todo0 plain item !high\n  - [x] nested\n- [ ] done item\n\n## Next\n"},
 	}
 	for _, step := range steps {
 		tasks, err := LoadReadme(path)

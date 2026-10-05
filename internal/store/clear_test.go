@@ -74,6 +74,18 @@ func TestRemoveDoneDropsTasksAndEmptyHeadings(t *testing.T) {
 			categories: []string{"docs"},
 			branches:   []string{"feature/a", "feature/b"},
 		},
+		{
+			name:       "Windows file",
+			content:    "- [ ] Open\r\n\r\n# docs\r\n\r\n- [x] Done\r\n",
+			want:       "- [ ] Open\r\n",
+			categories: []string{"docs"},
+		},
+		{
+			name:       "mixed endings are written as the first line's and undone as read",
+			content:    "- [ ] Open\r\n\r\n# docs\n\n- [x] Done\n",
+			want:       "- [ ] Open\r\n",
+			categories: []string{"docs"},
+		},
 	} {
 		t.Run(item.name, func(t *testing.T) {
 			path, tasks := writeAndLoad(t, item.content)

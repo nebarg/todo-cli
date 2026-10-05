@@ -13,7 +13,7 @@ import (
 )
 
 var taskLine = regexp.MustCompile(`^([ \t]*- )(?:\[([ xX])\] +)?(.*)$`)
-var markdownHeading = regexp.MustCompile(`^ {0,3}(#{1,6})[ \t]+(.+?)\s*\r?$`)
+var markdownHeading = regexp.MustCompile(`^ {0,3}(#{1,6})[ \t]+(.+?)\s*$`)
 
 // ErrTaskChanged means the file no longer matches the task that was read,
 // so the edit was refused rather than risk changing the wrong lines.
@@ -93,7 +93,7 @@ func Load(path string) ([]Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, text := splitBOM(data)
+	text, _ := decode(data)
 	return parseTasks(strings.Split(text, "\n")), nil
 }
 
@@ -108,6 +108,34 @@ func splitBOM(data []byte) (bom, text string) {
 		return byteOrderMark, text
 	}
 	return "", string(data)
+}
+
+// fileFormat is what a file has besides its lines: the byte order mark it
+// starts with, and whether its lines end in "\r\n". decode sets both aside,
+// so the rest of the store only sees "\n"-separated text, and encode puts
+// them back.
+type fileFormat struct {
+	bom  string
+	crlf bool
+}
+
+// decode reads a file's bytes as text with every "\r\n" written as "\n", and
+// the format to write it back in. A file is CRLF when its first line ends
+// with "\r\n" and it has another line, so a Windows file stays one. A file
+// whose endings are mixed is written back with its first line's.
+func decode(data []byte) (string, fileFormat) {
+	bom, text := splitBOM(data)
+	first, _, more := strings.Cut(text, "\n")
+	return strings.ReplaceAll(text, "\r\n", "\n"), fileFormat{bom: bom, crlf: more && strings.HasSuffix(first, "\r")}
+}
+
+// encode is text, as decode returned it and an edit changed it, in the form
+// the file is written in.
+func (f fileFormat) encode(text string) string {
+	if f.crlf {
+		text = strings.ReplaceAll(text, "\n", "\r\n")
+	}
+	return f.bom + text
 }
 
 func parseTasks(lines []string) []Task {
@@ -139,11 +167,11 @@ func parseTasks(lines []string) []Task {
 			Line: i, raw: raw, Done: parts[2] == "x" || parts[2] == "X",
 			Branch: branch, Category: category, categoryLine: categoryLine,
 		}
-		t.Text, t.Priority = SplitPriority(strings.TrimSuffix(parts[3], "\r"))
+		t.Text, t.Priority = SplitPriority(parts[3])
 		indent := taskIndent(raw)
 		j := i + 1
 		for ; j < len(lines); j++ {
-			line := strings.TrimSuffix(lines[j], "\r")
+			line := lines[j]
 			if _, _, heading := parseHeading(line); heading {
 				break
 			}
@@ -207,7 +235,7 @@ func subtask(lines []string, span [2]int, parent Task) Task {
 		Section: parent.Section, categoryLine: parent.categoryLine,
 		bodyStart: span[0] + 1, bodyEnd: span[1],
 	}
-	s.Text, s.Priority = SplitPriority(strings.TrimSuffix(parts[3], "\r"))
+	s.Text, s.Priority = SplitPriority(parts[3])
 	s.bodyRaw = slices.Clone(lines[s.bodyStart:s.bodyEnd])
 	s.Details = detailText(s.bodyRaw, taskIndent(raw))
 	return s
@@ -224,7 +252,7 @@ func detailText(lines []string, indent string) string {
 	}
 	body := make([]string, len(lines))
 	for i, line := range lines {
-		body[i] = strings.TrimPrefix(strings.TrimSuffix(line, "\r"), indent+"  ")
+		body[i] = strings.TrimPrefix(line, indent+"  ")
 	}
 	return strings.Join(body, "\n")
 }
@@ -272,9 +300,9 @@ func Add(path, title, details string, p Priority, to Section) error {
 		block = append(block, "")
 		block = append(block, body...)
 	}
-	bom, text := splitBOM(data)
+	text, format := decode(data)
 	updated := sortSection(insertTaskBlock(text, block, to), to)
-	return replaceFile(path, []byte(bom+updated), mode)
+	return replaceFile(path, []byte(format.encode(updated)), mode)
 }
 
 // AddSubtask writes a new open subtask under parent, after its last subtask,
@@ -296,7 +324,7 @@ func AddSubtask(path string, parent Task, title string) error {
 			at = trimBlankEnd(lines, parent.bodyEnd, parent.bodyStart)
 			block = append([]string{""}, block...)
 		}
-		return strings.Join(insertLines(lines, at, withEnding(block, lineEnding(lines))), "\n")
+		return strings.Join(insertLines(lines, at, block), "\n")
 	})
 }
 
@@ -394,14 +422,13 @@ func movedTaskLines(lines []string, selected Task, block []string, to Section) s
 func editedTaskLines(lines []string, selected Task, title, details string) []string {
 	updated := slices.Clone(lines[:selected.Line])
 	updated = append(updated, normalizedTaskLine(selected, title, selected.Done, selected.Priority))
-	eol := lineEnding(lines)
 	if strings.Join(formattedDetails(details), "\n") == strings.Join(formattedDetails(selected.Details), "\n") {
 		updated = append(updated, selected.bodyRaw...)
 	} else if body := newBody(selected, details); len(body) > 0 {
-		updated = append(updated, withEnding(body, eol)...)
-		updated = append(updated, eol)
+		updated = append(updated, body...)
+		updated = append(updated, "")
 	} else if selected.bodyEnd < len(lines) {
-		updated = append(updated, eol)
+		updated = append(updated, "")
 	}
 	return append(updated, lines[selected.bodyEnd:]...)
 }
@@ -417,12 +444,12 @@ func rewriteTask(path string, selected Task, change func(lines []string) string)
 	if err != nil {
 		return err
 	}
-	bom, text := splitBOM(data)
+	text, format := decode(data)
 	lines := strings.Split(text, "\n")
 	if !taskUnchanged(lines, selected) {
 		return ErrTaskChanged
 	}
-	return replaceFile(path, []byte(bom+change(lines)), info.Mode().Perm())
+	return replaceFile(path, []byte(format.encode(change(lines))), info.Mode().Perm())
 }
 
 func taskUnchanged(lines []string, selected Task) bool {
@@ -518,36 +545,13 @@ func sectionLines(block []string, s Section) []string {
 	return block
 }
 
-// withFinalNewline ends the last line, in the file's line ending, so lines
-// added at the end are separated from it.
+// withFinalNewline ends the last line, so lines added at the end are
+// separated from it.
 func withFinalNewline(lines []string) []string {
-	if last := len(lines) - 1; lines[last] != "" {
-		lines[last] += lineEnding(lines)
+	if lines[len(lines)-1] != "" {
 		lines = append(lines, "")
 	}
 	return lines
-}
-
-// lineEnding is "\r" when the file's first line ends with "\r\n", so the
-// lines the app adds match a Windows file. Lines already in the file keep
-// their own endings.
-func lineEnding(lines []string) string {
-	if len(lines) > 1 && strings.HasSuffix(lines[0], "\r") {
-		return "\r"
-	}
-	return ""
-}
-
-// withEnding copies lines, adding eol to those without a "\r" ending.
-func withEnding(lines []string, eol string) []string {
-	result := make([]string, len(lines))
-	for i, line := range lines {
-		if !strings.HasSuffix(line, "\r") {
-			line += eol
-		}
-		result[i] = line
-	}
-	return result
 }
 
 func parseHeading(line string) (int, string, bool) {
@@ -636,13 +640,13 @@ func findCategorySection(lines []string, category string) (int, int) {
 // by blank lines. lines must end with a newline, as withFinalNewline leaves
 // them, and idx must come before it.
 func insertBlockAt(lines []string, idx int, block []string) string {
-	eol := lineEnding(lines)
-	addition := withEnding(block, eol)
+	var addition []string
 	if idx > 0 && strings.TrimSpace(lines[idx-1]) != "" {
-		addition = append([]string{eol}, addition...)
+		addition = append(addition, "")
 	}
+	addition = append(addition, block...)
 	if strings.TrimSpace(lines[idx]) != "" {
-		addition = append(addition, eol)
+		addition = append(addition, "")
 	}
 	return strings.Join(insertLines(lines, idx, addition), "\n")
 }
@@ -668,11 +672,7 @@ func normalizedTaskLine(selected Task, title string, done bool, p Priority) stri
 	if done {
 		mark = "x"
 	}
-	ending := ""
-	if strings.HasSuffix(selected.raw, "\r") {
-		ending = "\r"
-	}
-	return indent + "- [" + mark + "] " + title + priorityToken(p) + ending
+	return indent + "- [" + mark + "] " + title + priorityToken(p)
 }
 
 // Toggle flips selected between open and done.

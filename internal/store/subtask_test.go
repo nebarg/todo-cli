@@ -20,6 +20,10 @@ const subtaskSample = "# auth\n\n" +
 	"- [ ] Branch task\n" +
 	"  - [ ] Branch subtask\n"
 
+// subtaskSampleWritten is subtaskSample as the store writes it back: the
+// "\r\n" ending of one of its lines becomes "\n", the ending of its first.
+var subtaskSampleWritten = strings.ReplaceAll(subtaskSample, "\r\n", "\n")
+
 func TestSubtasksAreTheCheckboxesUnderATask(t *testing.T) {
 	_, tasks := writeAndLoad(t, subtaskSample)
 	type want struct {
@@ -57,7 +61,7 @@ func TestSubtaskWritesChangeOnlyTheirLines(t *testing.T) {
 	if err := Toggle(path, tasks[1]); err != nil {
 		t.Fatal(err)
 	}
-	want := strings.Replace(subtaskSample, "  - [ ] Write the form !low", "  - [x] Write the form !low", 1)
+	want := strings.Replace(subtaskSampleWritten, "  - [ ] Write the form !low", "  - [x] Write the form !low", 1)
 	if got := readFile(t, path); got != want {
 		t.Fatalf("after toggling a subtask:\n%q\nwant\n%q", got, want)
 	}
@@ -140,7 +144,7 @@ func TestRemovingSubtasks(t *testing.T) {
 	if err := removal.Apply(); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := readFile(t, path), strings.Replace(subtaskSample, "  - [x] Add the route\n\n", "", 1); got != want {
+	if got, want := readFile(t, path), strings.Replace(subtaskSampleWritten, "  - [x] Add the route\n\n", "", 1); got != want {
 		t.Fatalf("after removing a subtask:\n%q\nwant\n%q", got, want)
 	}
 
@@ -156,7 +160,7 @@ func TestRemovingSubtasks(t *testing.T) {
 	if err := removal.Apply(); err != nil {
 		t.Fatal(err)
 	}
-	want := strings.Replace(strings.Replace(subtaskSample, "  - [x] Add the route\n\n", "", 1), "- [x] Old task\n  - [ ] Left open\n\n", "", 1)
+	want := strings.Replace(strings.Replace(subtaskSampleWritten, "  - [x] Add the route\n\n", "", 1), "- [x] Old task\n  - [ ] Left open\n\n", "", 1)
 	if got := readFile(t, path); got != want {
 		t.Fatalf("after removing the done tasks:\n%q\nwant\n%q", got, want)
 	}

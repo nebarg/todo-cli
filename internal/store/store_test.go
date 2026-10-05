@@ -671,6 +671,29 @@ func TestPriorityTokenKeepsWindowsLineEndings(t *testing.T) {
 	}
 }
 
+// TestMixedLineEndingsAreWrittenAsTheFirstLinesEnding checks that a file whose
+// lines end differently is read without the "\r" of those that end in "\r\n",
+// and written with every line ending as its first does.
+func TestMixedLineEndingsAreWrittenAsTheFirstLinesEnding(t *testing.T) {
+	for _, item := range []struct{ name, content, want string }{
+		{"Windows first", "- [ ] One\r\n- [ ] Two\n- [ ] Three\r\n", "- [x] One\r\n- [ ] Two\r\n- [ ] Three\r\n"},
+		{"Unix first", "- [ ] One\n- [ ] Two\r\n- [ ] Three\n", "- [x] One\n- [ ] Two\n- [ ] Three\n"},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			path, tasks := writeAndLoad(t, item.content)
+			if got := indexOrder(tasks); got != "One,Two,Three" {
+				t.Fatalf("tasks = %q", got)
+			}
+			if err := Toggle(path, tasks[0]); err != nil {
+				t.Fatal(err)
+			}
+			if got := readFile(t, path); got != item.want {
+				t.Fatalf("file = %q, want %q", got, item.want)
+			}
+		})
+	}
+}
+
 // TestByteOrderMarkIsSetAside makes each write to a file with a byte order
 // mark and to the same file without one. The mark mustn't change what is
 // read, and stays at the start of the file.
@@ -706,7 +729,7 @@ func TestByteOrderMarkIsSetAside(t *testing.T) {
 			return r.Undo()
 		}},
 	}
-	for _, content := range []string{"# work\n\n- [ ] First\n- [x] Done\n", "- [ ] First\n- [x] Done\n"} {
+	for _, content := range []string{"# work\n\n- [ ] First\n- [x] Done\n", "- [ ] First\n- [x] Done\n", "# work\r\n\r\n- [ ] First\r\n- [x] Done\r\n"} {
 		for _, w := range writes {
 			t.Run(w.name, func(t *testing.T) {
 				plainPath, plainTasks := writeAndLoad(t, content)

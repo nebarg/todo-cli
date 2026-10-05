@@ -52,7 +52,7 @@ func LoadReadme(path string) ([]ReadmeTask, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, text := splitBOM(data)
+	text, _ := decode(data)
 	return parseReadme(strings.Split(text, "\n")), nil
 }
 
@@ -159,7 +159,7 @@ func dedent(lines []string) string {
 	result := make([]string, len(lines))
 	for i, line := range lines {
 		if strings.TrimSpace(line) != "" {
-			result[i] = strings.TrimSuffix(line[shared:], "\r")
+			result[i] = line[shared:]
 		}
 	}
 	return strings.Join(result, "\n")
