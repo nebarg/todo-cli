@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -167,49 +165,21 @@ func isMarkdown(path string) bool {
 // bundles or generated code, which are read whole, so they are skipped.
 const maxFileSize = 1 << 20
 
+// binaryCheckLen is how much of a file is checked for a NUL byte, which
+// marks it as binary.
+const binaryCheckLen = 8192
+
 // scanFile finds the to-dos in one file, skipping anything that isn't a
-// regular text file of at most maxFileSize bytes.
+// regular text file of at most maxFileSize bytes, or that can't be read.
 func scanFile(dir, relative string) []Match {
 	path := filepath.Join(dir, relative)
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > maxFileSize {
 		return nil
 	}
-	file, err := os.Open(path)
-	if err != nil {
+	content, err := os.ReadFile(path)
+	if err != nil || bytes.IndexByte(content[:min(len(content), binaryCheckLen)], 0) >= 0 {
 		return nil
 	}
-	defer func() { _ = file.Close() }() // Read-only, so a close error cannot lose data.
-	content, ok := readText(file, info.Size())
-	if !ok {
-		return nil
-	}
-	return fileTodos(filepath.ToSlash(relative), content)
-}
-
-// binaryCheckLen is how much of a file is checked for a NUL byte, which
-// marks it as binary.
-const binaryCheckLen = 8192
-
-// readText reads a file of about size bytes from r, unless its first
-// binaryCheckLen bytes hold a NUL byte. A binary file is read no further.
-func readText(r io.Reader, size int64) (string, bool) {
-	head := make([]byte, binaryCheckLen)
-	n, err := io.ReadFull(r, head)
-	head = head[:n]
-	if bytes.IndexByte(head, 0) >= 0 {
-		return "", false
-	}
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		return string(head), true
-	}
-	if err != nil {
-		return "", false
-	}
-	content := bytes.NewBuffer(make([]byte, 0, max(int(size), n)+bytes.MinRead))
-	content.Write(head)
-	if _, err := content.ReadFrom(r); err != nil {
-		return "", false
-	}
-	return content.String(), true
+	return fileTodos(filepath.ToSlash(relative), string(content))
 }

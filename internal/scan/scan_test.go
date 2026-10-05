@@ -1,11 +1,9 @@
 package scan
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -144,26 +142,60 @@ func TestScanFollowsEachRepositorysGitignore(t *testing.T) {
 	}
 }
 
-func TestReadTextStopsAtABinaryStart(t *testing.T) {
-	binary := append(make([]byte, binaryCheckLen-1), 'x')
-	if _, ok := readText(io.MultiReader(bytes.NewReader(binary), readFails{t}), 1<<30); ok {
-		t.Fatal("a file starting with NUL bytes was read as text")
-	}
-	long := strings.Repeat("a", binaryCheckLen) + "\x00 later"
-	if text, ok := readText(strings.NewReader(long), int64(len(long))); !ok || text != long {
-		t.Fatalf("a NUL byte past the check made the file binary: %v", ok)
-	}
-	if text, ok := readText(strings.NewReader("short"), 5); !ok || text != "short" {
-		t.Fatalf("short file = %q, %v", text, ok)
+func TestScanChecksOnlyTheFirstBytesForBinary(t *testing.T) {
+	todo := "// TODO: found\n"
+	for _, setup := range setups {
+		t.Run(setup.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFiles(t, dir, map[string]string{
+				"nul-first.go":        "\x00" + todo,
+				"nul-in-check.go":     todo + strings.Repeat("\n", binaryCheckLen-len(todo)-1) + "\x00",
+				"nul-past-check.go":   todo + strings.Repeat("\n", binaryCheckLen-len(todo)) + "\x00 later",
+				"short.go":            todo,
+				"empty.go":            "",
+				"no-final-newline.go": "// TODO: unfinished",
+			})
+			if setup.repo {
+				gitInit(t, dir)
+			}
+			keepGitConfigOut(t)
+			matches, err := Source(t.Context(), dir, Exclude{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []string
+			for _, m := range matches {
+				got = append(got, fmt.Sprintf("%s:%d", m.Path, m.Line))
+			}
+			if want := []string{"no-final-newline.go:1", "nul-past-check.go:1", "short.go:1"}; !slices.Equal(got, want) {
+				t.Fatalf("matches = %v, want %v", got, want)
+			}
+		})
 	}
 }
 
-// readFails fails the test when read.
-type readFails struct{ t *testing.T }
-
-func (r readFails) Read([]byte) (int, error) {
-	r.t.Error("read past the binary check")
-	return 0, io.EOF
+func TestScanSkipsUnreadableFiles(t *testing.T) {
+	for _, setup := range setups {
+		t.Run(setup.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFiles(t, dir, map[string]string{"ok.go": "// TODO: readable\n", "locked.go": "// TODO: unreadable\n"})
+			locked := filepath.Join(dir, "locked.go")
+			if err := os.Chmod(locked, 0); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.ReadFile(locked); err == nil {
+				t.Skip("file permissions aren't enforced for this user")
+			}
+			if setup.repo {
+				gitInit(t, dir)
+			}
+			keepGitConfigOut(t)
+			matches, err := Source(t.Context(), dir, Exclude{})
+			if err != nil || len(matches) != 1 || matches[0].Path != "ok.go" {
+				t.Fatalf("matches = %+v, %v", matches, err)
+			}
+		})
+	}
 }
 
 func TestScanStopsWhenCancelled(t *testing.T) {
