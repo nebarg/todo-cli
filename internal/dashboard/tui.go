@@ -571,17 +571,18 @@ func preserveTaskOrder(previous, loaded, changed []store.Task) []store.Task {
 	if len(previous) == 0 || len(loaded) == 0 {
 		return loaded
 	}
-	type key struct {
+	type alike struct {
 		text, branch, category string
 		done, subtask          bool
 		priority               store.Priority
 	}
-	identity := func(item store.Task) key {
-		return key{item.Text, item.Branch, strings.ToLower(item.Category), item.Done, item.Subtask, item.Priority}
+	identity := func(item store.Task) alike {
+		return alike{item.Text, item.Branch, strings.ToLower(item.Category), item.Done, item.Subtask, item.Priority}
 	}
-	positions := make(map[key][]int, len(loaded))
+	positions := make(map[alike][]int, len(loaded))
 	for i, item := range loaded {
-		positions[identity(item)] = append(positions[identity(item)], i)
+		id := identity(item)
+		positions[id] = append(positions[id], i)
 	}
 	assigned := make([]int, len(previous))
 	for i := range assigned {
@@ -592,35 +593,25 @@ func preserveTaskOrder(previous, loaded, changed []store.Task) []store.Task {
 		if slices.ContainsFunc(changed, func(t store.Task) bool { return t.Line == old.Line }) {
 			continue
 		}
-		candidates := positions[identity(old)]
-		best, bestOffset, distance := -1, -1, math.MaxInt
-		for offset, i := range candidates {
-			if d := abs(loaded[i].Line - old.Line); d < distance {
-				best, bestOffset, distance = i, offset, d
-			}
-		}
-		if best >= 0 {
-			assigned[oldIndex] = best
-			used[best] = true
-			positions[identity(old)] = append(candidates[:bestOffset], candidates[bestOffset+1:]...)
+		id := identity(old)
+		candidates := positions[id]
+		if offset := nearestLine(loaded, candidates, old.Line); offset >= 0 {
+			assigned[oldIndex], used[candidates[offset]] = candidates[offset], true
+			positions[id] = slices.Delete(candidates, offset, offset+1)
 		}
 	}
 	for oldIndex, old := range previous {
 		if assigned[oldIndex] >= 0 {
 			continue
 		}
-		best, distance := -1, math.MaxInt
+		var candidates []int
 		for i, candidate := range loaded {
-			if used[i] || !candidate.Same(old.Section) || candidate.Subtask != old.Subtask {
-				continue
-			}
-			if d := abs(candidate.Line - old.Line); d < distance {
-				best, distance = i, d
+			if !used[i] && candidate.Same(old.Section) && candidate.Subtask == old.Subtask {
+				candidates = append(candidates, i)
 			}
 		}
-		if best >= 0 {
-			assigned[oldIndex] = best
-			used[best] = true
+		if offset := nearestLine(loaded, candidates, old.Line); offset >= 0 {
+			assigned[oldIndex], used[candidates[offset]] = candidates[offset], true
 		}
 	}
 	ordered := make([]store.Task, 0, len(loaded))
@@ -635,6 +626,19 @@ func preserveTaskOrder(previous, loaded, changed []store.Task) []store.Task {
 		}
 	}
 	return ordered
+}
+
+// nearestLine is the position in candidates, which are indexes into loaded,
+// of the task on the line nearest to line, the first of any equally near, or
+// -1 when there are none.
+func nearestLine(loaded []store.Task, candidates []int, line int) int {
+	best, distance := -1, math.MaxInt
+	for offset, i := range candidates {
+		if d := abs(loaded[i].Line - line); d < distance {
+			best, distance = offset, d
+		}
+	}
+	return best
 }
 
 // placeNew adds t, a task new to the list or moved into its section, to
