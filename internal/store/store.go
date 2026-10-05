@@ -93,8 +93,8 @@ func Load(path string) ([]Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	text, _ := decode(data)
-	return parseTasks(strings.Split(text, "\n")), nil
+	lines, _ := decode(data)
+	return parseTasks(lines), nil
 }
 
 // byteOrderMark starts some UTF-8 files, such as those Windows editors may
@@ -112,26 +112,28 @@ func splitBOM(data []byte) (bom, text string) {
 
 // fileFormat is what a file has besides its lines: the byte order mark it
 // starts with, and whether its lines end in "\r\n". decode sets both aside,
-// so the rest of the store only sees "\n"-separated text, and encode puts
-// them back.
+// so the rest of the store only sees lines, and encode puts them back.
 type fileFormat struct {
 	bom  string
 	crlf bool
 }
 
-// decode reads a file's bytes as text with every "\r\n" written as "\n", and
-// the format to write it back in. A file is CRLF when its first line ends
-// with "\r\n" and it has another line, so a Windows file stays one. A file
-// whose endings are mixed is written back with its first line's.
-func decode(data []byte) (string, fileFormat) {
+// decode reads a file's bytes as lines, with every "\r\n" ending read as
+// "\n", and the format to write them back in. A file that ends with a newline
+// ends with an empty line. A file is CRLF when its first line ends with
+// "\r\n" and it has another line, so a Windows file stays one. A file whose
+// endings are mixed is written back with its first line's.
+func decode(data []byte) ([]string, fileFormat) {
 	bom, text := splitBOM(data)
 	first, _, more := strings.Cut(text, "\n")
-	return strings.ReplaceAll(text, "\r\n", "\n"), fileFormat{bom: bom, crlf: more && strings.HasSuffix(first, "\r")}
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	return lines, fileFormat{bom: bom, crlf: more && strings.HasSuffix(first, "\r")}
 }
 
-// encode is text, as decode returned it and an edit changed it, in the form
-// the file is written in.
-func (f fileFormat) encode(text string) string {
+// encode is lines, as decode returned them and an edit changed them, in the
+// form the file is written in.
+func (f fileFormat) encode(lines []string) string {
+	text := strings.Join(lines, "\n")
 	if f.crlf {
 		text = strings.ReplaceAll(text, "\n", "\r\n")
 	}
@@ -244,12 +246,7 @@ func subtask(lines []string, span [2]int, parent Task) Task {
 // detailText is a task's details from the lines under it: without the blank
 // lines around them, or the indent of the task's text.
 func detailText(lines []string, indent string) string {
-	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
-		lines = lines[1:]
-	}
-	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
-		lines = lines[:len(lines)-1]
-	}
+	lines = trimBlankLines(lines)
 	body := make([]string, len(lines))
 	for i, line := range lines {
 		body[i] = strings.TrimPrefix(line, indent+"  ")
@@ -300,8 +297,8 @@ func Add(path, title, details string, p Priority, to Section) error {
 		block = append(block, "")
 		block = append(block, body...)
 	}
-	text, format := decode(data)
-	updated := sortSection(insertTaskBlock(text, block, to), to)
+	lines, format := decode(data)
+	updated := sortSection(insertTaskBlock(lines, block, to), to)
 	return replaceFile(path, []byte(format.encode(updated)), mode)
 }
 
@@ -316,7 +313,7 @@ func AddSubtask(path string, parent Task, title string) error {
 	if title == "" || strings.ContainsAny(title, "\r\n") {
 		return errors.New("enter a single-line subtask")
 	}
-	return rewriteTask(path, parent, func(lines []string) string {
+	return rewriteTask(path, parent, func(lines []string) []string {
 		at, block := parent.Line+1, []string{taskIndent(parent.raw) + "  - [ ] " + title + priorityToken(p)}
 		if spans := subtaskSpans(lines, parent.bodyStart, parent.bodyEnd); len(spans) > 0 {
 			at = spans[len(spans)-1][1]
@@ -324,19 +321,13 @@ func AddSubtask(path string, parent Task, title string) error {
 			at = trimBlankEnd(lines, parent.bodyEnd, parent.bodyStart)
 			block = append([]string{""}, block...)
 		}
-		return strings.Join(insertLines(lines, at, block), "\n")
+		return insertLines(lines, at, block)
 	})
 }
 
 func formattedDetails(details string) []string {
 	details = strings.ReplaceAll(details, "\r\n", "\n")
-	rows := strings.Split(details, "\n")
-	for len(rows) > 0 && strings.TrimSpace(rows[0]) == "" {
-		rows = rows[1:]
-	}
-	for len(rows) > 0 && strings.TrimSpace(rows[len(rows)-1]) == "" {
-		rows = rows[:len(rows)-1]
-	}
+	rows := trimBlankLines(strings.Split(details, "\n"))
 	result := make([]string, 0, len(rows))
 	for _, row := range rows {
 		if strings.TrimSpace(row) == "" {
@@ -366,9 +357,9 @@ func Edit(path string, selected Task, title, details string, to Section) error {
 	if selected.Subtask && !to.Same(selected.Section) {
 		return errSubtaskSection
 	}
-	return rewriteTask(path, selected, func(lines []string) string {
+	return rewriteTask(path, selected, func(lines []string) []string {
 		if to.Same(selected.Section) {
-			return sortSection(strings.Join(editedTaskLines(lines, selected, title, details), "\n"), to)
+			return sortSection(editedTaskLines(lines, selected, title, details), to)
 		}
 		return sortSection(movedTaskLines(lines, selected, taskBlock(selected, title, details), to), to)
 	})
@@ -381,14 +372,17 @@ var errSubtaskSection = errors.New("a subtask stays with its task; move the task
 // original details text when it has not changed.
 func taskBlock(selected Task, title, details string) []string {
 	block := []string{normalizedTaskLine(selected, title, selected.Done, selected.Priority)}
-	if strings.Join(formattedDetails(details), "\n") == strings.Join(formattedDetails(selected.Details), "\n") {
-		body := slices.Clone(selected.bodyRaw)
-		for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
-			body = body[:len(body)-1]
-		}
-		return append(block, body...)
+	if sameDetails(selected, details) {
+		body := selected.bodyRaw
+		return append(block, body[:trimBlankEnd(body, len(body), 0)]...)
 	}
 	return append(block, newBody(selected, details)...)
+}
+
+// sameDetails reports whether details, as typed into the form, are
+// selected's own, once both are formatted as the app writes them.
+func sameDetails(selected Task, details string) bool {
+	return slices.Equal(formattedDetails(details), formattedDetails(selected.Details))
 }
 
 // newBody is the lines under selected with details in place of its own: a
@@ -410,19 +404,19 @@ func newBody(selected Task, details string) []string {
 
 // movedTaskLines removes selected from lines, drops a heading it leaves empty,
 // and files block under to.
-func movedTaskLines(lines []string, selected Task, block []string, to Section) string {
+func movedTaskLines(lines []string, selected Task, block []string, to Section) []string {
 	remaining := slices.Concat(lines[:selected.Line], lines[selected.bodyEnd:])
 	remaining = removeEmptyCategoryHeading(remaining, selected)
 	if selected.Branch != "" && selected.Branch != to.Branch {
 		remaining = removeEmptyBranchHeading(remaining, selected.Branch)
 	}
-	return insertTaskBlock(strings.Join(remaining, "\n"), block, to)
+	return insertTaskBlock(remaining, block, to)
 }
 
 func editedTaskLines(lines []string, selected Task, title, details string) []string {
 	updated := slices.Clone(lines[:selected.Line])
 	updated = append(updated, normalizedTaskLine(selected, title, selected.Done, selected.Priority))
-	if strings.Join(formattedDetails(details), "\n") == strings.Join(formattedDetails(selected.Details), "\n") {
+	if sameDetails(selected, details) {
 		updated = append(updated, selected.bodyRaw...)
 	} else if body := newBody(selected, details); len(body) > 0 {
 		updated = append(updated, body...)
@@ -435,7 +429,7 @@ func editedTaskLines(lines []string, selected Task, title, details string) []str
 
 // rewriteTask replaces the file with change(lines), refusing when selected no
 // longer matches the file so edits never land on the wrong task.
-func rewriteTask(path string, selected Task, change func(lines []string) string) error {
+func rewriteTask(path string, selected Task, change func(lines []string) []string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -444,8 +438,7 @@ func rewriteTask(path string, selected Task, change func(lines []string) string)
 	if err != nil {
 		return err
 	}
-	text, format := decode(data)
-	lines := strings.Split(text, "\n")
+	lines, format := decode(data)
 	if !taskUnchanged(lines, selected) {
 		return ErrTaskChanged
 	}
@@ -491,11 +484,11 @@ func NormalizeCategory(raw string) string {
 	return strings.Join(strings.Fields(raw), " ")
 }
 
-func insertTaskBlock(data string, block []string, to Section) string {
-	if strings.TrimSpace(data) == "" {
-		return strings.Join(sectionLines(block, to), "\n") + "\n"
+func insertTaskBlock(lines, block []string, to Section) []string {
+	if allBlank(lines) {
+		return slices.Concat(sectionLines(block, to), []string{""})
 	}
-	lines := withFinalNewline(strings.Split(data, "\n"))
+	lines = withFinalNewline(lines)
 	if to.Branch != "" {
 		start, end, level := findBranchesSection(lines)
 		if start < 0 {
@@ -505,23 +498,12 @@ func insertTaskBlock(data string, block []string, to Section) string {
 		if branchStart < 0 {
 			return insertBlockAt(lines, trimBlankEnd(lines, end, start+1), append([]string{strings.Repeat("#", level+1) + " " + to.Branch, ""}, block...))
 		}
-		for i := branchStart + 1; i < branchEnd; i++ {
-			if _, _, ok := parseHeading(lines[i]); ok {
-				branchEnd = i // New branch tasks stay outside old nested headings.
-				break
-			}
-		}
+		// New branch tasks stay outside old nested headings.
+		branchEnd = nextHeading(lines[:branchEnd], branchStart+1, anyLevel)
 		return insertBlockAt(lines, trimBlankEnd(lines, branchEnd, branchStart+1), block)
 	}
 	if to.Category == "" {
-		end := len(lines)
-		for i, line := range lines {
-			if _, _, ok := parseHeading(line); ok {
-				end = i
-				break
-			}
-		}
-		return insertBlockAt(lines, trimBlankEnd(lines, end, 0), block)
+		return insertBlockAt(lines, trimBlankEnd(lines, nextHeading(lines, 0, anyLevel), 0), block)
 	}
 	if start, end := findCategorySection(lines, to.Category); start >= 0 {
 		return insertBlockAt(lines, trimBlankEnd(lines, end, start+1), block)
@@ -570,20 +552,29 @@ func parseHeading(line string) (int, string, bool) {
 	return len(parts[1]), name, true
 }
 
+// anyLevel is the deepest heading level, so as nextHeading's maxLevel it
+// stops at a heading of any level.
+const anyLevel = 6
+
+// nextHeading is where a section that starts before index from ends: the
+// index of the first line from there on that is a heading of level maxLevel
+// or shallower, or len(lines) if none is.
+func nextHeading(lines []string, from, maxLevel int) int {
+	for i := from; i < len(lines); i++ {
+		if level, _, ok := parseHeading(lines[i]); ok && level <= maxLevel {
+			return i
+		}
+	}
+	return len(lines)
+}
+
 func findBranchesSection(lines []string) (int, int, int) {
 	for i, line := range lines {
 		level, name, ok := parseHeading(line)
 		if !ok || !strings.EqualFold(name, "Branches") || (level != 1 && level != 2) {
 			continue
 		}
-		end := len(lines)
-		for j := i + 1; j < len(lines); j++ {
-			if nextLevel, _, ok := parseHeading(lines[j]); ok && nextLevel <= level {
-				end = j
-				break
-			}
-		}
-		return i, end, level
+		return i, nextHeading(lines, i+1, level), level
 	}
 	return -1, -1, 0
 }
@@ -594,14 +585,7 @@ func findBranchSection(lines []string, start, end, level int, branch string) (in
 		if !ok || currentLevel != level+1 || name != branch {
 			continue
 		}
-		branchEnd := end
-		for j := i + 1; j < end; j++ {
-			if nextLevel, _, ok := parseHeading(lines[j]); ok && nextLevel <= currentLevel {
-				branchEnd = j
-				break
-			}
-		}
-		return i, branchEnd
+		return i, nextHeading(lines[:end], i+1, currentLevel)
 	}
 	return -1, -1
 }
@@ -624,14 +608,7 @@ func findCategorySection(lines []string, category string) (int, int) {
 		if !strings.EqualFold(NormalizeCategory(name), category) {
 			continue
 		}
-		end := len(lines)
-		for j := i + 1; j < len(lines); j++ {
-			if _, _, ok := parseHeading(lines[j]); ok {
-				end = j
-				break
-			}
-		}
-		return i, end
+		return i, nextHeading(lines, i+1, anyLevel)
 	}
 	return -1, -1
 }
@@ -639,7 +616,7 @@ func findCategorySection(lines []string, category string) (int, int) {
 // insertBlockAt adds block before lines[idx], separated from its neighbours
 // by blank lines. lines must end with a newline, as withFinalNewline leaves
 // them, and idx must come before it.
-func insertBlockAt(lines []string, idx int, block []string) string {
+func insertBlockAt(lines []string, idx int, block []string) []string {
 	var addition []string
 	if idx > 0 && strings.TrimSpace(lines[idx-1]) != "" {
 		addition = append(addition, "")
@@ -648,7 +625,7 @@ func insertBlockAt(lines []string, idx int, block []string) string {
 	if strings.TrimSpace(lines[idx]) != "" {
 		addition = append(addition, "")
 	}
-	return strings.Join(insertLines(lines, idx, addition), "\n")
+	return insertLines(lines, idx, addition)
 }
 
 func trimBlankEnd(lines []string, end, minimum int) int {
@@ -656,6 +633,20 @@ func trimBlankEnd(lines []string, end, minimum int) int {
 		end--
 	}
 	return end
+}
+
+// trimBlankLines is lines without the blank lines at either end.
+func trimBlankLines(lines []string) []string {
+	start := 0
+	for start < len(lines) && strings.TrimSpace(lines[start]) == "" {
+		start++
+	}
+	return lines[start:trimBlankEnd(lines, len(lines), start)]
+}
+
+// allBlank reports whether every one of lines is blank, as when there are none.
+func allBlank(lines []string) bool {
+	return !slices.ContainsFunc(lines, func(line string) bool { return strings.TrimSpace(line) != "" })
 }
 
 func insertLines(lines []string, index int, addition []string) []string {
@@ -677,17 +668,17 @@ func normalizedTaskLine(selected Task, title string, done bool, p Priority) stri
 
 // Toggle flips selected between open and done.
 func Toggle(path string, selected Task) error {
-	return rewriteTask(path, selected, func(lines []string) string {
+	return rewriteTask(path, selected, func(lines []string) []string {
 		lines[selected.Line] = normalizedTaskLine(selected, selected.Text, !selected.Done, selected.Priority)
-		return sortSection(strings.Join(lines, "\n"), selected.Section)
+		return sortSection(lines, selected.Section)
 	})
 }
 
 // SetPriority rewrites the !priority at the end of selected's task line.
 func SetPriority(path string, selected Task, p Priority) error {
-	return rewriteTask(path, selected, func(lines []string) string {
+	return rewriteTask(path, selected, func(lines []string) []string {
 		lines[selected.Line] = normalizedTaskLine(selected, selected.Text, selected.Done, p)
-		return sortSection(strings.Join(lines, "\n"), selected.Section)
+		return sortSection(lines, selected.Section)
 	})
 }
 
@@ -707,7 +698,7 @@ func SetCategory(path string, selected Task, category string) error {
 	if to.Same(selected.Section) {
 		return nil
 	}
-	return rewriteTask(path, selected, func(lines []string) string {
+	return rewriteTask(path, selected, func(lines []string) []string {
 		return sortSection(movedTaskLines(lines, selected, taskBlock(selected, selected.Text, selected.Details), to), to)
 	})
 }
@@ -721,15 +712,9 @@ func removeEmptyCategoryHeading(lines []string, selected Task) []string {
 	if !ok || !strings.EqualFold(NormalizeCategory(name), selected.Category) {
 		return lines
 	}
-	end := start + 1
-	for end < len(lines) {
-		if _, _, ok := parseHeading(lines[end]); ok {
-			break
-		}
-		if strings.TrimSpace(lines[end]) != "" {
-			return lines
-		}
-		end++
+	end := nextHeading(lines, start+1, anyLevel)
+	if !allBlank(lines[start+1 : end]) {
+		return lines
 	}
 	return slices.Concat(lines[:start], lines[end:])
 }
@@ -743,10 +728,8 @@ func removeEmptyBranchHeading(lines []string, branch string) []string {
 	if branchStart < 0 {
 		return lines
 	}
-	for _, line := range lines[branchStart+1 : branchEnd] {
-		if strings.TrimSpace(line) != "" {
-			return lines
-		}
+	if !allBlank(lines[branchStart+1 : branchEnd]) {
+		return lines
 	}
 	return slices.Concat(lines[:branchStart], lines[branchEnd:])
 }

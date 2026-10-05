@@ -1,17 +1,13 @@
 package store
 
-import (
-	"slices"
-	"strings"
-)
+import "slices"
 
 // sortSection orders the tasks of section s by priority, keeping the file's
 // order among equals. Being done doesn't move a task, so one reopened is back
 // where it was. Each task moves with its details and subtasks, which keep
 // their order; notes above the first task and nested headings stay where
 // they are.
-func sortSection(content string, s Section) string {
-	lines := strings.Split(content, "\n")
+func sortSection(lines []string, s Section) []string {
 	var runs [][]Task
 	for _, t := range parseTasks(lines) {
 		if t.Subtask || !t.Same(s) {
@@ -27,7 +23,7 @@ func sortSection(content string, s Section) string {
 	for _, run := range slices.Backward(runs) {
 		lines = sortRun(lines, run)
 	}
-	return strings.Join(lines, "\n")
+	return lines
 }
 
 // sortRun reorders tasks that follow one another directly, separating them

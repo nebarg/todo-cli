@@ -52,8 +52,8 @@ func LoadReadme(path string) ([]ReadmeTask, error) {
 	if err != nil {
 		return nil, err
 	}
-	text, _ := decode(data)
-	return parseReadme(strings.Split(text, "\n")), nil
+	lines, _ := decode(data)
+	return parseReadme(lines), nil
 }
 
 // readmeItem is a list item enclosing the line parseReadme is on.
@@ -144,12 +144,7 @@ func enclosing(parents []readmeItem, indent int) []readmeItem {
 // dedent joins lines without the blank lines around them or the indent
 // they share.
 func dedent(lines []string) string {
-	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
-		lines = lines[1:]
-	}
-	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
-		lines = lines[:len(lines)-1]
-	}
+	lines = trimBlankLines(lines)
 	shared := -1
 	for _, line := range lines {
 		if indent := len(taskIndent(line)); strings.TrimSpace(line) != "" && (shared < 0 || indent < shared) {
@@ -197,13 +192,13 @@ func splitReadmeLevel(text string) (string, string) {
 // checkbox a plain list item lacks. The rest of the line, and the README's
 // order, are left alone.
 func ToggleReadme(path string, selected ReadmeTask) error {
-	return rewriteTask(path, selected.task(), func(lines []string) string {
+	return rewriteTask(path, selected.task(), func(lines []string) []string {
 		parts := taskLine.FindStringSubmatch(selected.raw)
 		mark := "x"
 		if selected.Done {
 			mark = " "
 		}
 		lines[selected.Line] = parts[1] + "[" + mark + "] " + parts[3]
-		return strings.Join(lines, "\n")
+		return lines
 	})
 }

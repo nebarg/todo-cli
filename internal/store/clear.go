@@ -136,8 +136,7 @@ func PlanRemove(path string, tasks []Task) (Removal, error) {
 	// Removing from the bottom up keeps the line numbers of the tasks and
 	// headings still to come valid.
 	slices.SortFunc(r.Tasks, func(a, b Task) int { return cmp.Compare(b.Line, a.Line) })
-	text, format := decode(data)
-	lines := strings.Split(text, "\n")
+	lines, format := decode(data)
 	for _, t := range r.Tasks {
 		if !taskUnchanged(lines, t) {
 			return Removal{}, ErrTaskChanged
@@ -157,7 +156,7 @@ func PlanRemove(path string, tasks []Task) (Removal, error) {
 	}
 	slices.Sort(r.Categories)
 	slices.Sort(r.Branches)
-	r.after = format.encode(strings.Join(lines, "\n"))
+	r.after = format.encode(lines)
 	return r, nil
 }
 
@@ -195,10 +194,8 @@ func removeEmptyBranchesHeading(lines []string) []string {
 	if start < 0 {
 		return lines
 	}
-	for _, line := range lines[start+1 : end] {
-		if strings.TrimSpace(line) != "" {
-			return lines
-		}
+	if !allBlank(lines[start+1 : end]) {
+		return lines
 	}
 	return slices.Concat(lines[:start], lines[end:])
 }
