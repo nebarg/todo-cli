@@ -45,6 +45,7 @@ type model struct {
 	files            filesui.Model
 	overlay          overlay      // nil when nothing is open over the dashboard
 	lastRemoval      *removalUndo // the last clear or delete, for u to undo
+	contents         [][]byte     // the watched files as the tasks were last read from them
 	status           string
 	width            int
 	height           int
@@ -71,7 +72,11 @@ func newModel(file string, repo project.Context, files filesui.Model) (*model, e
 	return m, nil
 }
 
-func (m *model) Init() tea.Cmd { return tea.Batch(m.files.Scan(), tea.RequestBackgroundColor) }
+// Init starts watching without stats, so the first check compares the files
+// with what newModel read, catching an edit made since.
+func (m *model) Init() tea.Cmd {
+	return tea.Batch(m.files.Scan(), tea.RequestBackgroundColor, m.watch(nil))
+}
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -109,6 +114,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setBranches(msg)
 	case projectStateMsg:
 		m.setProject(msg)
+	case filesChangedMsg:
+		return m, m.filesChanged(msg)
 	case taskSavedMsg:
 		return m.taskSaved(msg)
 	case categorySetMsg:
@@ -519,6 +526,12 @@ func (m *model) readTasks(sort bool, changed []store.Task) error {
 	if selectionChanged {
 		previous = changed[i]
 	}
+	// Read before the tasks are, so an edit in between is seen as a change
+	// rather than taken as already shown.
+	contents, err := readFiles(m.watchedFiles())
+	if err != nil {
+		return err
+	}
 	tasks, err := store.Load(m.file)
 	if err != nil {
 		return err
@@ -532,6 +545,7 @@ func (m *model) readTasks(sort bool, changed []store.Task) error {
 	if err != nil {
 		return err
 	}
+	m.contents = contents
 	if sort {
 		m.tasks.readme = sortedReadme(readme)
 	} else {

@@ -237,6 +237,8 @@ Your README is read only, so neither works on its TODOs.
 
 File and README TODOs open in `$VISUAL`, then `$EDITOR`, falling back to `vi`. Vim, Neovim, VS Code, Codium and Cursor open at the TODO's line. When the editor closes, the tasks reload and the Files tab rescans.
 
+The dashboard also watches the task file and `README.md`, so changes made outside it, by an editor, a script or an agent, show up within a second, with each task keeping its place.
+
 ### Markdown format
 
 ```md
