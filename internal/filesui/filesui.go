@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/nebarg/todo-cli/internal/editor"
 	"github.com/nebarg/todo-cli/internal/scan"
@@ -134,49 +135,49 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		}
 	case tea.KeyPressMsg:
 		if m.details {
-			return m.detailsKey(msg.String())
+			return m.detailsKey(msg)
 		}
-		return m.listKey(msg.String())
+		return m.listKey(msg)
 	}
 	return nil
 }
 
-func (m *Model) listKey(key string) tea.Cmd {
-	switch key {
-	case "up", "k":
+func (m *Model) listKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, keys.Up):
 		return m.move(-1)
-	case "down", "j":
+	case key.Matches(msg, keys.Down):
 		return m.move(1)
-	case "right":
+	case key.Matches(msg, keys.Open):
 		if m.openCategory() {
 			return m.PreviewCmd()
 		}
 		if _, ok := m.Selected(); ok {
 			m.details, m.scroll = true, 0
 		}
-	case "enter":
+	case key.Matches(msg, keys.Enter):
 		if m.openCategory() {
 			return m.PreviewCmd()
 		}
 		return m.openEditor()
-	case "e":
+	case key.Matches(msg, keys.Edit):
 		return m.openEditor()
-	case "left", "esc":
+	case key.Matches(msg, keys.Back):
 		m.leaveCategory()
 		return m.PreviewCmd()
 	}
 	return nil
 }
 
-func (m *Model) detailsKey(key string) tea.Cmd {
-	switch key {
-	case "up", "k":
+func (m *Model) detailsKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, keys.Up):
 		m.scroll = max(0, m.scroll-1)
-	case "down", "j":
+	case key.Matches(msg, keys.Down):
 		m.scroll++
-	case "enter", "e":
+	case key.Matches(msg, keys.Enter, keys.Edit):
 		return m.openEditor()
-	case "left", "esc":
+	case key.Matches(msg, keys.Back):
 		m.CloseDetails()
 		return m.PreviewCmd()
 	}

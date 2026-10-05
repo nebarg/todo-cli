@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -54,10 +55,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.files.Scan()
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
+		switch {
+		case key.Matches(msg, keys.Quit):
 			return m, tea.Quit
-		case "r":
+		case key.Matches(msg, keys.Rescan):
 			m.status = ""
 			return m, m.files.Scan()
 		}
@@ -68,7 +69,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-var pinnedHints = []ui.KeyHint{{Key: "q", Label: "quit"}}
+// keyMap is todo-scan's own keys; the file browser takes the others.
+type keyMap struct{ Quit, Rescan key.Binding }
+
+var keys = keyMap{
+	Quit:   key.NewBinding(key.WithKeys("q", "ctrl+c")),
+	Rescan: key.NewBinding(key.WithKeys("r")),
+}
+
+var pinnedHints = []ui.KeyHint{ui.Hint(keys.Quit, "quit")}
 
 func (m *model) View() tea.View {
 	width, height := m.width, m.height
@@ -79,7 +88,7 @@ func (m *model) View() tea.View {
 	}
 	hints := m.files.Hints()
 	if !m.files.Details() {
-		hints = append(hints, ui.KeyHint{Key: "r", Label: "rescan"})
+		hints = append(hints, ui.Hint(keys.Rescan, "rescan"))
 	}
 	content := m.renderHeader(width) + "\n" + m.files.View(m.theme, width, height-2) + "\n" + m.theme.Footer(m.status, hints, pinnedHints, width)
 	v := tea.NewView(content)

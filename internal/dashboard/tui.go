@@ -209,11 +209,8 @@ func (m *model) taskKey(key string) tea.Cmd {
 // reporting false for any other.
 func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
-	if m.focus == sourcePane {
-		switch key {
-		case "right", "left", "esc", "up", "k", "down", "j", "e", "enter":
-			return m.files.Update(msg), true
-		}
+	if m.focus == sourcePane && filesui.Handles(msg) {
+		return m.files.Update(msg), true
 	}
 	switch key {
 	case "i":

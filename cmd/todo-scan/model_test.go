@@ -26,7 +26,7 @@ func scannedModel(t *testing.T) *model {
 	return m
 }
 
-func key(k string) tea.KeyPressMsg {
+func keyPress(k string) tea.KeyPressMsg {
 	switch k {
 	case "right":
 		return tea.KeyPressMsg{Code: tea.KeyRight}
@@ -44,8 +44,8 @@ func TestScreensFitTheTerminal(t *testing.T) {
 		m.width, m.height = size[0], size[1]
 		for _, page := range []string{"list", "details"} {
 			if page == "details" {
-				m.Update(key("j"))
-				m.Update(key("right"))
+				m.Update(keyPress("j"))
+				m.Update(keyPress("right"))
 			}
 			view := m.View().Content
 			if w, h := lipgloss.Width(view), lipgloss.Height(view); w != size[0] || h != size[1] {
@@ -60,8 +60,8 @@ func TestScreensFitTheTerminal(t *testing.T) {
 				t.Errorf("%s footer at %dx%d = %q", page, size[0], size[1], footer)
 			}
 			if page == "details" {
-				m.Update(key("left"))
-				m.Update(key("k"))
+				m.Update(keyPress("left"))
+				m.Update(keyPress("k"))
 			}
 		}
 	}
@@ -89,12 +89,12 @@ func TestHeaderShortensTheDirectory(t *testing.T) {
 func TestKeys(t *testing.T) {
 	m := scannedModel(t)
 	for _, k := range []string{"q", "ctrl+c"} {
-		if _, cmd := m.Update(key(k)); cmd == nil || cmd() != tea.Quit() {
+		if _, cmd := m.Update(keyPress(k)); cmd == nil || cmd() != tea.Quit() {
 			t.Fatalf("%s did not quit", k)
 		}
 	}
 	m.status = "old"
-	_, cmd := m.Update(key("r"))
+	_, cmd := m.Update(keyPress("r"))
 	if cmd == nil || !m.files.Loading() || m.status != "" {
 		t.Fatal("r did not rescan")
 	}
@@ -110,7 +110,7 @@ func TestKeys(t *testing.T) {
 		t.Fatalf("closing the editor should rescan and report its error: %q", m.status)
 	}
 	m = scannedModel(t)
-	m.Update(key("right"))
+	m.Update(keyPress("right"))
 	if !strings.Contains(ansi.Strip(m.View().Content), "Files › @boundary") {
 		t.Fatalf("right did not reach the browser:\n%s", ansi.Strip(m.View().Content))
 	}

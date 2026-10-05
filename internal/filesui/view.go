@@ -22,17 +22,17 @@ func (m *Model) View(theme ui.Theme, width, height int) string {
 
 // Hints are the browser's keys for the footer.
 func (m *Model) Hints() []ui.KeyHint {
-	back := ui.KeyHint{Key: "←", Label: "back"}
+	back := ui.Hint(keys.Back, "back")
 	if m.details {
-		return []ui.KeyHint{back, {Key: "e", Label: "open file"}}
+		return []ui.KeyHint{back, ui.Hint(keys.Edit, "open file")}
 	}
 	if _, ok := m.Selected(); !ok {
 		if len(m.rows()) == 0 {
 			return nil
 		}
-		return []ui.KeyHint{{Key: "→", Label: "open"}}
+		return []ui.KeyHint{ui.Hint(keys.Open, "open")}
 	}
-	hints := []ui.KeyHint{{Key: "e", Label: "open file"}, {Key: "→", Label: "details"}}
+	hints := []ui.KeyHint{ui.Hint(keys.Edit, "open file"), ui.Hint(keys.Open, "details")}
 	if m.category != "" {
 		hints = append(hints, back)
 	}

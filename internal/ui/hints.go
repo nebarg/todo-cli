@@ -3,11 +3,32 @@ package ui
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"github.com/charmbracelet/x/ansi"
 )
 
 // KeyHint is a key and what it does, as shown in a footer.
 type KeyHint struct{ Key, Label string }
+
+// Hint is the hint for a key binding: its first key, so the order of its keys
+// says which one is shown, and the label for what it does where the hint is
+// shown.
+func Hint(b key.Binding, label string) KeyHint {
+	return KeyHint{Key: glyph(b.Keys()[0]), Label: label}
+}
+
+// keyGlyphs are the keys shown as a symbol rather than by name.
+var keyGlyphs = map[string]string{
+	"left": "←", "right": "→", "up": "↑", "down": "↓", "backspace": "⌫", "shift+tab": "⇧tab",
+}
+
+// glyph is how a key, as a binding names it, is shown.
+func glyph(name string) string {
+	if symbol, ok := keyGlyphs[name]; ok {
+		return symbol
+	}
+	return name
+}
 
 // RenderHints lays hints out in one line.
 func (t Theme) RenderHints(hints []KeyHint) string {
