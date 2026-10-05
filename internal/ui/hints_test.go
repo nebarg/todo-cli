@@ -28,3 +28,23 @@ func TestHintShowsABindingsFirstKey(t *testing.T) {
 		}
 	}
 }
+
+func TestKeyTextShowsEveryKeyOfTheBindings(t *testing.T) {
+	binding := func(keys ...string) key.Binding { return key.NewBinding(key.WithKeys(keys...)) }
+	for _, c := range []struct {
+		name     string
+		bindings []key.Binding
+		want     string
+	}{
+		{"none", nil, ""},
+		{"one binding's keys", []key.Binding{binding("d", "space")}, "d space"},
+		{"symbols", []key.Binding{binding("left", "esc")}, "← esc"},
+		{"several bindings", []key.Binding{binding("tab"), binding("shift+tab")}, "tab ⇧tab"},
+		{"a symbol then a letter", []key.Binding{binding("right"), binding("a")}, "→ a"},
+		{"three bindings", []key.Binding{binding("1"), binding("2"), binding("3")}, "1 2 3"},
+	} {
+		if got := KeyText(c.bindings...); got != c.want {
+			t.Errorf("%s: KeyText = %q, want %q", c.name, got, c.want)
+		}
+	}
+}

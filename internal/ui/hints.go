@@ -17,6 +17,18 @@ func Hint(b key.Binding, label string) KeyHint {
 	return KeyHint{Key: glyph(b.Keys()[0]), Label: label}
 }
 
+// KeyText is the keys of bindings as shown together, such as "d space" or
+// "tab ⇧tab".
+func KeyText(bindings ...key.Binding) string {
+	var shown []string
+	for _, b := range bindings {
+		for _, k := range b.Keys() {
+			shown = append(shown, glyph(k))
+		}
+	}
+	return strings.Join(shown, " ")
+}
+
 // keyGlyphs are the keys shown as a symbol rather than by name.
 var keyGlyphs = map[string]string{
 	"left": "←", "right": "→", "up": "↑", "down": "↓", "backspace": "⌫", "shift+tab": "⇧tab",

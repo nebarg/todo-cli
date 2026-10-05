@@ -139,7 +139,7 @@ func (m *model) filesCount() string {
 	return fmt.Sprint(m.files.Total())
 }
 
-var pinnedHints = []ui.KeyHint{{Key: "?", Label: "help"}, {Key: "q", Label: "quit"}}
+var pinnedHints = []ui.KeyHint{ui.Hint(keys.Help, "help"), ui.Hint(keys.Quit, "quit")}
 
 func (m *model) renderFooter(width int) string {
 	if p, ok := m.overlay.(*categoryPrompt); ok {
@@ -151,38 +151,38 @@ func (m *model) renderFooter(width int) string {
 func (m *model) footerHints() []ui.KeyHint {
 	hints := m.contextHints()
 	if m.lastRemoval != nil {
-		hints = append([]ui.KeyHint{{Key: "u", Label: "undo"}}, hints...)
+		hints = append([]ui.KeyHint{ui.Hint(keys.Undo, "undo")}, hints...)
 	}
 	return hints
 }
 
 func (m *model) contextHints() []ui.KeyHint {
-	back := ui.KeyHint{Key: "←", Label: "back"}
-	reload := ui.KeyHint{Key: "r", Label: "reload"}
-	index := ui.KeyHint{Key: "i", Label: "all tasks"}
-	remove := ui.KeyHint{Key: "⌫", Label: "delete"}
-	addSubtask := ui.KeyHint{Key: "a", Label: "add subtask"}
+	back := ui.Hint(keys.Back, "back")
+	reload := ui.Hint(keys.Reload, "reload")
+	index := ui.Hint(keys.AllTasks, "all tasks")
+	remove := ui.Hint(keys.Delete, "delete")
+	addSubtask := ui.Hint(keys.Add, "add subtask")
 	// A subtask keeps its task's category.
-	category := []ui.KeyHint{{Key: "c", Label: "category"}}
+	category := []ui.KeyHint{ui.Hint(keys.Category, "category")}
 	if t, ok := m.selectedTask(); ok && t.Subtask {
 		category = nil
 	}
 	_, readmeTask := m.selectedReadmeTask()
 	switch {
 	case m.all != nil:
-		hints := append([]ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, {Key: "s", Label: "sort"}}, category...)
-		hints = append(hints, remove, ui.KeyHint{Key: "a", Label: "add"}, ui.KeyHint{Key: "b", Label: "branch task"})
+		hints := append([]ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "edit"), ui.Hint(keys.Priority, "priority"), ui.Hint(keys.Sort, "sort")}, category...)
+		hints = append(hints, remove, ui.Hint(keys.Add, "add"), ui.Hint(keys.AddBranch, "branch task"))
 		return append(append(hints, m.clearHint()...), back, reload)
 	case m.focus == detailPane && readmeTask:
-		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "open file"}, back}
+		return []ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "open file"), back}
 	case readmeTask:
-		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "open file"}, back, {Key: "→", Label: "details"}, index, reload}
+		return []ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "open file"), back, ui.Hint(keys.Open, "details"), index, reload}
 	case m.readmeSelected():
-		return []ui.KeyHint{{Key: "→", Label: "open"}, back, index, reload}
+		return []ui.KeyHint{ui.Hint(keys.Open, "open"), back, index, reload}
 	case m.focus == detailPane && m.activePane() == branchPane:
-		return []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}, remove, addSubtask, back}
+		return []ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "edit"), ui.Hint(keys.Priority, "priority"), remove, addSubtask, back}
 	case m.focus == detailPane:
-		hints := append([]ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}}, category...)
+		hints := append([]ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "edit"), ui.Hint(keys.Priority, "priority")}, category...)
 		return append(hints, remove, addSubtask, back)
 	case m.focus == sourcePane && m.files.Details():
 		return m.files.Hints()
@@ -190,28 +190,28 @@ func (m *model) contextHints() []ui.KeyHint {
 		return append(m.files.Hints(), index, reload)
 	}
 	if row, ok := m.selectedNavigationRow(); ok && !row.isTask() {
-		hints := []ui.KeyHint{{Key: "→", Label: "open"}}
+		hints := []ui.KeyHint{ui.Hint(keys.Open, "open")}
 		if row.kind != rowReadme {
 			hints = append(hints, remove)
 		}
-		hints = append(hints, ui.KeyHint{Key: "a", Label: "add"})
+		hints = append(hints, ui.Hint(keys.Add, "add"))
 		if m.focus == generalPane {
-			hints = append(hints, ui.KeyHint{Key: "b", Label: "branch task"})
+			hints = append(hints, ui.Hint(keys.AddBranch, "branch task"))
 		}
 		return append(append(hints, m.clearHint()...), index, reload)
 	}
-	hints := []ui.KeyHint{{Key: "d", Label: "done"}, {Key: "e", Label: "edit"}, {Key: "p", Label: "priority"}}
+	hints := []ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "edit"), ui.Hint(keys.Priority, "priority")}
 	if m.focus == generalPane {
 		hints = append(hints, category...)
 	}
-	hints = append(hints, remove, ui.KeyHint{Key: "a", Label: "add"})
+	hints = append(hints, remove, ui.Hint(keys.Add, "add"))
 	if m.focus == generalPane {
-		hints = append(hints, ui.KeyHint{Key: "b", Label: "branch task"})
+		hints = append(hints, ui.Hint(keys.AddBranch, "branch task"))
 	}
 	if len(m.breadcrumb(m.focus)) > 1 {
 		hints = append(hints, back)
 	}
-	hints = append(hints, ui.KeyHint{Key: "→", Label: "details"})
+	hints = append(hints, ui.Hint(keys.Open, "details"))
 	return append(append(hints, m.clearHint()...), index, reload)
 }
 

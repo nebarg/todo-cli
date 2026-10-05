@@ -49,7 +49,7 @@ func (m *model) clearScope() ([]store.Task, string) {
 func (m *model) clearHint() []ui.KeyHint {
 	tasks, _ := m.clearScope()
 	if done := len(doneTargets(tasks).Tasks); done > 0 {
-		return []ui.KeyHint{{Key: "X", Label: fmt.Sprintf("clear %d done", done)}}
+		return []ui.KeyHint{ui.Hint(keys.Clear, fmt.Sprintf("clear %d done", done))}
 	}
 	return nil
 }

@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/nebarg/todo-cli/internal/editor"
 	"github.com/nebarg/todo-cli/internal/filesui"
@@ -150,25 +151,25 @@ func (m *model) updateKey(msg tea.KeyPressMsg) tea.Cmd {
 	var cmd tea.Cmd
 	var handled bool
 	if m.all != nil {
-		cmd, handled = m.allTasksKey(msg.String())
+		cmd, handled = m.allTasksKey(msg)
 	} else {
 		cmd, handled = m.dashboardKey(msg)
 	}
 	if handled {
 		return cmd
 	}
-	return m.taskKey(msg.String())
+	return m.taskKey(msg)
 }
 
 // taskKey handles the keys that work the same in the dashboard and the All
 // tasks view.
-func (m *model) taskKey(key string) tea.Cmd {
-	switch key {
-	case "q":
+func (m *model) taskKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, keys.Quit):
 		return tea.Quit
-	case "?":
+	case key.Matches(msg, keys.Help):
 		m.overlay = helpOverlay{}
-	case "a":
+	case key.Matches(msg, keys.Add):
 		switch {
 		case m.readmeSelected():
 			m.status = readmeReadOnly
@@ -179,23 +180,23 @@ func (m *model) taskKey(key string) tea.Cmd {
 			return m.startTaskModal(modalAddBranch)
 		}
 		return m.startTaskModal(modalAddGeneral)
-	case "b":
+	case key.Matches(msg, keys.AddBranch):
 		return m.startTaskModal(modalAddBranch)
-	case "c":
+	case key.Matches(msg, keys.Category):
 		return m.startCategoryInput()
-	case "e":
+	case key.Matches(msg, keys.Edit):
 		return m.editSelected()
-	case "p":
+	case key.Matches(msg, keys.Priority):
 		m.cyclePriority()
-	case "space", "d":
+	case key.Matches(msg, keys.Done):
 		m.toggleSelected()
-	case "backspace":
+	case key.Matches(msg, keys.Delete):
 		m.startDelete()
-	case "X":
+	case key.Matches(msg, keys.Clear):
 		m.startClearDone()
-	case "u":
+	case key.Matches(msg, keys.Undo):
 		m.undoRemoval()
-	case "r":
+	case key.Matches(msg, keys.Reload):
 		m.status = ""
 		if err := m.readTasks(true, nil); err != nil {
 			m.status = err.Error()
@@ -208,14 +209,13 @@ func (m *model) taskKey(key string) tea.Cmd {
 // dashboardKey handles the keys for moving around the dashboard's tabs,
 // reporting false for any other.
 func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
-	key := msg.String()
 	if m.focus == sourcePane && filesui.Handles(msg) {
 		return m.files.Update(msg), true
 	}
-	switch key {
-	case "i":
+	switch {
+	case key.Matches(msg, keys.AllTasks):
 		m.openAllTasks()
-	case "tab":
+	case key.Matches(msg, keys.NextTab):
 		if m.focus == detailPane {
 			m.focus = (m.detailFrom + 1) % tabCount
 		} else {
@@ -223,7 +223,7 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		m.detailScroll = 0
 		m.files.CloseDetails()
-	case "shift+tab":
+	case key.Matches(msg, keys.PrevTab):
 		if m.focus == detailPane {
 			m.focus = m.detailFrom
 		} else {
@@ -231,11 +231,11 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		m.detailScroll = 0
 		m.files.CloseDetails()
-	case "1":
+	case key.Matches(msg, keys.Tab1):
 		m.jumpToTab(generalPane)
-	case "2":
+	case key.Matches(msg, keys.Tab2):
 		m.jumpToTab(branchPane)
-	case "3":
+	case key.Matches(msg, keys.Tab3):
 		if m.focus == sourcePane {
 			m.files.Top()
 		} else {
@@ -243,7 +243,7 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			m.detailScroll = 0
 		}
 		return m.files.PreviewCmd(), true
-	case "right":
+	case key.Matches(msg, keys.Open):
 		if m.enterSelectedGroup() {
 			return nil, true
 		}
@@ -252,26 +252,26 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			m.focus = detailPane
 			m.detailScroll = 0
 		}
-	case "left", "esc":
+	case key.Matches(msg, keys.Back):
 		if m.focus == detailPane {
 			m.focus = m.detailFrom
 			m.detailScroll = 0
 		} else {
 			m.leaveGroup()
 		}
-	case "up", "k":
+	case key.Matches(msg, keys.Up):
 		if m.focus == detailPane {
 			m.detailScroll = max(0, m.detailScroll-1)
 		} else {
 			m.moveCursor(-1)
 		}
-	case "down", "j":
+	case key.Matches(msg, keys.Down):
 		if m.focus == detailPane {
 			m.detailScroll++
 		} else {
 			m.moveCursor(1)
 		}
-	case "enter":
+	case key.Matches(msg, keys.Enter):
 		if m.enterSelectedGroup() {
 			return nil, true
 		}

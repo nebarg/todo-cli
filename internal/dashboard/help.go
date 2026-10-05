@@ -3,6 +3,7 @@ package dashboard
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -12,29 +13,35 @@ import (
 
 type helpSection struct {
 	title string
-	keys  []ui.KeyHint
+	rows  []ui.KeyHint
+}
+
+// helpRow is a row of the help: what bindings do together, with their keys
+// shown as they are.
+func helpRow(label string, bindings ...key.Binding) ui.KeyHint {
+	return ui.KeyHint{Key: ui.KeyText(bindings...), Label: label}
 }
 
 var (
 	helpNavigate = helpSection{"Navigate", []ui.KeyHint{
-		{Key: "1 2 3", Label: "jump to tab"},
-		{Key: "tab ⇧tab", Label: "cycle tabs"},
+		helpRow("jump to tab", keys.Tab1, keys.Tab2, keys.Tab3),
+		helpRow("cycle tabs", keys.NextTab, keys.PrevTab),
 		{Key: "↑↓ j k", Label: "move"},
-		{Key: "→ enter", Label: "open"},
-		{Key: "← esc", Label: "back"},
-		{Key: "i", Label: "all tasks"},
-		{Key: "s", Label: "sort tasks"},
+		helpRow("open", keys.Open, keys.Enter),
+		helpRow("back", keys.Back),
+		helpRow("all tasks", keys.AllTasks),
+		helpRow("sort tasks", keys.Sort),
 	}}
 	helpTasks = helpSection{"Tasks", []ui.KeyHint{
-		{Key: "d space", Label: "toggle done"},
-		{Key: "e enter", Label: "edit"},
-		{Key: "p", Label: "cycle priority"},
-		{Key: "c", Label: "set category"},
-		{Key: "⌫", Label: "delete"},
-		{Key: "a b", Label: "add task/branch"},
-		{Key: "→ a", Label: "add subtask"},
+		helpRow("toggle done", keys.Done),
+		helpRow("edit", keys.Edit, keys.Enter),
+		helpRow("cycle priority", keys.Priority),
+		helpRow("set category", keys.Category),
+		helpRow("delete", keys.Delete),
+		helpRow("add task/branch", keys.Add, keys.AddBranch),
+		helpRow("add subtask", keys.Open, keys.Add),
 	}}
-	helpApp = []ui.KeyHint{{Key: "X / u", Label: "clear done / undo"}, {Key: "r", Label: "reload"}, {Key: "?", Label: "help"}, {Key: "q", Label: "quit"}}
+	helpApp = []ui.KeyHint{{Key: "X / u", Label: "clear done / undo"}, helpRow("reload", keys.Reload), helpRow("help", keys.Help), helpRow("quit", keys.Quit)}
 )
 
 // helpOverlay lists the keys until any key closes it.
@@ -52,7 +59,7 @@ func (helpOverlay) view(theme ui.Theme, _, _ int) string { return renderHelp(the
 func renderHelp(theme ui.Theme) string {
 	keyWidth := 0
 	for _, section := range []helpSection{helpNavigate, helpTasks} {
-		for _, hint := range section.keys {
+		for _, hint := range section.rows {
 			keyWidth = max(keyWidth, ansi.StringWidth(hint.Key))
 		}
 	}
@@ -68,7 +75,7 @@ func renderHelp(theme ui.Theme) string {
 
 func (s helpSection) render(theme ui.Theme, keyWidth int) string {
 	lines := []string{helpHeadingStyle(theme).Render(s.title)}
-	for _, hint := range s.keys {
+	for _, hint := range s.rows {
 		padding := strings.Repeat(" ", keyWidth-ansi.StringWidth(hint.Key))
 		lines = append(lines, theme.KeyStyle.Render(hint.Key)+padding+"  "+theme.MutedStyle.Render(hint.Label))
 	}

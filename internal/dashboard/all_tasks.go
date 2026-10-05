@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -44,22 +45,22 @@ func (m *model) openAllTasks() {
 
 // allTasksKey handles the All tasks view's own keys, reporting false for
 // any other.
-func (m *model) allTasksKey(key string) (tea.Cmd, bool) {
-	switch key {
-	case "i", "esc", "left":
+func (m *model) allTasksKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	switch {
+	case key.Matches(msg, keys.AllTasks, keys.Back):
 		m.all = nil
 		m.status = ""
-	case "up", "k":
+	case key.Matches(msg, keys.Up):
 		m.moveCursor(-1)
-	case "down", "j":
+	case key.Matches(msg, keys.Down):
 		m.moveCursor(1)
-	case "s":
+	case key.Matches(msg, keys.Sort):
 		selected, ok := m.selectedTask()
 		m.all.sort = m.all.sort.next()
 		if ok {
 			m.selectInAllTasks(selected)
 		}
-	case "enter":
+	case key.Matches(msg, keys.Enter):
 		return m.startTaskModal(modalEdit), true
 	default:
 		return nil, false
