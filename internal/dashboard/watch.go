@@ -69,7 +69,8 @@ func readFiles(paths []string) ([][]byte, error) {
 	return contents, nil
 }
 
-// watchedFiles are the files the dashboard shows tasks from.
+// watchedFiles are the files the dashboard shows tasks from: the task file,
+// then the README.
 func (m *model) watchedFiles() []string { return []string{m.file, m.readmeFile()} }
 
 // watch starts checking the watched files for changes since stats.

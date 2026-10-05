@@ -751,6 +751,30 @@ func TestByteOrderMarkIsSetAside(t *testing.T) {
 	}
 }
 
+// TestParseMatchesLoad checks that parsing a file's bytes gives the tasks
+// loading the file does, for the task file and a README, with a byte order
+// mark and Windows line endings to set aside.
+func TestParseMatchesLoad(t *testing.T) {
+	content := byteOrderMark + "## TODO\r\n\r\n- [ ] First !high\r\n  - [x] Second\r\n"
+	path, loaded := writeAndLoad(t, content)
+	if len(loaded) != 2 {
+		t.Fatalf("loaded %+v", loaded)
+	}
+	if parsed := Parse([]byte(content)); !reflect.DeepEqual(parsed, loaded) {
+		t.Errorf("Parse = %+v, want %+v", parsed, loaded)
+	}
+	loadedReadme, err := LoadReadme(path)
+	if err != nil || len(loadedReadme) != 2 {
+		t.Fatalf("loaded README %+v, %v", loadedReadme, err)
+	}
+	if parsed := ParseReadme([]byte(content)); !reflect.DeepEqual(parsed, loadedReadme) {
+		t.Errorf("ParseReadme = %+v, want %+v", parsed, loadedReadme)
+	}
+	if Parse(nil) != nil || ParseReadme(nil) != nil {
+		t.Errorf("no contents have tasks, got %+v and %+v", Parse(nil), ParseReadme(nil))
+	}
+}
+
 func indexOrder(tasks []Task) string {
 	names := make([]string, len(tasks))
 	for i, t := range tasks {

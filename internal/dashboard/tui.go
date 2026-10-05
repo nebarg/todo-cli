@@ -517,7 +517,8 @@ func (m *model) refreshFrom(previous []store.Task) error {
 // readTasks also drops any pending undo of a clear or delete: whatever
 // caused the reload may have changed the file since. With sort, the tasks
 // are sorted afresh, as at startup and on r; otherwise each keeps its place.
-// changed is as refresh takes it.
+// changed is as refresh takes it. Each file is read once and the tasks are
+// parsed from those bytes, so m.contents is exactly what they come from.
 func (m *model) readTasks(sort bool, changed []store.Task) error {
 	m.lastRemoval = nil
 	previous, hadSelection := m.selectedTask()
@@ -526,29 +527,18 @@ func (m *model) readTasks(sort bool, changed []store.Task) error {
 	if selectionChanged {
 		previous = changed[i]
 	}
-	// Read before the tasks are, so an edit in between is seen as a change
-	// rather than taken as already shown.
 	contents, err := readFiles(m.watchedFiles())
 	if err != nil {
 		return err
 	}
-	tasks, err := store.Load(m.file)
-	if err != nil {
-		return err
-	}
+	m.contents = contents
+	// contents are in the order watchedFiles lists them.
+	tasks, readme := store.Parse(contents[0]), store.ParseReadme(contents[1])
 	if sort {
 		m.tasks.setAll(sortedTasks(tasks))
-	} else {
-		m.tasks.setAll(preserveTaskOrder(m.tasks.all, tasks, changed))
-	}
-	readme, err := store.LoadReadme(m.readmeFile())
-	if err != nil {
-		return err
-	}
-	m.contents = contents
-	if sort {
 		m.tasks.readme = sortedReadme(readme)
 	} else {
+		m.tasks.setAll(preserveTaskOrder(m.tasks.all, tasks, changed))
 		m.tasks.readme = keepReadmeOrder(m.tasks.readme, readme)
 	}
 	// A group whose tasks have all gone closes, as does a README.md group

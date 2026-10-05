@@ -40,10 +40,8 @@ func (t ReadmeTask) task() Task {
 	return Task{Line: t.Line, Done: t.Done, raw: t.raw, bodyStart: t.Line + 1, bodyEnd: t.Line + 1}
 }
 
-// LoadReadme reads a README's to-dos as todo-system does: every list item
-// under a "TODO" or "TODOs" heading, up to the next heading at its level or
-// above. A deeper heading inside it sets the Heading of the tasks after it.
-// A todo0-style word sets the task's Level. A missing file has no tasks.
+// LoadReadme reads the README at path and returns its to-dos, as ParseReadme
+// reads them. A missing file has no tasks.
 func LoadReadme(path string) ([]ReadmeTask, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -52,8 +50,16 @@ func LoadReadme(path string) ([]ReadmeTask, error) {
 	if err != nil {
 		return nil, err
 	}
+	return ParseReadme(data), nil
+}
+
+// ParseReadme reads a README's to-dos from its contents as todo-system does:
+// every list item under a "TODO" or "TODOs" heading, up to the next heading
+// at its level or above. A deeper heading inside it sets the Heading of the
+// tasks after it. A todo0-style word sets the task's Level.
+func ParseReadme(data []byte) []ReadmeTask {
 	lines, _ := decode(data)
-	return parseReadme(lines), nil
+	return parseReadme(lines)
 }
 
 // readmeItem is a list item enclosing the line parseReadme is on.

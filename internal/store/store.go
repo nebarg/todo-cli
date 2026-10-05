@@ -93,8 +93,15 @@ func Load(path string) ([]Task, error) {
 	if err != nil {
 		return nil, err
 	}
+	return Parse(data), nil
+}
+
+// Parse reads every task in the contents of a Markdown file, as Load does
+// from its path, so a caller that has read the file can parse exactly what it
+// read.
+func Parse(data []byte) []Task {
 	lines, _ := decode(data)
-	return parseTasks(lines), nil
+	return parseTasks(lines)
 }
 
 // byteOrderMark starts some UTF-8 files, such as those Windows editors may
