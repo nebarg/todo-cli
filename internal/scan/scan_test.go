@@ -1,9 +1,11 @@
 package scan
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -140,6 +142,28 @@ func TestScanFollowsEachRepositorysGitignore(t *testing.T) {
 			t.Errorf("scanning %s = %v, want %v", scan.dir, got, want)
 		}
 	}
+}
+
+func TestReadTextStopsAtABinaryStart(t *testing.T) {
+	binary := append(make([]byte, binaryCheckLen-1), 'x')
+	if _, ok := readText(io.MultiReader(bytes.NewReader(binary), readFails{t}), 1<<30); ok {
+		t.Fatal("a file starting with NUL bytes was read as text")
+	}
+	long := strings.Repeat("a", binaryCheckLen) + "\x00 later"
+	if text, ok := readText(strings.NewReader(long), int64(len(long))); !ok || text != long {
+		t.Fatalf("a NUL byte past the check made the file binary: %v", ok)
+	}
+	if text, ok := readText(strings.NewReader("short"), 5); !ok || text != "short" {
+		t.Fatalf("short file = %q, %v", text, ok)
+	}
+}
+
+// readFails fails the test when read.
+type readFails struct{ t *testing.T }
+
+func (r readFails) Read([]byte) (int, error) {
+	r.t.Error("read past the binary check")
+	return 0, io.EOF
 }
 
 func TestScanChecksOnlyTheFirstBytesForBinary(t *testing.T) {
