@@ -1,8 +1,10 @@
 # Simple task management in the terminal
 
-[todo](#todo) is a simple terminal user interface (TUI) that lets you manage tasks from where you work in the terminal. Tasks are kept in a Markdown file for simplicity. Tasks in your README are also captured, alongside the file scanner to find TODO comments in your code. You can also add tasks and clear out done ones straight from the command line, without opening the dashboard, so `todo` works in scripts too.
+[todo](#todo) is a terminal dashboard for your tasks. They're kept in a plain Markdown file and shown alongside the TODOs in your README and the TODO comments in your code. You can also add tasks and clear done ones from the command line without opening the dashboard, so `todo` works in scripts too.
 
 [todo-scan](#todo-scan) is a separate file scanner that lists the TODO comments found in your code on their own. It can be used in CI/CD pipelines or with the user interface. This is essentially a standalone "Files" tab from the todo app.
+
+The two don't depend on each other, so you can delete whichever one you don't need.
 
 Both read [todo-system](https://github.com/archtechx/todo-system)'s categories (`todo@auth`) and levels (`todo0`, `todo1`). You can [read why this is a pretty cool system](https://stancl.substack.com/p/organizing-todos-in-code) on Samuel's blog.
 
