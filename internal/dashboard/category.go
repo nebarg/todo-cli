@@ -169,6 +169,11 @@ func suggestCategories(input *textinput.Model, categories []string) {
 // canCompleteCategory is true while input shows more of a category than is
 // typed.
 func canCompleteCategory(input textinput.Model) bool {
+	// With nothing matching, up and ctrl+p leave the input's suggestion index
+	// at -1, which CurrentSuggestion doesn't guard against.
+	if len(input.MatchedSuggestions()) == 0 {
+		return false
+	}
 	suggestion := input.CurrentSuggestion()
 	return suggestion != "" && !strings.EqualFold(suggestion, input.Value())
 }
