@@ -231,7 +231,7 @@ Your README is read only, so neither works on its TODOs.
 | `backspace` | Delete a task, or a category or branch with all of its tasks |
 | `X` (`shift+x`) | Clear done tasks |
 | `u` | Undo the last clear or delete |
-| `r` | Reload the task file and Git branches, and rescan files |
+| `r` | Re-sort the tasks, check Git branches again, and rescan files |
 | `?` | Help |
 | `q` / `ctrl+c` | Quit |
 

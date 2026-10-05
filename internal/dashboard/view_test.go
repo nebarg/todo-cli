@@ -274,10 +274,10 @@ func TestFooterFitsHintsAndPinsHelp(t *testing.T) {
 			t.Errorf("footer at %d truncated a hint or used a separator: %q", width, plain)
 		}
 	}
-	if wide := ansi.Strip(m.renderFooter(160)); !strings.Contains(wide, "r reload") {
+	if wide := ansi.Strip(m.renderFooter(160)); !strings.Contains(wide, "r refresh") {
 		t.Errorf("wide footer dropped hints: %q", wide)
 	}
-	if narrow := ansi.Strip(m.renderFooter(56)); strings.Contains(narrow, "r reload") {
+	if narrow := ansi.Strip(m.renderFooter(56)); strings.Contains(narrow, "r refresh") {
 		t.Errorf("narrow footer kept low-priority hints: %q", narrow)
 	}
 	m.status = "Saved"

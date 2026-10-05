@@ -196,7 +196,7 @@ func (m *model) taskKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.startClearDone()
 	case key.Matches(msg, keys.Undo):
 		m.undoRemoval()
-	case key.Matches(msg, keys.Reload):
+	case key.Matches(msg, keys.Refresh):
 		m.status = ""
 		if err := m.readTasks(true, nil); err != nil {
 			m.status = err.Error()

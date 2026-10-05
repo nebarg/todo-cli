@@ -158,7 +158,7 @@ func (m *model) footerHints() []ui.KeyHint {
 
 func (m *model) contextHints() []ui.KeyHint {
 	back := ui.Hint(keys.Back, "back")
-	reload := ui.Hint(keys.Reload, "reload")
+	refresh := ui.Hint(keys.Refresh, "refresh")
 	index := ui.Hint(keys.AllTasks, "all tasks")
 	remove := ui.Hint(keys.Delete, "delete")
 	addSubtask := ui.Hint(keys.Add, "add subtask")
@@ -172,13 +172,13 @@ func (m *model) contextHints() []ui.KeyHint {
 	case m.all != nil:
 		hints := append([]ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "edit"), ui.Hint(keys.Priority, "priority"), ui.Hint(keys.Sort, "sort")}, category...)
 		hints = append(hints, remove, ui.Hint(keys.Add, "add"), ui.Hint(keys.AddBranch, "branch task"))
-		return append(append(hints, m.clearHint()...), back, reload)
+		return append(append(hints, m.clearHint()...), back, refresh)
 	case m.focus == detailPane && readmeTask:
 		return []ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "open file"), back}
 	case readmeTask:
-		return []ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "open file"), back, ui.Hint(keys.Open, "details"), index, reload}
+		return []ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "open file"), back, ui.Hint(keys.Open, "details"), index, refresh}
 	case m.readmeSelected():
-		return []ui.KeyHint{ui.Hint(keys.Open, "open"), back, index, reload}
+		return []ui.KeyHint{ui.Hint(keys.Open, "open"), back, index, refresh}
 	case m.focus == detailPane && m.activePane() == branchPane:
 		return []ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "edit"), ui.Hint(keys.Priority, "priority"), remove, addSubtask, back}
 	case m.focus == detailPane:
@@ -187,7 +187,7 @@ func (m *model) contextHints() []ui.KeyHint {
 	case m.focus == sourcePane && m.files.Details():
 		return m.files.Hints()
 	case m.focus == sourcePane:
-		return append(m.files.Hints(), index, reload)
+		return append(m.files.Hints(), index, refresh)
 	}
 	if row, ok := m.selectedNavigationRow(); ok && !row.isTask() {
 		hints := []ui.KeyHint{ui.Hint(keys.Open, "open")}
@@ -198,7 +198,7 @@ func (m *model) contextHints() []ui.KeyHint {
 		if m.focus == generalPane {
 			hints = append(hints, ui.Hint(keys.AddBranch, "branch task"))
 		}
-		return append(append(hints, m.clearHint()...), index, reload)
+		return append(append(hints, m.clearHint()...), index, refresh)
 	}
 	hints := []ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "edit"), ui.Hint(keys.Priority, "priority")}
 	if m.focus == generalPane {
@@ -212,7 +212,7 @@ func (m *model) contextHints() []ui.KeyHint {
 		hints = append(hints, back)
 	}
 	hints = append(hints, ui.Hint(keys.Open, "details"))
-	return append(append(hints, m.clearHint()...), index, reload)
+	return append(append(hints, m.clearHint()...), index, refresh)
 }
 
 // viewingMissingBranch is true inside a branch Git doesn't have, which may be

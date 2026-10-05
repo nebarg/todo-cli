@@ -23,7 +23,7 @@ type keyMap struct {
 	AddBranch        key.Binding
 	Clear            key.Binding
 	Undo             key.Binding
-	Reload           key.Binding
+	Refresh          key.Binding
 	Help             key.Binding
 	Quit             key.Binding
 }
@@ -62,7 +62,7 @@ var keys = keyMap{
 	AddBranch: key.NewBinding(key.WithKeys("b")),
 	Clear:     key.NewBinding(key.WithKeys("X")),
 	Undo:      key.NewBinding(key.WithKeys("u")),
-	Reload:    key.NewBinding(key.WithKeys("r")),
+	Refresh:   key.NewBinding(key.WithKeys("r")),
 	Help:      key.NewBinding(key.WithKeys("?")),
 	Quit:      key.NewBinding(key.WithKeys("q")),
 }

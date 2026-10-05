@@ -41,7 +41,7 @@ var (
 		helpRow("add task/branch", keys.Add, keys.AddBranch),
 		helpRow("add subtask", keys.Open, keys.Add),
 	}}
-	helpApp = []ui.KeyHint{{Key: "X / u", Label: "clear done / undo"}, helpRow("reload", keys.Reload), helpRow("help", keys.Help), helpRow("quit", keys.Quit)}
+	helpApp = []ui.KeyHint{{Key: "X / u", Label: "clear done / undo"}, helpRow("refresh", keys.Refresh), helpRow("help", keys.Help), helpRow("quit", keys.Quit)}
 )
 
 // helpOverlay lists the keys until any key closes it.
