@@ -106,7 +106,7 @@ func (d deleteConfirmation) goesWithIt() string {
 	if len(parts) == 0 {
 		return ""
 	}
-	return "Its " + strings.Join(parts, " and ") + " go too."
+	return "Its " + ui.JoinNames(parts) + " go too."
 }
 
 // openAndDone counts tasks as "2 open, 1 done", leaving out a count of none.

@@ -99,7 +99,7 @@ func (c *clearConfirmation) view(theme ui.Theme, _, _ int) string { return c.ren
 
 // doneStatus reports the clear once it is applied.
 func (c *clearConfirmation) doneStatus() string {
-	return "Removed " + c.targets.Summary()
+	return "Removed " + ui.ClearSummary(c.targets)
 }
 
 // confirmOnY closes o with confirmed as its outcome on y; any other key
@@ -179,8 +179,8 @@ func (m *model) undoRemoval() {
 func taskCount(n int) string { return ui.Plural(n, "task", "tasks") }
 
 func (c clearConfirmation) render(theme ui.Theme) string {
-	title := fmt.Sprintf("Remove %s from %s?", c.targets.Summary(), c.scope)
-	return renderConfirmation(theme, title, []string{c.targets.SubtaskNote(), emptiedGroups(c.removal)}, "remove")
+	title := fmt.Sprintf("Remove %s from %s?", ui.ClearSummary(c.targets), c.scope)
+	return renderConfirmation(theme, title, []string{ui.SubtaskNote(c.targets), emptiedGroups(c.removal)}, "remove")
 }
 
 // renderConfirmation draws a dialog asking to go ahead with action, with
@@ -204,15 +204,15 @@ func renderConfirmation(theme ui.Theme, title string, notes []string, action str
 func emptiedGroups(removal store.Removal) string {
 	var groups []string
 	if n := len(removal.Categories); n > 0 {
-		groups = append(groups, "the empty "+quotedNames(removal.Categories)+" "+pluralWord(n, "category", "categories"))
+		groups = append(groups, "the empty "+quotedNames(removal.Categories)+" "+ui.PluralWord(n, "category", "categories"))
 	}
 	if n := len(removal.Branches); n > 0 {
-		groups = append(groups, "the empty "+quotedNames(removal.Branches)+" "+pluralWord(n, "branch", "branches"))
+		groups = append(groups, "the empty "+quotedNames(removal.Branches)+" "+ui.PluralWord(n, "branch", "branches"))
 	}
 	if len(groups) == 0 {
 		return ""
 	}
-	return "T" + strings.Join(groups, " and ")[1:] + " will be removed too."
+	return "T" + ui.JoinNames(groups)[1:] + " will be removed too."
 }
 
 // quotedNames lists names in quotes, as "a", "a" and "b" or "a", "b" and "c",
@@ -222,20 +222,5 @@ func quotedNames(names []string) string {
 	for i, name := range names {
 		quoted[i] = `"` + ui.CleanDisplay(name) + `"`
 	}
-	return joinNames(quoted)
-}
-
-func pluralWord(n int, one, many string) string {
-	if n == 1 {
-		return one
-	}
-	return many
-}
-
-// joinNames lists names as "a", "a and b" or "a, b and c".
-func joinNames(names []string) string {
-	if len(names) == 1 {
-		return names[0]
-	}
-	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+	return ui.JoinNames(quoted)
 }

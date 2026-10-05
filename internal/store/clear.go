@@ -3,10 +3,8 @@ package store
 import (
 	"cmp"
 	"errors"
-	"fmt"
 	"os"
 	"slices"
-	"strings"
 )
 
 // ErrFileChanged means the file is no longer the one a removal was planned
@@ -56,56 +54,6 @@ func PickClearTargets(tasks []Task, missing func(branch string) bool) ClearTarge
 	}
 	slices.Sort(c.Branches)
 	return c
-}
-
-// Summary reads like "3 done tasks, 1 done subtask and unknown branch
-// feature/x with its 2 tasks", naming the branches Git doesn't have.
-func (c ClearTargets) Summary() string {
-	var parts []string
-	if n := c.Done - c.DoneSubtasks; n > 0 {
-		parts = append(parts, plural(n, "done task", "done tasks"))
-	}
-	if c.DoneSubtasks > 0 {
-		parts = append(parts, plural(c.DoneSubtasks, "done subtask", "done subtasks"))
-	}
-	tasks := plural(len(c.Tasks)-c.Done, "task", "tasks")
-	switch len(c.Branches) {
-	case 0:
-	case 1:
-		parts = append(parts, fmt.Sprintf("unknown branch %s with its %s", c.Branches[0], tasks))
-	default:
-		parts = append(parts, fmt.Sprintf("unknown branches %s with their %s", strings.Join(c.Branches, ", "), tasks))
-	}
-	if len(parts) < 2 {
-		return strings.Join(parts, "")
-	}
-	return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
-}
-
-// SubtaskNote says how many subtasks go with the tasks they're under, as in
-// "3 subtasks go with their tasks, 1 of them open.", or is "" when none do.
-func (c ClearTargets) SubtaskNote() string {
-	subtasks, verb, theirs := plural(c.Subtasks, "subtask", "subtasks"), "go", "their tasks"
-	if c.Subtasks == 1 {
-		verb, theirs = "goes", "its task"
-	}
-	switch {
-	case c.Subtasks == 0:
-		return ""
-	case c.OpenSubtasks == c.Subtasks:
-		subtasks = plural(c.Subtasks, "open subtask", "open subtasks")
-	case c.OpenSubtasks > 0:
-		return fmt.Sprintf("%s %s with %s, %d of them open.", subtasks, verb, theirs, c.OpenSubtasks)
-	}
-	return fmt.Sprintf("%s %s with %s.", subtasks, verb, theirs)
-}
-
-// plural reads like "1 task" or "3 tasks".
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-	return fmt.Sprintf("%d %s", n, many)
 }
 
 // Removal is a planned deletion of tasks. Apply writes it, and Undo puts

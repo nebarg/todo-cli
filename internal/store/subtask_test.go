@@ -218,15 +218,14 @@ func TestClearTargetsTakeSubtasksWithTheirTask(t *testing.T) {
 	_, tasks := writeAndLoad(t, "- [x] Old task\n  - [ ] Left open\n  - [x] Done under done\n- [ ] Ship login\n  - [x] Add the route\n  - [ ] Write the form\n\n"+
 		"# Branches\n\n## feature/gone\n\n- [ ] Gone task\n  - [x] Gone sub\n")
 	for _, item := range []struct {
-		name    string
-		missing func(string) bool
-		texts   string
-		summary string
-		note    string
+		name                                       string
+		missing                                    func(string) bool
+		texts                                      string
+		done, doneSubtasks, subtasks, openSubtasks int
+		branches                                   string
 	}{
-		{"done", func(string) bool { return false }, "Old task,Add the route,Gone sub", "1 done task and 2 done subtasks", "2 subtasks go with their tasks, 1 of them open."},
-		{"done and missing", func(branch string) bool { return branch == "feature/gone" }, "Old task,Add the route,Gone task",
-			"1 done task, 1 done subtask and unknown branch feature/gone with its 1 task", "3 subtasks go with their tasks, 1 of them open."},
+		{"done", func(string) bool { return false }, "Old task,Add the route,Gone sub", 3, 2, 2, 1, ""},
+		{"done and missing", func(branch string) bool { return branch == "feature/gone" }, "Old task,Add the route,Gone task", 2, 1, 3, 1, "feature/gone"},
 	} {
 		t.Run(item.name, func(t *testing.T) {
 			got := PickClearTargets(tasks, item.missing)
@@ -234,27 +233,12 @@ func TestClearTargetsTakeSubtasksWithTheirTask(t *testing.T) {
 			for _, task := range got.Tasks {
 				texts = append(texts, task.Text)
 			}
-			if strings.Join(texts, ",") != item.texts || got.Summary() != item.summary || got.SubtaskNote() != item.note {
-				t.Fatalf("tasks %q, summary %q, note %q; want %q, %q, %q", texts, got.Summary(), got.SubtaskNote(), item.texts, item.summary, item.note)
+			if strings.Join(texts, ",") != item.texts || got.Done != item.done || got.DoneSubtasks != item.doneSubtasks ||
+				got.Subtasks != item.subtasks || got.OpenSubtasks != item.openSubtasks || strings.Join(got.Branches, ",") != item.branches {
+				t.Fatalf("tasks %q, done %d (%d subtasks), %d subtasks (%d open), branches %q; want %q, %d (%d), %d (%d), %q",
+					texts, got.Done, got.DoneSubtasks, got.Subtasks, got.OpenSubtasks, got.Branches,
+					item.texts, item.done, item.doneSubtasks, item.subtasks, item.openSubtasks, item.branches)
 			}
 		})
-	}
-}
-
-func TestSubtaskNote(t *testing.T) {
-	for _, item := range []struct {
-		subtasks, open int
-		want           string
-	}{
-		{0, 0, ""},
-		{1, 1, "1 open subtask goes with its task."},
-		{1, 0, "1 subtask goes with its task."},
-		{3, 3, "3 open subtasks go with their tasks."},
-		{3, 0, "3 subtasks go with their tasks."},
-		{3, 1, "3 subtasks go with their tasks, 1 of them open."},
-	} {
-		if got := (ClearTargets{Subtasks: item.subtasks, OpenSubtasks: item.open}).SubtaskNote(); got != item.want {
-			t.Errorf("%d subtasks, %d open = %q, want %q", item.subtasks, item.open, got, item.want)
-		}
 	}
 }

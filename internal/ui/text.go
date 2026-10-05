@@ -51,10 +51,27 @@ func StyledColumn(value string, width int, pad lipgloss.Style) string {
 
 // Plural reads like "1 task" or "3 tasks".
 func Plural(n int, one, many string) string {
+	return fmt.Sprintf("%d %s", n, PluralWord(n, one, many))
+}
+
+// PluralWord is the word for a count of n, as in "task" or "tasks", without
+// the count.
+func PluralWord(n int, one, many string) string {
 	if n == 1 {
-		return "1 " + one
+		return one
 	}
-	return fmt.Sprintf("%d %s", n, many)
+	return many
+}
+
+// JoinNames lists names as "a", "a and b" or "a, b and c", or is "" for none.
+func JoinNames(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // VisibleRange is the slice of total rows that fits in height while keeping

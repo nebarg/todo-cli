@@ -243,7 +243,7 @@ func clearTasks(out io.Writer, file string, done bool, missing func(string) bool
 		return err
 	}
 	var report strings.Builder
-	fmt.Fprintf(&report, "Removed %s:\n", ui.CleanDisplay(targets.Summary()))
+	fmt.Fprintf(&report, "Removed %s:\n", ui.CleanDisplay(ui.ClearSummary(targets)))
 	for _, t := range slices.Backward(removal.Tasks) {
 		fmt.Fprintf(&report, "  %s\n", ui.CleanDisplay(t.Text))
 		for _, subtask := range tasks {
