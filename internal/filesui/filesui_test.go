@@ -130,7 +130,7 @@ func TestEmptyListOpensNothing(t *testing.T) {
 		t.Fatal("e opened an editor without a TODO")
 	}
 	m.Update(ScannedMsg{Err: fmt.Errorf("permission denied")})
-	if m.Err() != "permission denied" || !strings.Contains(ansi.Strip(m.View(theme, 60, 10)), "Scan failed") {
+	if m.Err() == nil || m.Err().Error() != "permission denied" || !strings.Contains(ansi.Strip(m.View(theme, 60, 10)), "Scan failed") {
 		t.Fatalf("scan error not shown: %q", m.Err())
 	}
 }
@@ -144,21 +144,21 @@ func TestRescanReplacesARunningScan(t *testing.T) {
 	first := m.Scan()
 	second := m.Scan()
 	// The rescan cancelled the first scan, which then reports that error.
-	if m.Update(first()); !m.Loading() || m.Err() != "" {
+	if m.Update(first()); !m.Loading() || m.Err() != nil {
 		t.Fatalf("the replaced scan was used: loading %v, error %q", m.Loading(), m.Err())
 	}
-	if m.Update(second()); m.Loading() || m.Err() != "" || m.Total() != 1 {
+	if m.Update(second()); m.Loading() || m.Err() != nil || m.Total() != 1 {
 		t.Fatalf("the rescan wasn't used: loading %v, error %q, %d TODOs", m.Loading(), m.Err(), m.Total())
 	}
 	// Arriving after the rescan's results, it still mustn't replace them.
-	if m.Update(first()); m.Err() != "" || m.Total() != 1 {
+	if m.Update(first()); m.Err() != nil || m.Total() != 1 {
 		t.Fatalf("the replaced scan overwrote the rescan: error %q, %d TODOs", m.Err(), m.Total())
 	}
 }
 
 func TestScanErrorVisibleInDetails(t *testing.T) {
 	theme := ui.NewTheme(true)
-	m := Model{err: "permission denied"}
+	m := Model{err: fmt.Errorf("permission denied")}
 	got := strings.Join(m.detailLines(theme, 60, 20), "\n")
 	if !strings.Contains(got, "permission denied") {
 		t.Fatalf("scan error missing from detail pane: %s", got)
@@ -277,7 +277,7 @@ func TestScanKeepsOnlyWhatTheFilterAccepts(t *testing.T) {
 	} {
 		m := New(dir, scan.Exclude{}, c.keep)
 		m.Update(m.Scan()())
-		if m.Err() != "" || m.Total() != c.want {
+		if m.Err() != nil || m.Total() != c.want {
 			t.Errorf("scan kept %d (%s), want %d", m.Total(), m.Err(), c.want)
 		}
 	}

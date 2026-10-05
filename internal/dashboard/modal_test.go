@@ -246,7 +246,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	form(t, m).resetBranchCursor()
 	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = updated.(*model)
-	if !isOpen[*taskModal](m) || form(t, m).err != "choose or type a branch" {
+	if !isOpen[*taskModal](m) || form(t, m).err == nil || form(t, m).err.Error() != "choose or type a branch" {
 		t.Fatalf("a task was saved without a branch: %+v", m.overlay)
 	}
 	form(t, m).scope.SetValue("feature/new")
@@ -596,7 +596,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
 	m = opened.(*model)
-	if !isOpen[*taskModal](m) || form(t, m).err == "" {
+	if !isOpen[*taskModal](m) || form(t, m).err == nil {
 		t.Fatal("empty title should keep the form open with an error")
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: 'F', Text: "F"})
@@ -770,7 +770,7 @@ func TestTaskModalFieldsAndFocus(t *testing.T) {
 	m = opened.(*model)
 	plain := ansi.Strip(form(t, m).render(m.theme, 76, 20))
 	lines := strings.Split(plain, "\n")
-	if form(t, m).err == "" || !strings.Contains(lines[1], "General › New task") || !strings.Contains(lines[len(lines)-2], form(t, m).err) || strings.Contains(plain, "ctrl+enter") {
+	if form(t, m).err == nil || !strings.Contains(lines[1], "General › New task") || !strings.Contains(lines[len(lines)-2], form(t, m).err.Error()) || strings.Contains(plain, "ctrl+enter") {
 		t.Fatalf("error should replace the key hints and keep the heading: %s", plain)
 	}
 }

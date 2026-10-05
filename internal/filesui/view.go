@@ -81,7 +81,7 @@ func (m *Model) listView(theme ui.Theme, width, height int) string {
 		if m.loading {
 			empty = "Scanning…"
 		}
-		if m.err != "" {
+		if m.err != nil {
 			empty = "Scan failed"
 		}
 		lines = append(lines, theme.MutedStyle.Render(empty))
@@ -182,8 +182,8 @@ func (m *Model) detailsView(theme ui.Theme, width, height int) string {
 func (m *Model) detailLines(theme ui.Theme, width, height int) []string {
 	item, ok := m.Selected()
 	if !ok {
-		if m.err != "" {
-			return ui.WrapLines([]string{"Scan failed", m.err, "", "Press r to try again"}, width)
+		if m.err != nil {
+			return ui.WrapLines([]string{"Scan failed", m.err.Error(), "", "Press r to try again"}, width)
 		}
 		return []string{theme.MutedStyle.Render("No file TODO selected.")}
 	}
@@ -191,8 +191,8 @@ func (m *Model) detailLines(theme ui.Theme, width, height int) []string {
 	switch {
 	case m.previewPath != item.Path || m.previewLine != item.Line:
 		return append(result, theme.MutedStyle.Render("Loading preview…"))
-	case m.previewErr != "":
-		return append(result, ui.WrapLines([]string{theme.MutedStyle.Render(m.previewErr)}, width)...)
+	case m.previewErr != nil:
+		return append(result, ui.WrapLines([]string{theme.MutedStyle.Render(m.previewErr.Error())}, width)...)
 	}
 	return append(result, contextWindow(theme, m.preview, item.Line, width, height-len(result))...)
 }

@@ -38,7 +38,7 @@ type taskModal struct {
 	scope        textinput.Model
 	details      textarea.Model
 	field        int // titleField, scopeField or detailsField
-	err          string
+	err          error
 }
 
 const (
@@ -172,7 +172,7 @@ func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 		return nil, nil, nil
 	case "ctrl+enter":
 		if err := f.save(); err != nil {
-			f.err = errorStatus(err)
+			f.err = err
 			return f, nil, nil
 		}
 		return nil, f.saved(), nil
@@ -229,7 +229,7 @@ func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 
 // typeKey passes a key the form doesn't use itself to the focused field.
 func (f *taskModal) typeKey(msg tea.KeyPressMsg) tea.Cmd {
-	f.err = ""
+	f.err = nil
 	var cmd tea.Cmd
 	switch f.field {
 	case titleField:
@@ -250,7 +250,7 @@ func (f *taskModal) typeKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func (f *taskModal) paste(msg tea.PasteMsg) tea.Cmd {
-	f.err = ""
+	f.err = nil
 	var cmd tea.Cmd
 	switch f.field {
 	case titleField:
@@ -605,7 +605,7 @@ func (f *taskModal) label(theme ui.Theme, name string, field int) string {
 }
 
 func (f *taskModal) footer(theme ui.Theme, width int) string {
-	if f.err != "" {
+	if f.err != nil {
 		return errorText(theme, f.err, width)
 	}
 	hints := []ui.KeyHint{{Key: "ctrl+enter", Label: "save"}, {Key: "esc", Label: "cancel"}, {Key: "tab", Label: "next field"}}
@@ -622,8 +622,8 @@ func (f *taskModal) footer(theme ui.Theme, width int) string {
 }
 
 // errorText shows a failed save's error where the key hints would be.
-func errorText(theme ui.Theme, err string, width int) string {
-	return lipgloss.NewStyle().Bold(true).Foreground(theme.ColorHigh).Render(ansi.Truncate(err, width, "…"))
+func errorText(theme ui.Theme, err error, width int) string {
+	return lipgloss.NewStyle().Bold(true).Foreground(theme.ColorHigh).Render(ansi.Truncate(errorStatus(err), width, "…"))
 }
 
 // setTheme restyles the form's fields for theme.

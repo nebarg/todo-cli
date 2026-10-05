@@ -43,8 +43,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case filesui.ScannedMsg:
 		cmd := m.files.Update(msg)
 		m.status = ""
-		if err := m.files.Err(); err != "" {
-			m.status = "Scan failed: " + err
+		if err := m.files.Err(); err != nil {
+			m.status = "Scan failed: " + err.Error()
 		}
 		return m, cmd
 	case editor.ClosedMsg:

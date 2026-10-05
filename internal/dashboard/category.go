@@ -23,7 +23,7 @@ type categoryPrompt struct {
 	file  string
 	task  store.Task
 	input textinput.Model
-	err   string
+	err   error
 }
 
 func (m *model) startCategoryInput() tea.Cmd {
@@ -98,14 +98,14 @@ func (p *categoryPrompt) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 		return p, nil, nil
 	case "enter":
 		if err := store.SetCategory(p.file, p.task, p.input.Value()); err != nil {
-			p.err = errorStatus(err)
+			p.err = err
 			return p, nil, nil
 		}
 		moved := p.task
 		moved.Category = store.NormalizeCategory(p.input.Value())
 		return nil, categorySetMsg{moved}, nil
 	}
-	p.err = ""
+	p.err = nil
 	var cmd tea.Cmd
 	p.input, cmd = p.input.Update(msg)
 	return p, nil, cmd
@@ -127,7 +127,7 @@ func (p *categoryPrompt) footer(theme ui.Theme, width int) string {
 	typed := prompt + min(p.input.Width(), ansi.StringWidth(p.input.Value())) + 1
 	room := max(0, width-typed-2)
 	right := theme.FitHints(p.keys(), room)
-	if p.err != "" {
+	if p.err != nil {
 		right = errorText(theme, p.err, room)
 	}
 	// The input pads to its width without counting a suggestion's grey text,

@@ -31,7 +31,7 @@ type Model struct {
 	cancel     context.CancelFunc
 	matches    []scan.Match
 	loading    bool
-	err        string
+	err        error
 	cursor     int
 	rootCursor int
 	category   string
@@ -41,7 +41,7 @@ type Model struct {
 	preview     []scan.ContextLine
 	previewPath string
 	previewLine int
-	previewErr  string
+	previewErr  error
 }
 
 // New browses dir, skipping exclude, and lists only the TODOs keep accepts,
@@ -114,10 +114,10 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		m.stopScan()
 		m.loading = false
 		if msg.Err != nil {
-			m.err = msg.Err.Error()
+			m.err = msg.Err
 			return nil
 		}
-		m.err = ""
+		m.err = nil
 		m.matches = msg.Matches
 		if m.category != "" && len(m.rows()) == 0 {
 			m.category, m.cursor = "", m.rootCursor
@@ -130,10 +130,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		if selected, ok := m.Selected(); ok && selected.Path == msg.path && selected.Line == msg.line {
 			m.previewPath, m.previewLine = msg.path, msg.line
 			m.preview = msg.lines
-			m.previewErr = ""
-			if msg.err != nil {
-				m.previewErr = msg.err.Error()
-			}
+			m.previewErr = msg.err
 		}
 	case tea.KeyPressMsg:
 		if m.details {
@@ -205,7 +202,7 @@ func (m *Model) CloseDetails() {
 func (m *Model) Details() bool { return m.details }
 
 // Err is the last scan's error, if it failed.
-func (m *Model) Err() string { return m.err }
+func (m *Model) Err() error { return m.err }
 
 // Loading is true while a scan is running.
 func (m *Model) Loading() bool { return m.loading }
