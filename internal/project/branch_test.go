@@ -15,7 +15,7 @@ func TestBranchExists(t *testing.T) {
 	projecttest.Git(t, unborn, "symbolic-ref", "HEAD", "refs/heads/fresh")
 	for _, item := range []struct {
 		name             string
-		project          project.Context
+		project          project.Repo
 		branch           string
 		exists, verified bool
 	}{
@@ -23,8 +23,8 @@ func TestBranchExists(t *testing.T) {
 		{"current branch", repo, "main", true, true},
 		{"missing branch", repo, "feature/gone", false, true},
 		{"empty name", repo, "", false, true},
-		{"unborn current branch", project.Context{Root: unborn}, "fresh", true, true},
-		{"outside Git", project.Context{}, "main", false, false},
+		{"unborn current branch", project.Repo{Root: unborn}, "fresh", true, true},
+		{"outside Git", project.Repo{}, "main", false, false},
 	} {
 		t.Run(item.name, func(t *testing.T) {
 			exists, verified := item.project.BranchExists(item.branch)

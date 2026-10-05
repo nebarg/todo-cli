@@ -38,7 +38,7 @@ func TestSubtasksShowUnderTheirTask(t *testing.T) {
 	if err := os.WriteFile(path, []byte(subtaskTasks), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestATaskAndASubtaskAlikeKeepTheirPlaces(t *testing.T) {
 	if err := os.WriteFile(path, []byte("- [ ] x\n- [ ] Q\n- [ ] P\n  - [ ] x\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestAddingASubtaskFromATasksDetails(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# auth\n\n- [ ] Ship login\n  - [x] Add the route\n- [x] Done task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestClearingDoneTasksTakesTheirSubtasks(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,9 +14,9 @@ import (
 )
 
 // Repo makes dir a Git repository on the branch current, with one commit and
-// a local branch for each of others, and returns its Context. It skips the
-// test when Git is unavailable.
-func Repo(t testing.TB, dir, current string, others ...string) project.Context {
+// a local branch for each of others, and returns it as a project.Repo. It
+// skips the test when Git is unavailable.
+func Repo(t testing.TB, dir, current string, others ...string) project.Repo {
 	t.Helper()
 	if _, err := git(dir, "init", "-q"); err != nil {
 		t.Skipf("Git is unavailable: %v", err)
@@ -30,7 +30,7 @@ func Repo(t testing.TB, dir, current string, others ...string) project.Context {
 	for _, branch := range others {
 		Git(t, dir, "branch", branch)
 	}
-	return project.Context{Root: dir, Branch: current}
+	return project.Repo{Root: dir, Branch: current}
 }
 
 // Git runs git -C dir with args, failing the test if Git does, and returns

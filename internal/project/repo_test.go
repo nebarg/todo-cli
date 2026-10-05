@@ -23,10 +23,10 @@ func TestGitOutputReportsGitError(t *testing.T) {
 }
 
 func TestDefaultFileUsesLowercaseName(t *testing.T) {
-	if got := (Context{}).DefaultFile(); got != "todo.md" {
+	if got := (Repo{}).DefaultFile(); got != "todo.md" {
 		t.Fatalf("default file = %q", got)
 	}
-	if got := (Context{Root: "/project"}).DefaultFile(); got != filepath.Join("/project", "todo.md") {
+	if got := (Repo{Root: "/project"}).DefaultFile(); got != filepath.Join("/project", "todo.md") {
 		t.Fatalf("project file = %q", got)
 	}
 }
@@ -36,11 +36,11 @@ func TestDefaultFileUsesAnExistingTaskFileOfAnyCase(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "TODO.md"), nil, 0644); err != nil {
 		t.Fatal(err)
 	}
-	if got := (Context{Root: root}).DefaultFile(); got != filepath.Join(root, "TODO.md") {
+	if got := (Repo{Root: root}).DefaultFile(); got != filepath.Join(root, "TODO.md") {
 		t.Fatalf("project file = %q, want the existing TODO.md", got)
 	}
 	t.Chdir(root)
-	if got := (Context{}).DefaultFile(); got != "TODO.md" {
+	if got := (Repo{}).DefaultFile(); got != "TODO.md" {
 		t.Fatalf("file outside Git = %q, want the existing TODO.md", got)
 	}
 
@@ -48,7 +48,7 @@ func TestDefaultFileUsesAnExistingTaskFileOfAnyCase(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(withDir, "TODO.md"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if got := (Context{Root: withDir}).DefaultFile(); got != filepath.Join(withDir, "todo.md") {
+	if got := (Repo{Root: withDir}).DefaultFile(); got != filepath.Join(withDir, "todo.md") {
 		t.Fatalf("a TODO.md directory was taken for the task file: %q", got)
 	}
 }
@@ -63,7 +63,7 @@ func TestDefaultFilePrefersTodoMd(t *testing.T) {
 	if entries, err := os.ReadDir(root); err != nil || len(entries) != 2 {
 		t.Skip("the file system ignores case, so TODO.md and todo.md are one file")
 	}
-	if got := (Context{Root: root}).DefaultFile(); got != filepath.Join(root, "todo.md") {
+	if got := (Repo{Root: root}).DefaultFile(); got != filepath.Join(root, "todo.md") {
 		t.Fatalf("project file = %q, want todo.md", got)
 	}
 }

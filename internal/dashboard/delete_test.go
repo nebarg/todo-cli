@@ -83,7 +83,7 @@ func TestDeleteTakesDetailsAndEmptiedHeadings(t *testing.T) {
 			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 				t.Fatal(err)
 			}
-			m, err := newModel(path, project.Context{}, testFiles())
+			m, err := newModel(path, project.Repo{}, testFiles())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -299,7 +299,7 @@ func TestDeletingOneOfIdenticalTasksLeavesTheOtherInPlace(t *testing.T) {
 			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 				t.Fatal(err)
 			}
-			m, err := newModel(path, project.Context{}, testFiles())
+			m, err := newModel(path, project.Repo{}, testFiles())
 			if err != nil {
 				t.Fatal(err)
 			}

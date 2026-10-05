@@ -22,7 +22,7 @@ func TestIndexShowsEveryMarkdownTaskAndSorts(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestIndexEditShowsTaskLocation(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 	if err := os.WriteFile(path, []byte("## General\n\n- [ ] First !high\n\n- [ ] Second !low\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

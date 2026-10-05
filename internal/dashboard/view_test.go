@@ -24,7 +24,7 @@ func TestDashboardFitsTerminal(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{Root: filepath.Dir(path), Branch: "feature/login"}, testFiles())
+	m, err := newModel(path, project.Repo{Root: filepath.Dir(path), Branch: "feature/login"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{Branch: "main"}, testFiles())
+	m, err := newModel(path, project.Repo{Branch: "main"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 }
 
 func TestHeaderShowsRepositoryAndBranch(t *testing.T) {
-	m := &model{project: project.Context{Root: "/src/todo-cli", Branch: "feature/login"}, theme: ui.NewTheme(true)}
+	m := &model{project: project.Repo{Root: "/src/todo-cli", Branch: "feature/login"}, theme: ui.NewTheme(true)}
 	header := m.renderHeader(80)
 	if plain := ansi.Strip(header); ansi.StringWidth(header) != 80 || !strings.HasPrefix(plain, " 1 General") || !strings.HasSuffix(plain, "todo-cli  "+gitIcon+" feature/login  ") {
 		t.Fatalf("header = %q", plain)

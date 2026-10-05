@@ -31,7 +31,7 @@ func TestThemeFollowsTerminalBackground(t *testing.T) {
 }
 
 func TestTaskFormRestylesWhenTheBackgroundChanges(t *testing.T) {
-	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), project.Context{}, testFiles())
+	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

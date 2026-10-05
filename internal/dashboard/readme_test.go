@@ -55,7 +55,7 @@ func TestReadmeTasksOpenFromGeneralAndOnlyToggle(t *testing.T) {
 	if err := os.WriteFile(readme, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestReadmeGroupClosesWhenItsTasksGo(t *testing.T) {
 	if err := os.WriteFile(readme, []byte("## Todo:\n\n- Only task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestAddingIsRefusedInsideTheReadmeGroup(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# Todo\n\n- Loose task\n\n## Backend\n\n- Heading task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(filepath.Join(dir, "todo.md"), project.Context{}, testFiles())
+	m, err := newModel(filepath.Join(dir, "todo.md"), project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestBranchTaskStatusIgnoresTheReadmeGroupInGeneral(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Branches\n\n## main\n\n- [ ] Branch task !high\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestReadmeTasksWithoutLevelsKeepTheOpenBullet(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("## TODOs\n\n- Open task\n- [x] Done task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(filepath.Join(dir, "todo.md"), project.Context{}, testFiles())
+	m, err := newModel(filepath.Join(dir, "todo.md"), project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestReadmeHeadingsOpenFromTheReadmeGroup(t *testing.T) {
 	if err := os.WriteFile(readme, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(filepath.Join(dir, "todo.md"), project.Context{}, testFiles())
+	m, err := newModel(filepath.Join(dir, "todo.md"), project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +318,7 @@ func TestReadmeTaskDetailsShowLikeATaskFilesDetails(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(readme), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(filepath.Join(dir, "todo.md"), project.Context{}, testFiles())
+	m, err := newModel(filepath.Join(dir, "todo.md"), project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +352,7 @@ func TestReadmeSubtasksShowUnderTheirParents(t *testing.T) {
 	if err := os.WriteFile(readme, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(filepath.Join(dir, "todo.md"), project.Context{}, testFiles())
+	m, err := newModel(filepath.Join(dir, "todo.md"), project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

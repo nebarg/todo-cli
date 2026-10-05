@@ -122,7 +122,7 @@ func TestOutsideEditsReloadKeepingRowsInPlace(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "todo.md")
 	writeFile(t, path, "- [ ] Low !low\n\n- [ ] High !high\n")
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

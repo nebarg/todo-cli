@@ -157,7 +157,7 @@ func runCommand(argv []string, out io.Writer) error {
 
 // runDashboard opens the dashboard on out, which must be a terminal, with the
 // Files tab scanning the working directory.
-func runDashboard(out io.Writer, file string, repo project.Context, excludes []string) error {
+func runDashboard(out io.Writer, file string, repo project.Repo, excludes []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -180,7 +180,7 @@ func runDashboard(out io.Writer, file string, repo project.Context, excludes []s
 // addTask files the task in args under the category or branch the flags
 // name, and reports it on out, naming a branch Git doesn't have as unknown
 // so a mistyped name stands out.
-func addTask(out io.Writer, file string, repo project.Context, o options, args []string) error {
+func addTask(out io.Writer, file string, repo project.Repo, o options, args []string) error {
 	category, args := splitCategoryArg(args)
 	if len(args) == 0 {
 		return usageError("usage: todo [flags] [@category] task")
@@ -280,7 +280,7 @@ func nothingToClear(done, missing bool) string {
 
 // missingBranches reports branches Git doesn't have locally. Without Git to
 // ask, it fails rather than treat every branch as present.
-func missingBranches(repo project.Context) (func(string) bool, error) {
+func missingBranches(repo project.Repo) (func(string) bool, error) {
 	branches, _, verified := repo.LocalBranchState()
 	if !verified {
 		return nil, errors.New("--clear-missing needs a Git repository to check branches against")

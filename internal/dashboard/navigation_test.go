@@ -100,7 +100,7 @@ func TestBranchesOutsideGitAreNotMarkedMissing(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/x\n\n- [ ] Branch task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestCategoriesAndBranchesDrillDown(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{Branch: "fix/api"}, testFiles())
+	m, err := newModel(path, project.Repo{Branch: "fix/api"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestReloadRechecksBranches(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/x\n\n- [ ] Branch task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	t.Chdir(dir) // reload reads the Git context from the working directory.
+	t.Chdir(dir) // reload reads the Git repository from the working directory.
 	m, err := newModel(path, repo, testFiles())
 	if err != nil {
 		t.Fatal(err)
@@ -300,7 +300,7 @@ func TestPressingATabAgainReturnsToItsTopLevel(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +335,7 @@ func TestTwoTogglesBetweenBranchListAndCurrentBranch(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{Branch: "main"}, testFiles())
+	m, err := newModel(path, project.Repo{Branch: "main"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +365,7 @@ func TestTwoTogglesBetweenBranchListAndCurrentBranch(t *testing.T) {
 		t.Fatal("leaving a branch lost its row")
 	}
 
-	m, err = newModel(path, project.Context{Branch: "fix/none"}, testFiles())
+	m, err = newModel(path, project.Repo{Branch: "fix/none"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +421,7 @@ func TestReloadFollowsASwitchedGitBranch(t *testing.T) {
 		if err := os.WriteFile(path, []byte("# Branches\n\n## main\n\n- [ ] Main task\n\n## feature/x\n\n- [ ] Feature task\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
-		t.Chdir(dir) // reload reads the Git context from the working directory.
+		t.Chdir(dir) // reload reads the Git repository from the working directory.
 		m, err := newModel(path, repo, testFiles())
 		if err != nil {
 			t.Fatal(err)

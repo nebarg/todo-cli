@@ -64,8 +64,8 @@ func placeOver(content, box string, width, height int) string {
 	).Render()
 }
 
-// renderHeader puts the tabs on the left and the Git context on the right,
-// giving the tabs priority when the terminal is narrow.
+// renderHeader puts the tabs on the left and the Git repository and branch on
+// the right, giving the tabs priority when the terminal is narrow.
 func (m *model) renderHeader(width int) string {
 	tabs := ""
 	if m.all == nil {

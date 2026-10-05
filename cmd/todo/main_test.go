@@ -114,7 +114,7 @@ func TestAddTaskOnBranches(t *testing.T) {
 	if err := addTask(io.Discard, path, repo, options{branch: "."}, []string{"@tests", "Both"}); err == nil {
 		t.Fatal("a branch task was given a category")
 	}
-	if err := addTask(io.Discard, path, project.Context{}, options{branch: "."}, []string{"No", "Git"}); err == nil || err.Error() != "no current Git branch" {
+	if err := addTask(io.Discard, path, project.Repo{}, options{branch: "."}, []string{"No", "Git"}); err == nil || err.Error() != "no current Git branch" {
 		t.Fatalf("-b . outside Git = %v", err)
 	}
 	data, err := os.ReadFile(path)
@@ -360,7 +360,7 @@ func TestClearSaysWhatThereWasNothingOf(t *testing.T) {
 }
 
 func TestClearMissingNeedsGit(t *testing.T) {
-	if _, err := missingBranches(project.Context{}); err == nil {
+	if _, err := missingBranches(project.Repo{}); err == nil {
 		t.Fatal("missing branches were checked without Git")
 	}
 	repo := projecttest.Repo(t, t.TempDir(), "main", "feature/live")

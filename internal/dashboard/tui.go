@@ -31,7 +31,7 @@ const (
 
 type model struct {
 	file             string
-	project          project.Context
+	project          project.Repo
 	tasks            taskSet
 	all              *allTasksView // nil unless the All tasks view is open
 	general          groupList
@@ -51,9 +51,9 @@ type model struct {
 	height           int
 }
 
-// New makes the dashboard for the task file in the Git context repo, its Files
-// tab showing files. It fails if the task file or README.md can't be read.
-func New(file string, repo project.Context, files filesui.Model) (tea.Model, error) {
+// New makes the dashboard for the task file in repo, its Files tab showing
+// files. It fails if the task file or README.md can't be read.
+func New(file string, repo project.Repo, files filesui.Model) (tea.Model, error) {
 	m, err := newModel(file, repo, files)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func New(file string, repo project.Context, files filesui.Model) (tea.Model, err
 	return m, nil
 }
 
-func newModel(file string, repo project.Context, files filesui.Model) (*model, error) {
+func newModel(file string, repo project.Repo, files filesui.Model) (*model, error) {
 	m := &model{file: file, project: repo, theme: ui.NewTheme(true), width: 100, height: 30, files: files}
 	// Before the dashboard is drawn, Git is asked directly.
 	m.setBranches(branchState(repo))
@@ -435,7 +435,7 @@ type branchStateMsg struct {
 	verified bool
 }
 
-func branchState(repo project.Context) branchStateMsg {
+func branchState(repo project.Repo) branchStateMsg {
 	branches, current, verified := repo.LocalBranchState()
 	return branchStateMsg{branches: branches, current: current, verified: verified}
 }
@@ -461,7 +461,7 @@ func (m *model) setBranches(msg branchStateMsg) {
 // projectStateMsg is the repository, current branch and local branches as
 // Git reported them when r reloaded.
 type projectStateMsg struct {
-	project  project.Context
+	project  project.Repo
 	branches branchStateMsg
 }
 

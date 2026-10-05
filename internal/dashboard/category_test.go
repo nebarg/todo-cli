@@ -19,7 +19,7 @@ func categoriesModel(t *testing.T) (*model, string) {
 	if err := os.WriteFile(path, []byte(categoriesFile), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

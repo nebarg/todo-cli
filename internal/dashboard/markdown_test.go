@@ -27,7 +27,7 @@ func markdownModel(t *testing.T) *model {
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("## TODOs\n\n- todo0 Document `--force`\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,45 +15,45 @@ import (
 	"time"
 )
 
-// Context is the Git repository a command runs in: its root and its current
-// branch. The zero Context is outside Git.
-type Context struct {
+// Repo is the Git repository a command runs in: its root and its current
+// branch. The zero Repo is outside Git.
+type Repo struct {
 	Root   string
 	Branch string
 }
 
-// Current is the Context of the working directory.
-func Current() Context {
+// Current is the Repo the working directory is in.
+func Current() Repo {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return Context{}
+		return Repo{}
 	}
 	root, err := gitOutput(cwd, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return Context{}
+		return Repo{}
 	}
 	branch, _ := gitOutput(root, "branch", "--show-current")
-	return Context{Root: root, Branch: branch}
+	return Repo{Root: root, Branch: branch}
 }
 
 // CurrentBranch asks Git for the current branch, which is empty outside Git
 // and on a detached HEAD.
-func (c Context) CurrentBranch() string {
-	if c.Root == "" {
+func (r Repo) CurrentBranch() string {
+	if r.Root == "" {
 		return ""
 	}
-	branch, _ := gitOutput(c.Root, "branch", "--show-current")
+	branch, _ := gitOutput(r.Root, "branch", "--show-current")
 	return branch
 }
 
 // LocalBranchState lists local branches, sorted, and the current branch in
 // one pass. verified is false when there is no Git repository to check
 // against.
-func (c Context) LocalBranchState() (branches []string, current string, verified bool) {
-	if c.Root == "" {
+func (r Repo) LocalBranchState() (branches []string, current string, verified bool) {
+	if r.Root == "" {
 		return nil, "", false
 	}
-	output, err := gitOutput(c.Root, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+	output, err := gitOutput(r.Root, "for-each-ref", "--format=%(refname:short)", "refs/heads")
 	if err != nil {
 		return nil, "", false
 	}
@@ -62,7 +62,7 @@ func (c Context) LocalBranchState() (branches []string, current string, verified
 			branches = append(branches, branch)
 		}
 	}
-	current = c.CurrentBranch()
+	current = r.CurrentBranch()
 	// An unborn current branch has no ref yet, but is still the active branch.
 	if current != "" && !slices.Contains(branches, current) {
 		branches = append(branches, current)
@@ -72,21 +72,21 @@ func (c Context) LocalBranchState() (branches []string, current string, verified
 }
 
 // HasLocalBranch reports whether Git has a local branch called name.
-func (c Context) HasLocalBranch(name string) bool {
-	exists, _ := c.branchExists(name)
+func (r Repo) HasLocalBranch(name string) bool {
+	exists, _ := r.branchExists(name)
 	return exists
 }
 
 // branchExists checks one branch with a single git call, which is cheaper than
 // LocalBranchState. verified is false when Git could not answer.
-func (c Context) branchExists(name string) (exists, verified bool) {
+func (r Repo) branchExists(name string) (exists, verified bool) {
 	if name == "" {
 		return false, true
 	}
-	if c.Root == "" {
+	if r.Root == "" {
 		return false, false
 	}
-	_, err := gitOutput(c.Root, "show-ref", "--verify", "--quiet", "refs/heads/"+name)
+	_, err := gitOutput(r.Root, "show-ref", "--verify", "--quiet", "refs/heads/"+name)
 	if err == nil {
 		return true, true
 	}
@@ -95,7 +95,7 @@ func (c Context) branchExists(name string) (exists, verified bool) {
 		return false, false
 	}
 	// An unborn current branch has no ref yet, but is still the active branch.
-	return c.CurrentBranch() == name, true
+	return r.CurrentBranch() == name, true
 }
 
 const gitTimeout = 5 * time.Second
@@ -123,8 +123,8 @@ const taskFile = "todo.md"
 // or in the working directory outside Git: todo.md, or else a file already
 // there whose name differs only in case, such as TODO.md, so a project's own
 // task file is used rather than a second one made beside it.
-func (c Context) DefaultFile() string {
-	dir := cmp.Or(c.Root, ".")
+func (r Repo) DefaultFile() string {
+	dir := cmp.Or(r.Root, ".")
 	return filepath.Join(dir, existingTaskFile(dir))
 }
 

@@ -73,7 +73,7 @@ func TestAddGeneralRootDoesNotInheritSelectedCategory(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# test\n\n- [ ] Existing test task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestBranchAddReadsGitBranchWhenFormOpens(t *testing.T) {
 
 func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestAddFormCreatesCategoryAndMarkdownBranch(t *testing.T) {
 
 func TestAddFormAcceptsSymbolCategory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,7 +436,7 @@ func TestEditFormStaysOpenWhenGitNoLongerHasTheBranch(t *testing.T) {
 }
 
 func TestGitAnswerUpdatesAnOpenBranchForm(t *testing.T) {
-	m := &model{project: project.Context{Branch: "main"}, theme: ui.NewTheme(true), localBranches: []string{"feature/b", "main"}, width: 100, height: 30}
+	m := &model{project: project.Repo{Branch: "main"}, theme: ui.NewTheme(true), localBranches: []string{"feature/b", "main"}, width: 100, height: 30}
 	m.startTaskModal(modalAddBranch)
 	f := form(t, m)
 	f.scope.SetValue("feature")
@@ -498,7 +498,7 @@ func TestBranchPickerTakesABranchNotInGit(t *testing.T) {
 }
 
 func TestAcceptingANewBranchKeepsItChosen(t *testing.T) {
-	m := &model{project: project.Context{Branch: "main"}, theme: ui.NewTheme(true), localBranches: []string{"feature/login", "main"}, width: 100, height: 30}
+	m := &model{project: project.Repo{Branch: "main"}, theme: ui.NewTheme(true), localBranches: []string{"feature/login", "main"}, width: 100, height: 30}
 	m.startTaskModal(modalAddBranch)
 	f := form(t, m)
 	f.scope.SetValue("login")
@@ -556,7 +556,7 @@ func TestBranchPickerFitsCompactAndRegularModals(t *testing.T) {
 
 func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -677,7 +677,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 
 func TestTwoLineTaskInputStaysOneMarkdownTask(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -735,7 +735,7 @@ func TestOnBackgroundSurvivesNestedResets(t *testing.T) {
 }
 
 func TestTaskModalFieldsAndFocus(t *testing.T) {
-	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), project.Context{}, testFiles())
+	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -776,7 +776,7 @@ func TestTaskModalFieldsAndFocus(t *testing.T) {
 }
 
 func TestBranchFieldHintsDescribePicker(t *testing.T) {
-	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), project.Context{Branch: "main"}, testFiles())
+	m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), project.Repo{Branch: "main"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -795,7 +795,7 @@ func TestEditFormMovesTaskToAnotherCategory(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# auth\n\n- [ ] Login task\n\n# docs\n\n- [ ] Write guide\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -867,7 +867,7 @@ func TestEditFormKeepsBranchWithoutGit(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Branches\n\n## feature/a\n\n- [ ] Branch task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

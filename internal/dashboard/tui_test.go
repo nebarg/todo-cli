@@ -90,7 +90,7 @@ func TestChangingCategoryKeepsTaskSelected(t *testing.T) {
 	if err := os.WriteFile(path, []byte("## General\n\n### @auth\n\n- [ ] Fix login\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestCategoryPromptShowsAFailedSave(t *testing.T) {
 	if err := os.WriteFile(path, []byte("- [ ] Task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestCategoryInputTakesSpaces(t *testing.T) {
 	if err := os.WriteFile(path, []byte("- [ ] Task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestEditFormSavesASpacedCategory(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# release notes\n\n- [ ] Task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestEnterEditsAndDoneOrSpaceTogglesTasks(t *testing.T) {
 	if err := os.WriteFile(path, []byte("- [ ] First task\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestPriorityChangeKeepsMovedTaskSelected(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestPriorityChangeKeepsMovedBranchTaskSelected(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{Branch: "main"}, testFiles())
+	m, err := newModel(path, project.Repo{Branch: "main"}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +352,7 @@ func TestPriorityChangeKeepsCategoryTaskWithDetailsSelected(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +374,7 @@ func TestPrioritySortHappensOnLoadAndReload(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +409,7 @@ func TestOnlyCOpensCategoryInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, index := range []bool{false, true} {
-		m, err := newModel(path, project.Context{}, testFiles())
+		m, err := newModel(path, project.Repo{}, testFiles())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -473,7 +473,7 @@ func TestWritesKeepIdenticalTasksInPlace(t *testing.T) {
 			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 				t.Fatal(err)
 			}
-			m, err := newModel(path, project.Context{}, testFiles())
+			m, err := newModel(path, project.Repo{}, testFiles())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -509,7 +509,7 @@ func TestNewTasksGoAboveDoneTasksUntilReload(t *testing.T) {
 			if err := os.WriteFile(path, []byte(item.content), 0644); err != nil {
 				t.Fatal(err)
 			}
-			m, err := newModel(path, project.Context{}, testFiles())
+			m, err := newModel(path, project.Repo{}, testFiles())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -532,7 +532,7 @@ func TestUpAndDownWrapPastTheEndsOfAList(t *testing.T) {
 	if err := os.WriteFile(path, []byte("- [ ] One\n\n  Details.\n- [ ] Two\n- [ ] Three\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := newModel(path, project.Context{}, testFiles())
+	m, err := newModel(path, project.Repo{}, testFiles())
 	if err != nil {
 		t.Fatal(err)
 	}
