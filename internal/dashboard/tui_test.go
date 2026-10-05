@@ -491,6 +491,98 @@ func TestWritesKeepIdenticalTasksInPlace(t *testing.T) {
 	}
 }
 
+// TestMarkingSeveralTasksDoneKeepsEachInPlace pins that done never moves a
+// task: it stays in its row with the cursor on it, so d, down, d, down, d
+// marks three in a row, and d again reopens one where it is. The file's tasks
+// are in priority order, so the file keeps its order too.
+func TestMarkingSeveralTasksDoneKeepsEachInPlace(t *testing.T) {
+	const content = "- [ ] Loose A !high\n\n- [ ] Loose B !medium\n\n- [ ] Loose C !medium\n\n- [ ] Loose D !low\n\n- [ ] Loose E\n\n" +
+		"# docs\n\n- [ ] Doc A !high\n\n- [ ] Doc B !medium\n\n- [ ] Doc C !low\n\n- [ ] Doc D\n\n" +
+		"# Branches\n\n## main\n\n- [ ] Main A !high\n\n- [ ] Main B !medium\n\n- [ ] Main C !low\n\n- [ ] Main D\n"
+	taskRows := func(rows []navigationRow) []store.Task {
+		return rowTasks(slices.DeleteFunc(rows, func(row navigationRow) bool { return !row.isTask() }))
+	}
+	for _, c := range []struct {
+		name   string
+		open   func(m *model) *model
+		tasks  func(m *model) []store.Task // the tasks listed, in their rows
+		cursor func(m *model) int
+		first  int // the row of the first task, below any category in the list
+	}{
+		{"loose tasks", func(m *model) *model { m.general.cursor = 1; return m },
+			func(m *model) []store.Task { return taskRows(m.rows(generalPane)) }, func(m *model) int { return m.general.cursor }, 1},
+		{"an opened category", func(m *model) *model { return press(m, "enter") },
+			func(m *model) []store.Task { return taskRows(m.rows(generalPane)) }, func(m *model) int { return m.general.cursor }, 0},
+		{"an opened branch", func(m *model) *model { return press(press(m, "2"), "enter") },
+			func(m *model) []store.Task { return taskRows(m.rows(branchPane)) }, func(m *model) int { return m.branch.cursor }, 0},
+		{"All tasks", func(m *model) *model { return press(m, "i") },
+			func(m *model) []store.Task { return m.all.sorted(m.tasks.all) }, func(m *model) int { return m.all.cursor }, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "todo.md")
+			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			m, err := newModel(path, project.Repo{}, testFiles())
+			if err != nil {
+				t.Fatal(err)
+			}
+			m = c.open(m)
+			started := c.tasks(m)
+			if selected, ok := m.selectedTask(); len(started) < 4 || !ok || selected.Text != started[0].Text || c.cursor(m) != c.first {
+				t.Fatalf("%d tasks, the cursor on row %d selecting %+v, want at least four and the first selected", len(started), c.cursor(m), selected)
+			}
+			// rows are the tasks as text:line, marked ✓ when done, and file the
+			// file text, for the tasks in done marked done where they started.
+			rows := func(tasks []store.Task) []string {
+				var described []string
+				for _, task := range tasks {
+					described = append(described, fmt.Sprintf("%s:%d", task.Text, task.Line)+map[bool]string{true: "✓"}[task.Done])
+				}
+				return described
+			}
+			wantRows := func(done map[int]bool) []string {
+				want := slices.Clone(started)
+				for i := range want {
+					want[i].Done = done[i]
+				}
+				return rows(want)
+			}
+			wantFile := func(done map[int]bool) string {
+				file := content
+				for i, task := range started {
+					if done[i] {
+						file = strings.Replace(file, "- [ ] "+task.Text, "- [x] "+task.Text, 1)
+					}
+				}
+				return file
+			}
+			down, up := tea.KeyPressMsg{Code: tea.KeyDown}, tea.KeyPressMsg{Code: tea.KeyUp}
+			done, at := map[int]bool{}, 0
+			for _, step := range []string{"d", "down", "d", "down", "d", "d", "up", "d"} {
+				switch step {
+				case "d":
+					m = press(m, "d")
+					done[at] = !done[at]
+				case "down":
+					m, at = pressMsg(m, down), at+1
+				case "up":
+					m, at = pressMsg(m, up), at-1
+				}
+				if got, want := rows(c.tasks(m)), wantRows(done); !slices.Equal(got, want) || c.cursor(m) != c.first+at {
+					t.Fatalf("after %s rows = %v with the cursor on row %d, want %v on %d", step, got, c.cursor(m), want, c.first+at)
+				}
+				if selected, ok := m.selectedTask(); !ok || selected.Text != started[at].Text {
+					t.Fatalf("after %s the selected task is %+v, want %s", step, selected, started[at].Text)
+				}
+				if got, want := fileContent(t, path), wantFile(done); got != want {
+					t.Fatalf("after %s the file is\n%q\nwant\n%q", step, got, want)
+				}
+			}
+		})
+	}
+}
+
 func TestNewTasksGoAboveDoneTasksUntilReload(t *testing.T) {
 	titles := func(m *model) string {
 		var names []string
