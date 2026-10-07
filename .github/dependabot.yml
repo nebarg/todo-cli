@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # Application dependencies.
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      go-deps:
+        patterns: ["*"]
+
+  # Dev tooling (golangci-lint, govulncheck). Kept separate because a
+  # golangci-lint bump can introduce new lint findings unrelated to the app.
+  - package-ecosystem: "gomod"
+    directory: "/tools"
+    schedule:
+      interval: "monthly"
+    groups:
+      tools:
+        patterns: ["*"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      actions:
+        patterns: ["*"]
