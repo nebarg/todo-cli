@@ -391,8 +391,11 @@ func TestStatusBarDescribesTheHighlightedRow(t *testing.T) {
 		t.Fatalf("detail page status = %q", got)
 	}
 	m.focus, m.general.open, m.general.cursor = generalPane, categoryGroup("Docs"), 1
-	if got := bottom(); got != "✓ Done  ·  No priority" {
+	if got := bottom(); got != "Done  ·  No priority" {
 		t.Fatalf("done task status = %q", got)
+	}
+	if task, _ := m.selectedTask(); !strings.HasPrefix(taskStatus(m.theme, task), lipgloss.NewStyle().Foreground(m.theme.ColorGreen).Render("Done")) {
+		t.Fatalf("done task status isn't green: %q", taskStatus(m.theme, task))
 	}
 	m.focus = sourcePane
 	if got := bottom(); strings.Contains(got, "priority") || strings.Contains(got, "done") {

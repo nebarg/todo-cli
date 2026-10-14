@@ -347,7 +347,7 @@ func (m *model) taskList() ([]navigationRow, int) {
 func taskStatus(theme ui.Theme, t store.Task) string {
 	status := lipgloss.NewStyle().Foreground(theme.ColorText).Render("Open")
 	if t.Done {
-		status = lipgloss.NewStyle().Foreground(theme.ColorGreen).Render("✓ Done")
+		status = lipgloss.NewStyle().Foreground(theme.ColorGreen).Render("Done")
 	}
 	priority := theme.MutedStyle.Render("No priority")
 	if t.Priority != store.PriorityNone {
@@ -361,7 +361,7 @@ func taskStatus(theme ui.Theme, t store.Task) string {
 func readmeTaskStatus(theme ui.Theme, t store.ReadmeTask) string {
 	status := lipgloss.NewStyle().Foreground(theme.ColorText).Render("Open")
 	if t.Done {
-		status = lipgloss.NewStyle().Foreground(theme.ColorGreen).Render("✓ Done")
+		status = lipgloss.NewStyle().Foreground(theme.ColorGreen).Render("Done")
 	}
 	return status + theme.MutedStyle.Render(fmt.Sprintf("  ·  %s:%d", readmeGroup, t.Line+1))
 }
