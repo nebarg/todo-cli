@@ -361,7 +361,9 @@ func TestPriorityReadsFromShapeAsWellAsColour(t *testing.T) {
 			t.Errorf("priorityMark(%q) = %q, want %q", p, got, want)
 		}
 	}
-	if status := ansi.Strip(taskStatus(theme, store.Task{Text: "Urgent", Priority: store.PriorityHigh})); status != "Open  ·  ● High priority" {
+	// The status bar names the priority in words, in its colour but not bold.
+	status := taskStatus(theme, store.Task{Text: "Urgent", Priority: store.PriorityHigh})
+	if ansi.Strip(status) != "Open  ·  High priority" || !strings.HasSuffix(status, lipgloss.NewStyle().Foreground(theme.ColorHigh).Render("High priority")) {
 		t.Fatalf("status bar = %q", status)
 	}
 	if help := ansi.Strip(renderHelp(theme)); !regexp.MustCompile(`quit[ │]*\n[│ ]*\n[│ ]*Priority  ● high  ● medium  ● low`).MatchString(help) {
@@ -384,11 +386,11 @@ func TestStatusBarDescribesTheHighlightedRow(t *testing.T) {
 		t.Fatalf("category row status = %q", got)
 	}
 	m.general.cursor = 1
-	if got := bottom(); got != "Open  ·  ● Medium priority" {
+	if got := bottom(); got != "Open  ·  Medium priority" {
 		t.Fatalf("task row status = %q", got)
 	}
 	m.focus, m.detailFrom = detailPane, generalPane
-	if got := bottom(); got != "Open  ·  ● Medium priority" {
+	if got := bottom(); got != "Open  ·  Medium priority" {
 		t.Fatalf("detail page status = %q", got)
 	}
 	m.focus, m.general.open, m.general.cursor = generalPane, categoryGroup("Docs"), 1

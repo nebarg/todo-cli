@@ -352,7 +352,7 @@ func taskStatus(theme ui.Theme, t store.Task) string {
 	}
 	priority := theme.MutedStyle.Render("No priority")
 	if t.Priority != store.PriorityNone {
-		priority = priorityStyle(theme, t.Priority).Render(priorityMark(t.Priority) + " " + t.Priority.Title() + " priority")
+		priority = priorityStyle(theme, t.Priority).UnsetBold().Render(t.Priority.Title() + " priority")
 	}
 	return status + theme.MutedStyle.Render("  ·  ") + priority
 }

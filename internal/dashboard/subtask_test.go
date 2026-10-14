@@ -61,7 +61,7 @@ func TestSubtasksShowUnderTheirTask(t *testing.T) {
 		t.Fatalf("General's count includes subtasks: %q", tabs)
 	}
 	m.general.cursor = 1
-	if status := ansi.Strip(m.panelStatus()); status != "Open  ·  ● High priority  ·  1 of 2 subtasks done" {
+	if status := ansi.Strip(m.panelStatus()); status != "Open  ·  High priority  ·  1 of 2 subtasks done" {
 		t.Fatalf("task status = %q", status)
 	}
 
