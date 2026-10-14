@@ -235,7 +235,8 @@ func TestTaskCountsIncludeCategoriesAndBranches(t *testing.T) {
 		t.Fatalf("branch breadcrumb = %s", branch)
 	}
 	m.focus, m.detailFrom = detailPane, branchPane
-	if detail := ansi.Strip(m.renderDetailPane(60, 20)); !strings.Contains(detail, "Branches › "+branchIcon+" main › Task") {
+	// A task's page names where the task is; its Task heading names the task.
+	if detail := ansi.Strip(m.renderDetailPane(60, 20)); strings.Trim(strings.Split(detail, "\n")[1], " │") != "Branches › "+branchIcon+" main" {
 		t.Fatalf("detail breadcrumb = %s", detail)
 	}
 	m.openAllTasks()

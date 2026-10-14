@@ -79,21 +79,22 @@ func TestDetailPageShowsMarkdownFormattingOutsideCodeBlocks(t *testing.T) {
 			t.Errorf("details are missing %q:\n%s", want, plain)
 		}
 	}
-	title := m.taskDetails(80)[0]
-	if title != m.theme.Inline("Fix **login** in `auth.go`", m.theme.TaskTitleStyle) {
+	title := m.taskDetails(80)[1]
+	bar := lipgloss.NewStyle().Foreground(m.theme.ColorFocus).Render("│") + " "
+	if title != bar+m.theme.Inline("Fix **login** in `auth.go`", m.theme.TaskTitleStyle) {
 		t.Errorf("title is not drawn in the title style: %q", title)
 	}
 	// The title isn't bold, so bold in it shows.
 	text := lipgloss.NewStyle().Foreground(m.theme.ColorStrong)
-	if !strings.HasPrefix(title, text.Render("Fix ")) || !strings.Contains(title, text.Bold(true).Render("login")) {
+	if !strings.HasPrefix(title, bar+text.Render("Fix ")) || !strings.Contains(title, text.Bold(true).Render("login")) {
 		t.Errorf("bold in the title doesn't stand out: %q", title)
 	}
 }
 
-func TestDetailPageShowsTheDetailsUnderAHeading(t *testing.T) {
+func TestDetailPageLaysOutTheTitleAndDetails(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "todo.md")
-	if err := os.WriteFile(path, []byte("- [ ] Described\n\n  Some details.\n- [ ] Bare\n"), 0644); err != nil {
+	if err := os.WriteFile(path, []byte("- [ ] Described task with a title long enough to wrap\n\n  Some details long enough to wrap as well.\n- [ ] Bare\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("## TODOs\n\n- [ ] Noted\n    - a note under it\n- [ ] Unnoted\n"), 0644); err != nil {
@@ -109,28 +110,31 @@ func TestDetailPageShowsTheDetailsUnderAHeading(t *testing.T) {
 		}
 		return lines
 	}
-	for _, step := range []struct {
-		cursor int
-		want   []string
-	}{
-		{1, []string{"Described", "", "Details", "Some details."}},
-		{2, []string{"Bare", "", "Details", "No details yet. Press e to add some."}},
-	} {
-		m.general.cursor = step.cursor
-		lines := m.taskDetails(60)
-		if lines[2] != m.theme.MutedStyle.Render("Details") {
-			t.Errorf("heading is not drawn as the form's labels are: %q", lines[2])
-		}
-		if got := plain(lines); !slices.Equal(got, step.want) {
-			t.Errorf("details = %q, want %q", got, step.want)
-		}
+	// The title and details wrap beside bars that run down from their
+	// headings: yellow for the title, and grey for the details.
+	m.general.cursor = 1
+	lines := m.taskDetails(30)
+	want := []string{"┌ Task", "│ Described task with a title", "│ long enough to wrap", "", "┌ Details", "│ Some details long enough to", "│ wrap as well."}
+	if got := plain(slices.Clone(lines)); !slices.Equal(got, want) {
+		t.Errorf("details = %q, want %q", got, want)
+	}
+	yellow := lipgloss.NewStyle().Foreground(m.theme.ColorFocus)
+	if lines[0] != yellow.Render("┌ Task") || !strings.HasPrefix(lines[2], yellow.Render("│")) ||
+		lines[4] != m.theme.MutedStyle.Render("┌ Details") || !strings.HasPrefix(lines[6], m.theme.MutedStyle.Render("│")) {
+		t.Errorf("bars or headings in the wrong colours: %q", lines)
+	}
+
+	// A task without details shows how to add them in their place.
+	m.general.cursor = 2
+	if got, want := plain(m.taskDetails(60)), []string{"┌ Task", "│ Bare", "", "┌ Details", "│ No details yet. Press e to add some."}; !slices.Equal(got, want) {
+		t.Errorf("details = %q, want %q", got, want)
 	}
 
 	// A README task without details shows only its title, as there's nothing
 	// to add them to but the README.
 	m.general.cursor = 0
 	pressKey(t, m, "right")
-	for cursor, want := range [][]string{{"Noted", "", "Details", "- a note under it"}, {"Unnoted"}} {
+	for cursor, want := range [][]string{{"┌ Task", "│ Noted", "", "┌ Details", "│ - a note under it"}, {"┌ Task", "│ Unnoted"}} {
 		m.general.cursor = cursor
 		if got := plain(m.taskDetails(60)); !slices.Equal(got, want) {
 			t.Errorf("README details = %q, want %q", got, want)
@@ -148,7 +152,7 @@ func TestReadmeTasksShowMarkdownFormatting(t *testing.T) {
 		t.Errorf("README row shows its Markdown markers:\n%s", plain)
 	}
 	pressKey(t, m, "right")
-	if title := ansi.Strip(m.taskDetails(60)[0]); title != "0 Document  --force " {
+	if title := ansi.Strip(m.taskDetails(60)[1]); title != "│ 0 Document  --force " {
 		t.Errorf("README detail title = %q", title)
 	}
 }

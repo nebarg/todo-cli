@@ -231,7 +231,8 @@ func (m *model) viewingMissingBranch() bool {
 	return m.activePane() == branchPane && m.branchMissing(m.branch.open.name)
 }
 
-// breadcrumb names where a pane is; a single entry means its top level.
+// breadcrumb names where a pane is; a single entry means its top level. The
+// detail pane is where its task is, as the page's Task heading names the task.
 func (m *model) breadcrumb(kind pane) []string {
 	switch kind {
 	case branchPane:
@@ -240,7 +241,7 @@ func (m *model) breadcrumb(kind pane) []string {
 		}
 		return []string{"Branches"}
 	case detailPane:
-		return append(m.breadcrumb(m.detailFrom), "Task")
+		return m.breadcrumb(m.detailFrom)
 	}
 	switch m.general.open.kind {
 	case rowReadme:
@@ -612,27 +613,38 @@ func (m *model) groupDetails(row navigationRow, width int) []string {
 	return ui.WrapLines([]string{m.theme.TaskTitleStyle.Render(groupName(row)), "", fmt.Sprintf("%d/%d %s", row.completed, row.count, scope), "", m.theme.MutedStyle.Render("enter or → to open")}, width)
 }
 
-// taskDetails is the selected task's title, then its details under a heading
-// labelled as in the task form. A README task without details shows only its
-// title, as the README is edited in an editor.
+// taskDetails is the selected task's title in a Task section, then its
+// Details section, or for a todo.md task without details, how to add them
+// there. The headings are labelled as in the task form. A README task without
+// details shows only its title, as the README is edited in an editor.
 func (m *model) taskDetails(width int) []string {
-	heading := m.theme.MutedStyle.Render("Details")
+	taskStyle := lipgloss.NewStyle().Foreground(m.theme.ColorFocus)
 	if readme, ok := m.selectedReadmeTask(); ok {
-		result := []string{m.theme.LeveledTitle(m.theme.Inline(readme.Text, m.theme.TaskTitleStyle), readme.Level)}
+		result := section("Task", taskStyle, []string{m.theme.LeveledTitle(m.theme.Inline(readme.Text, m.theme.TaskTitleStyle), readme.Level)}, width)
 		if readme.Details != "" {
-			result = append(append(result, "", heading), m.theme.MarkdownLines(readme.Details)...)
+			result = append(append(result, ""), section("Details", m.theme.MutedStyle, m.theme.MarkdownLines(readme.Details), width)...)
 		}
-		return ui.WrapLines(result, width)
+		return result
 	}
 	t, ok := m.selectedTask()
 	if !ok {
 		return []string{"", m.theme.MutedStyle.Render("Select a Markdown task.")}
 	}
-	result := []string{m.theme.Inline(t.Text, m.theme.TaskTitleStyle), "", heading}
+	details := m.theme.MarkdownLines(t.Details)
 	if t.Details == "" {
-		result = append(result, m.theme.MutedStyle.Render("No details yet. Press ")+m.theme.KeyStyle.Render(ui.KeyText(keys.Edit))+m.theme.MutedStyle.Render(" to add some."))
-	} else {
-		result = append(result, m.theme.MarkdownLines(t.Details)...)
+		details = []string{m.theme.MutedStyle.Render("No details yet. Press ") + m.theme.KeyStyle.Render(ui.KeyText(keys.Edit)) + m.theme.MutedStyle.Render(" to add some.")}
 	}
-	return ui.WrapLines(result, width)
+	result := append(section("Task", taskStyle, []string{m.theme.Inline(t.Text, m.theme.TaskTitleStyle)}, width), "")
+	return append(result, section("Details", m.theme.MutedStyle, details, width)...)
+}
+
+// section is lines wrapped to fit width beside a bar that runs down from a
+// heading, both drawn in style, so the two read as one block.
+func section(heading string, style lipgloss.Style, lines []string, width int) []string {
+	bar := style.Render("│") + " "
+	result := []string{style.Render("┌ " + heading)}
+	for _, line := range ui.WrapLines(lines, max(1, width-2)) {
+		result = append(result, bar+line)
+	}
+	return result
 }
