@@ -99,7 +99,7 @@ func TestSubtasksShowUnderTheirTask(t *testing.T) {
 	}
 	m = press(m, "e")
 	f := form(t, m)
-	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "General › Ship login › Edit subtask") || strings.Contains(plain, "Category") || !strings.Contains(plain, "Details") {
+	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "General › Task › Edit subtask") || strings.Contains(plain, "Ship login") || strings.Contains(plain, "Category") || !strings.Contains(plain, "Details") {
 		t.Fatalf("subtask form:\n%s", plain)
 	}
 	f.title.SetValue("Write the forms")
@@ -189,7 +189,7 @@ func TestAddingASubtaskFromATasksDetails(t *testing.T) {
 	}
 	m = press(m, "a")
 	f := form(t, m)
-	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "General › @auth › Ship login › New subtask") || strings.Contains(plain, "Category") || !strings.Contains(plain, "Details") {
+	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "General › @auth › Task › New subtask") || strings.Contains(plain, "Ship login") || strings.Contains(plain, "Category") || !strings.Contains(plain, "Details") {
 		t.Fatalf("new subtask form:\n%s", plain)
 	}
 	f.title.SetValue("Write the form !high")
@@ -210,7 +210,7 @@ func TestAddingASubtaskFromATasksDetails(t *testing.T) {
 	pressKey(t, m, "right")
 	m = press(m, "a")
 	f = form(t, m)
-	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "Ship login › New subtask") {
+	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "General › @auth › Task › New subtask") {
 		t.Fatalf("new subtask form from a subtask:\n%s", plain)
 	}
 	f.title.SetValue("Test it")

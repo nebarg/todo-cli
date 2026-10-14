@@ -565,7 +565,8 @@ func (f *taskModal) contentLines(theme ui.Theme, width, height int) []string {
 }
 
 // breadcrumb names what the form adds or edits, and where: a subtask's form
-// names its task too.
+// puts it under "Task", as the task's details page does, rather than the
+// task's text, which may not fit.
 func (f *taskModal) breadcrumb() []string {
 	switch f.mode {
 	case modalAddGeneral:
@@ -573,10 +574,10 @@ func (f *taskModal) breadcrumb() []string {
 	case modalAddBranch:
 		return []string{"Branches", "New task"}
 	case modalAddSubtask:
-		return append(sectionCrumbs(f.parent.Section), ui.CleanDisplay(f.parent.Text), "New subtask")
+		return append(sectionCrumbs(f.parent.Section), "Task", "New subtask")
 	}
 	if f.subtaskForm() {
-		return append(sectionCrumbs(f.selected.Section), ui.CleanDisplay(f.parent.Text), "Edit subtask")
+		return append(sectionCrumbs(f.selected.Section), "Task", "Edit subtask")
 	}
 	return append(sectionCrumbs(f.selected.Section), "Edit task")
 }
