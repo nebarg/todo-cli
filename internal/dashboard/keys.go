@@ -40,6 +40,8 @@ type formKeyMap struct {
 	ShiftTab key.Binding
 	Up, Down key.Binding
 	Enter    key.Binding // moves from the category field on, or saves the prompt
+	Undo     key.Binding // undoes the focused field's last change
+	Redo     key.Binding
 }
 
 var keys = keyMap{
@@ -79,4 +81,6 @@ var formKeys = formKeyMap{
 	Up:       key.NewBinding(key.WithKeys("up")),
 	Down:     key.NewBinding(key.WithKeys("down")),
 	Enter:    key.NewBinding(key.WithKeys("enter")),
+	Undo:     key.NewBinding(key.WithKeys("ctrl+z", "super+z")),
+	Redo:     key.NewBinding(key.WithKeys("ctrl+shift+z", "shift+super+z")),
 }

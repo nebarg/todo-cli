@@ -21,10 +21,11 @@ var promptKeys = []ui.KeyHint{ui.Hint(formKeys.Enter, "save"), ui.Hint(formKeys.
 
 // categoryPrompt edits a general task's category in the footer.
 type categoryPrompt struct {
-	file  string
-	task  store.Task
-	input textinput.Model
-	err   error
+	file    string
+	task    store.Task
+	input   textinput.Model
+	history undoHistory
+	err     error
 }
 
 func (m *model) startCategoryInput() tea.Cmd {
@@ -79,15 +80,38 @@ func (m *model) categorySet(msg categorySetMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// update records what each message changes in the input, so ctrl+z can undo
+// it, apart from undo and redo themselves.
 func (p *categoryPrompt) update(msg tea.Msg) (overlay, tea.Msg, tea.Cmd) {
+	before := textinputState(p.input)
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.PasteMsg:
 		p.input, cmd = p.input.Update(msg)
+		p.history.record(before, textinputState(p.input), true)
 	case tea.KeyPressMsg:
-		return p.key(msg)
+		switch {
+		case key.Matches(msg, formKeys.Undo):
+			p.restore(p.history.undo(before))
+			return p, nil, nil
+		case key.Matches(msg, formKeys.Redo):
+			p.restore(p.history.redo(before))
+			return p, nil, nil
+		}
+		next, out, cmd := p.key(msg)
+		p.history.record(before, textinputState(p.input), false)
+		return next, out, cmd
 	}
 	return p, nil, cmd
+}
+
+// restore puts the input back as an undo or redo left it, when there was one
+// to make.
+func (p *categoryPrompt) restore(state textState, ok bool) {
+	if ok {
+		p.err = nil
+		setTextinput(&p.input, state)
+	}
 }
 
 func (p *categoryPrompt) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {

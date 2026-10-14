@@ -187,6 +187,7 @@ To edit a task, press `e` or `enter`. The form has three fields: Task, Category 
 
 - `tab` and `shift+tab` move between the fields.
 - `enter` starts a new line in Task or Details. `ctrl+enter` saves, and `esc` cancels.
+- `ctrl+z` undoes the last change to the field you're in, and `ctrl+shift+z` redoes it. A run of typing, or of deleting, undoes in one step. `cmd+z` and `cmd+shift+z` do the same in terminals that pass them on. This also works in the prompt `c` opens.
 - Category suggests an existing category in grey as you type. `tab` fills it in, and `ctrl+n` / `ctrl+p` switch between the categories that match.
 - Branch suggests your local Git branches as you type. A name Git doesn't have is offered last, marked `not in Git`, for a branch you haven't created yet.
 - Changing the category or branch moves the task there, with its subtasks. A heading left empty is removed.

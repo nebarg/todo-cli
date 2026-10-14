@@ -39,6 +39,7 @@ type taskModal struct {
 	scope        textinput.Model
 	details      textarea.Model
 	field        int // titleField, scopeField or detailsField
+	history      [fieldCount]undoHistory
 	err          error
 }
 
@@ -46,6 +47,7 @@ const (
 	titleField = iota
 	scopeField
 	detailsField
+	fieldCount
 )
 
 // startTaskModal opens the task form. A branch form starts with the branches
@@ -149,14 +151,76 @@ func (m *model) taskSaved(msg taskSavedMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// update records what each message changes in the fields, so ctrl+z can
+// undo it, apart from undo and redo themselves.
 func (f *taskModal) update(msg tea.Msg) (overlay, tea.Msg, tea.Cmd) {
+	before := f.fieldStates()
 	switch msg := msg.(type) {
 	case tea.PasteMsg:
-		return f, nil, f.paste(msg)
+		cmd := f.paste(msg)
+		f.recordEdits(before, true)
+		return f, nil, cmd
 	case tea.KeyPressMsg:
-		return f.key(msg)
+		switch {
+		case key.Matches(msg, formKeys.Undo):
+			f.restore(f.history[f.field].undo(f.fieldState(f.field)))
+			return f, nil, nil
+		case key.Matches(msg, formKeys.Redo):
+			f.restore(f.history[f.field].redo(f.fieldState(f.field)))
+			return f, nil, nil
+		}
+		next, out, cmd := f.key(msg)
+		f.recordEdits(before, false)
+		return next, out, cmd
 	}
 	return f, nil, nil
+}
+
+func (f *taskModal) fieldStates() [fieldCount]textState {
+	var states [fieldCount]textState
+	for field := range states {
+		states[field] = f.fieldState(field)
+	}
+	return states
+}
+
+func (f *taskModal) fieldState(field int) textState {
+	switch field {
+	case titleField:
+		return textareaState(f.title)
+	case scopeField:
+		return textinputState(f.scope)
+	}
+	return textareaState(f.details)
+}
+
+// recordEdits adds each field's change since before to its history. alone
+// makes each change a step of its own, as for a paste.
+func (f *taskModal) recordEdits(before [fieldCount]textState, alone bool) {
+	for field, state := range before {
+		f.history[field].record(state, f.fieldState(field), alone)
+	}
+}
+
+// restore puts the focused field back as an undo or redo left it, when there
+// was one to make.
+func (f *taskModal) restore(state textState, ok bool) {
+	if !ok {
+		return
+	}
+	f.err = nil
+	switch f.field {
+	case titleField:
+		setTextarea(&f.title, state)
+	case scopeField:
+		setTextinput(&f.scope, state)
+		if f.branchScope() {
+			f.branchFresh = false
+			f.resetBranchCursor()
+		}
+	default:
+		setTextarea(&f.details, state)
+	}
 }
 
 func (f *taskModal) view(theme ui.Theme, width, height int) string {
@@ -295,6 +359,7 @@ func (f *taskModal) stepField(step int) int {
 
 func (f *taskModal) focusField(field int) tea.Cmd {
 	f.field = field
+	f.history[field].breakRun()
 	f.title.Blur()
 	f.scope.Blur()
 	f.details.Blur()
