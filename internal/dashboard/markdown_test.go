@@ -79,8 +79,14 @@ func TestDetailPageShowsMarkdownFormattingOutsideCodeBlocks(t *testing.T) {
 			t.Errorf("details are missing %q:\n%s", want, plain)
 		}
 	}
-	if got := m.taskDetails(80)[0]; got != m.theme.Inline("Fix **login** in `auth.go`", m.theme.TaskTitleStyle) {
-		t.Errorf("title is not drawn in the title style: %q", got)
+	title := m.taskDetails(80)[0]
+	if title != m.theme.Inline("Fix **login** in `auth.go`", m.theme.TaskTitleStyle) {
+		t.Errorf("title is not drawn in the title style: %q", title)
+	}
+	// The title isn't bold, so bold in it shows.
+	text := lipgloss.NewStyle().Foreground(m.theme.ColorStrong)
+	if !strings.HasPrefix(title, text.Render("Fix ")) || !strings.Contains(title, text.Bold(true).Render("login")) {
+		t.Errorf("bold in the title doesn't stand out: %q", title)
 	}
 }
 

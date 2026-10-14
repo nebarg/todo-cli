@@ -68,7 +68,7 @@ func NewTheme(dark bool) Theme {
 		ColorLow:       hex("#0E7490", "#7DCFDF"),
 	}
 	t.TitleStyle = lipgloss.NewStyle().Bold(true).Foreground(t.ColorFocus)
-	t.TaskTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(t.ColorStrong)
+	t.TaskTitleStyle = lipgloss.NewStyle().Foreground(t.ColorStrong)
 	t.MutedStyle = lipgloss.NewStyle().Foreground(t.ColorMuted)
 	t.SelectedStyle = lipgloss.NewStyle().Foreground(t.ColorStrong).Background(t.ColorSelection)
 	t.SelectedDoneStyle = lipgloss.NewStyle().Foreground(hex("#4A5568", "#B6C2D3")).Background(t.ColorSelection)
