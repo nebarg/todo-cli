@@ -3,6 +3,7 @@ package dashboard
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -80,6 +81,54 @@ func TestDetailPageShowsMarkdownFormattingOutsideCodeBlocks(t *testing.T) {
 	}
 	if got := m.taskDetails(80)[0]; got != m.theme.Inline("Fix **login** in `auth.go`", m.theme.TaskTitleStyle) {
 		t.Errorf("title is not drawn in the title style: %q", got)
+	}
+}
+
+func TestDetailPageShowsTheDetailsUnderAHeading(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "todo.md")
+	if err := os.WriteFile(path, []byte("- [ ] Described\n\n  Some details.\n- [ ] Bare\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("## TODOs\n\n- [ ] Noted\n    - a note under it\n- [ ] Unnoted\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project.Repo{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := func(lines []string) []string {
+		for i, line := range lines {
+			lines[i] = ansi.Strip(line)
+		}
+		return lines
+	}
+	for _, step := range []struct {
+		cursor int
+		want   []string
+	}{
+		{1, []string{"Described", "", "Details", "Some details."}},
+		{2, []string{"Bare", "", "Details", "No details yet. Press e to add some."}},
+	} {
+		m.general.cursor = step.cursor
+		lines := m.taskDetails(60)
+		if lines[2] != m.theme.MutedStyle.Render("Details") {
+			t.Errorf("heading is not drawn as the form's labels are: %q", lines[2])
+		}
+		if got := plain(lines); !slices.Equal(got, step.want) {
+			t.Errorf("details = %q, want %q", got, step.want)
+		}
+	}
+
+	// A README task without details shows only its title, as there's nothing
+	// to add them to but the README.
+	m.general.cursor = 0
+	pressKey(t, m, "right")
+	for cursor, want := range [][]string{{"Noted", "", "Details", "- a note under it"}, {"Unnoted"}} {
+		m.general.cursor = cursor
+		if got := plain(m.taskDetails(60)); !slices.Equal(got, want) {
+			t.Errorf("README details = %q, want %q", got, want)
+		}
 	}
 }
 

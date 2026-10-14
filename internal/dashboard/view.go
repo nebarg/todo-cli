@@ -240,7 +240,7 @@ func (m *model) breadcrumb(kind pane) []string {
 		}
 		return []string{"Branches"}
 	case detailPane:
-		return append(m.breadcrumb(m.detailFrom), "Details")
+		return append(m.breadcrumb(m.detailFrom), "Task")
 	}
 	switch m.general.open.kind {
 	case rowReadme:
@@ -612,11 +612,15 @@ func (m *model) groupDetails(row navigationRow, width int) []string {
 	return ui.WrapLines([]string{m.theme.TaskTitleStyle.Render(groupName(row)), "", fmt.Sprintf("%d/%d %s", row.completed, row.count, scope), "", m.theme.MutedStyle.Render("enter or → to open")}, width)
 }
 
+// taskDetails is the selected task's title, then its details under a heading
+// labelled as in the task form. A README task without details shows only its
+// title, as the README is edited in an editor.
 func (m *model) taskDetails(width int) []string {
+	heading := m.theme.MutedStyle.Render("Details")
 	if readme, ok := m.selectedReadmeTask(); ok {
 		result := []string{m.theme.LeveledTitle(m.theme.Inline(readme.Text, m.theme.TaskTitleStyle), readme.Level)}
 		if readme.Details != "" {
-			result = append(append(result, ""), m.theme.MarkdownLines(readme.Details)...)
+			result = append(append(result, "", heading), m.theme.MarkdownLines(readme.Details)...)
 		}
 		return ui.WrapLines(result, width)
 	}
@@ -624,7 +628,7 @@ func (m *model) taskDetails(width int) []string {
 	if !ok {
 		return []string{"", m.theme.MutedStyle.Render("Select a Markdown task.")}
 	}
-	result := []string{m.theme.Inline(t.Text, m.theme.TaskTitleStyle), ""}
+	result := []string{m.theme.Inline(t.Text, m.theme.TaskTitleStyle), "", heading}
 	if t.Details == "" {
 		result = append(result, m.theme.MutedStyle.Render("No details yet. Press ")+m.theme.KeyStyle.Render(ui.KeyText(keys.Edit))+m.theme.MutedStyle.Render(" to add some."))
 	} else {
