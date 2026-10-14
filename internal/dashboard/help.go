@@ -39,7 +39,8 @@ var (
 		helpRow("cycle priority", keys.Priority),
 		helpRow("set category", keys.Category),
 		helpRow("delete", keys.Delete),
-		helpRow("add task/branch", keys.Add, keys.AddBranch),
+		helpRow("add task", keys.Add),
+		helpRow("add branch task", keys.AddBranch),
 		{Key: "→ a", Label: "add subtask"},
 	}}
 	helpApp = []ui.KeyHint{{Key: "X / u", Label: "clear done / undo"}, helpRow("refresh", keys.Refresh), helpRow("quit", keys.Quit)}
