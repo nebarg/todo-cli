@@ -300,7 +300,7 @@ func Add(path, title, details string, p Priority, to Section) error {
 		mode = info.Mode().Perm()
 	}
 	block := []string{"- [ ] " + title + priorityToken(p)}
-	if body := formattedDetails(details); len(body) > 0 {
+	if body := formattedDetails(details, ""); len(body) > 0 {
 		block = append(block, "")
 		block = append(block, body...)
 	}
@@ -309,10 +309,11 @@ func Add(path, title, details string, p Priority, to Section) error {
 	return replaceFile(path, []byte(format.encode(updated)), mode)
 }
 
-// AddSubtask writes a new open subtask under parent, after its last subtask,
-// or after its details with a blank line between. A trailing !priority in
-// title sets its priority.
-func AddSubtask(path string, parent Task, title string) error {
+// AddSubtask writes a new open subtask under parent, with details, after its
+// last subtask, or after its details with a blank line between. A blank line
+// also follows a last subtask that has details. A trailing !priority in title
+// sets its priority.
+func AddSubtask(path string, parent Task, title, details string) error {
 	if parent.Subtask {
 		return errors.New("subtasks don't have subtasks; add it to their task")
 	}
@@ -321,18 +322,32 @@ func AddSubtask(path string, parent Task, title string) error {
 		return errors.New("enter a single-line subtask")
 	}
 	return rewriteTask(path, parent, func(lines []string) []string {
-		at, block := parent.Line+1, []string{taskIndent(parent.raw) + "  - [ ] " + title + priorityToken(p)}
+		indent := taskIndent(parent.raw) + "  "
+		at, block := parent.Line+1, []string{indent + "- [ ] " + title + priorityToken(p)}
 		if spans := subtaskSpans(lines, parent.bodyStart, parent.bodyEnd); len(spans) > 0 {
-			at = spans[len(spans)-1][1]
+			last := spans[len(spans)-1]
+			at = last[1]
+			if last[1]-last[0] > 1 {
+				block = append([]string{""}, block...)
+			}
 		} else if parent.Details != "" {
 			at = trimBlankEnd(lines, parent.bodyEnd, parent.bodyStart)
 			block = append([]string{""}, block...)
+		}
+		if body := formattedDetails(details, indent); len(body) > 0 {
+			block = append(append(block, ""), body...)
+			if at < len(lines) && strings.TrimSpace(lines[at]) != "" {
+				block = append(block, "")
+			}
 		}
 		return insertLines(lines, at, block)
 	})
 }
 
-func formattedDetails(details string) []string {
+// formattedDetails is details as the app writes them under a task whose
+// line starts with indent: indented two spaces past it, so a subtask's
+// details stay under the subtask, without blank lines around them.
+func formattedDetails(details, indent string) []string {
 	details = strings.ReplaceAll(details, "\r\n", "\n")
 	rows := trimBlankLines(strings.Split(details, "\n"))
 	result := make([]string, 0, len(rows))
@@ -340,7 +355,7 @@ func formattedDetails(details string) []string {
 		if strings.TrimSpace(row) == "" {
 			result = append(result, "")
 		} else {
-			result = append(result, "  "+strings.TrimSuffix(row, "\r"))
+			result = append(result, indent+"  "+strings.TrimSuffix(row, "\r"))
 		}
 	}
 	return result
@@ -389,16 +404,20 @@ func taskBlock(selected Task, title, details string) []string {
 // sameDetails reports whether details, as typed into the form, are
 // selected's own, once both are formatted as the app writes them.
 func sameDetails(selected Task, details string) bool {
-	return slices.Equal(formattedDetails(details), formattedDetails(selected.Details))
+	indent := taskIndent(selected.raw)
+	return slices.Equal(formattedDetails(details, indent), formattedDetails(selected.Details, indent))
 }
 
 // newBody is the lines under selected with details in place of its own: a
 // blank line and the details, as the app writes them, then its subtasks as
-// they were.
+// they were. A subtask has none: a checkbox under it is part of its details.
 func newBody(selected Task, details string) []string {
 	var body []string
-	if formatted := formattedDetails(details); len(formatted) > 0 {
+	if formatted := formattedDetails(details, taskIndent(selected.raw)); len(formatted) > 0 {
 		body = append(append(body, ""), formatted...)
+	}
+	if selected.Subtask {
+		return body
 	}
 	if subtasks := subtaskLines(selected.bodyRaw); len(subtasks) > 0 {
 		if len(body) > 0 {
@@ -423,15 +442,23 @@ func movedTaskLines(lines []string, selected Task, block []string, to Section) [
 func editedTaskLines(lines []string, selected Task, title, details string) []string {
 	updated := slices.Clone(lines[:selected.Line])
 	updated = append(updated, normalizedTaskLine(selected, title, selected.Done, selected.Priority))
+	// A body runs up to the next task, blank lines and all, apart from a
+	// task's last subtask's, which stops before them. New details get a blank
+	// line after them unless one is still there. Without details, a task keeps
+	// a blank line before the next, and a subtask gets none added.
+	rest := lines[selected.bodyEnd:]
+	restBlank := len(rest) > 0 && strings.TrimSpace(rest[0]) == ""
 	if sameDetails(selected, details) {
 		updated = append(updated, selected.bodyRaw...)
 	} else if body := newBody(selected, details); len(body) > 0 {
 		updated = append(updated, body...)
-		updated = append(updated, "")
-	} else if selected.bodyEnd < len(lines) {
+		if !restBlank {
+			updated = append(updated, "")
+		}
+	} else if len(rest) > 0 && !selected.Subtask {
 		updated = append(updated, "")
 	}
-	return append(updated, lines[selected.bodyEnd:]...)
+	return append(updated, rest...)
 }
 
 // rewriteTask replaces the file with change(lines), refusing when selected no

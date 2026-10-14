@@ -99,7 +99,7 @@ func TestSubtasksShowUnderTheirTask(t *testing.T) {
 	}
 	m = press(m, "e")
 	f := form(t, m)
-	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "General › Ship login › Edit subtask") || strings.Contains(plain, "Category") || strings.Contains(plain, "Details") {
+	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "General › Ship login › Edit subtask") || strings.Contains(plain, "Category") || !strings.Contains(plain, "Details") {
 		t.Fatalf("subtask form:\n%s", plain)
 	}
 	f.title.SetValue("Write the forms")
@@ -189,7 +189,7 @@ func TestAddingASubtaskFromATasksDetails(t *testing.T) {
 	}
 	m = press(m, "a")
 	f := form(t, m)
-	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "General › @auth › Ship login › New subtask") || strings.Contains(plain, "Category") || strings.Contains(plain, "Details") {
+	if plain := ansi.Strip(f.render(m.theme, 70, 20)); !strings.Contains(plain, "General › @auth › Ship login › New subtask") || strings.Contains(plain, "Category") || !strings.Contains(plain, "Details") {
 		t.Fatalf("new subtask form:\n%s", plain)
 	}
 	f.title.SetValue("Write the form !high")
@@ -221,6 +221,56 @@ func TestAddingASubtaskFromATasksDetails(t *testing.T) {
 	}
 	if selected, ok := m.selectedTask(); !ok || selected.Text != "Test it" {
 		t.Fatalf("second subtask not selected: %+v", selected)
+	}
+}
+
+func TestSubtaskFormEditsItsDetails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte(subtaskTasks), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project.Repo{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.general.cursor = 2
+	m = press(m, "e")
+	f := form(t, m)
+	// The form skips Category, which a subtask doesn't have, both ways round.
+	for _, step := range []struct {
+		msg  tea.KeyPressMsg
+		want int
+	}{
+		{tea.KeyPressMsg{Code: tea.KeyTab}, detailsField},
+		{tea.KeyPressMsg{Code: tea.KeyTab}, titleField},
+		{tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}, detailsField},
+		{tea.KeyPressMsg{Code: tea.KeyUp}, titleField},
+		{tea.KeyPressMsg{Code: tea.KeyDown}, detailsField},
+	} {
+		m.Update(step.msg)
+		if f.field != step.want {
+			t.Fatalf("after %s the form is on field %d, want %d", step.msg, f.field, step.want)
+		}
+	}
+	if footer := ansi.Strip(f.footer(m.theme, 80)); !strings.Contains(footer, "tab next field") {
+		t.Fatalf("subtask form footer = %q", footer)
+	}
+	f.details.SetValue("Use the shared input.\n- [ ] Stays a note")
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl})
+	want := strings.Replace(subtaskTasks, "  - [ ] Write the form\n", "  - [ ] Write the form\n\n    Use the shared input.\n    - [ ] Stays a note\n\n", 1)
+	if got := readFile(t, path); got != want {
+		t.Fatalf("after saving the subtask's details:\n%q\nwant\n%q", got, want)
+	}
+	if got := rowTitles(m); got != "Ship login,Write the form,Add the route,Other,Old task,Left open" {
+		t.Fatalf("a checkbox in a subtask's details became a task: %q", got)
+	}
+	pressKey(t, m, "right")
+	if details := ansi.Strip(m.renderDetailPane(60, 20)); !strings.Contains(details, "Use the shared input.") || !strings.Contains(details, "Stays a note") {
+		t.Fatalf("subtask's details page:\n%s", details)
+	}
+	m = press(m, "e")
+	if got := form(t, m).details.Value(); got != "Use the shared input.\n- [ ] Stays a note" {
+		t.Fatalf("reopened form's details = %q", got)
 	}
 }
 

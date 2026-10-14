@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -184,24 +185,33 @@ func TestRemovingATaskWithItsSubtask(t *testing.T) {
 }
 
 func TestAddSubtask(t *testing.T) {
-	for _, item := range []struct{ name, content, title, want string }{
-		{"after the last subtask", "- [ ] Task\n  - [ ] First\n\n- [ ] Next\n", "Second !high", "- [ ] Task\n  - [ ] First\n  - [ ] Second !high\n\n- [ ] Next\n"},
-		{"after the details", "- [ ] Task\n\n  Notes.\n\n- [ ] Next\n", "First", "- [ ] Task\n\n  Notes.\n\n  - [ ] First\n\n- [ ] Next\n"},
-		{"under a bare task", "# auth\n\n- Task", "First", "# auth\n\n- Task\n  - [ ] First"},
-		{"in a Windows file", "- [ ] Task\r\n\r\n  Notes.\r\n", "First", "- [ ] Task\r\n\r\n  Notes.\r\n\r\n  - [ ] First\r\n"},
+	for _, item := range []struct{ name, content, title, details, want string }{
+		{"after the last subtask", "- [ ] Task\n  - [ ] First\n\n- [ ] Next\n", "Second !high", "", "- [ ] Task\n  - [ ] First\n  - [ ] Second !high\n\n- [ ] Next\n"},
+		{"after the details", "- [ ] Task\n\n  Notes.\n\n- [ ] Next\n", "First", "", "- [ ] Task\n\n  Notes.\n\n  - [ ] First\n\n- [ ] Next\n"},
+		{"under a bare task", "# auth\n\n- Task", "First", "", "# auth\n\n- Task\n  - [ ] First"},
+		{"in a Windows file", "- [ ] Task\r\n\r\n  Notes.\r\n", "First", "", "- [ ] Task\r\n\r\n  Notes.\r\n\r\n  - [ ] First\r\n"},
+		{"with details", "- [ ] Task\n  - [ ] First\n\n- [ ] Next\n", "Second", "Notes.\n- [ ] Stays a note", "- [ ] Task\n  - [ ] First\n  - [ ] Second\n\n    Notes.\n    - [ ] Stays a note\n\n- [ ] Next\n"},
+		{"with details right before the next task", "- [ ] Task\n  - [ ] First\n- [ ] Next\n", "Second", "Notes.", "- [ ] Task\n  - [ ] First\n  - [ ] Second\n\n    Notes.\n\n- [ ] Next\n"},
+		{"after a subtask with details", "- [ ] Task\n  - [ ] First\n\n    Notes.\n\n- [ ] Next\n", "Second", "", "- [ ] Task\n  - [ ] First\n\n    Notes.\n\n  - [ ] Second\n\n- [ ] Next\n"},
 	} {
 		t.Run(item.name, func(t *testing.T) {
 			path, tasks := writeAndLoad(t, item.content)
-			if err := AddSubtask(path, tasks[0], item.title); err != nil {
+			if err := AddSubtask(path, tasks[0], item.title, item.details); err != nil {
 				t.Fatal(err)
 			}
 			if got := readFile(t, path); got != item.want {
 				t.Fatalf("file = %q, want %q", got, item.want)
 			}
+			title, _ := SplitPriority(item.title)
+			reloaded, _ := Load(path)
+			added := slices.IndexFunc(reloaded, func(t Task) bool { return t.Text == title })
+			if len(reloaded) != len(tasks)+1 || added < 0 || !reloaded[added].Subtask || reloaded[added].Details != item.details {
+				t.Fatalf("reloaded tasks = %+v, want subtask %q with details %q", reloaded, title, item.details)
+			}
 		})
 	}
 	path, tasks := writeAndLoad(t, "- [ ] Task\n  - [ ] First\n")
-	for _, err := range []error{AddSubtask(path, tasks[1], "Nested"), AddSubtask(path, tasks[0], " ")} {
+	for _, err := range []error{AddSubtask(path, tasks[1], "Nested", ""), AddSubtask(path, tasks[0], " ", "")} {
 		if err == nil {
 			t.Fatal("a subtask of a subtask, or a blank one, was added")
 		}
@@ -209,8 +219,44 @@ func TestAddSubtask(t *testing.T) {
 	if err := os.WriteFile(path, []byte("- [ ] Task, changed\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := AddSubtask(path, tasks[0], "Late"); !errors.Is(err, ErrTaskChanged) {
+	if err := AddSubtask(path, tasks[0], "Late", ""); !errors.Is(err, ErrTaskChanged) {
 		t.Fatalf("adding under a changed task = %v, want ErrTaskChanged", err)
+	}
+}
+
+func TestEditSubtaskDetails(t *testing.T) {
+	for _, item := range []struct{ name, content, details, want string }{
+		{"in a compact list, where checkboxes stay notes", "- [ ] Task\n  - [ ] A\n  - [ ] B\n- [ ] Next\n", "Notes.\n- [ ] Stays a note\n\t- [ ] So does this", "- [ ] Task\n  - [ ] A\n\n    Notes.\n    - [ ] Stays a note\n    \t- [ ] So does this\n\n  - [ ] B\n- [ ] Next\n"},
+		{"on the last subtask", "- [ ] Task\n  - [ ] A\n- [ ] Next\n", "Notes.", "- [ ] Task\n  - [ ] A\n\n    Notes.\n\n- [ ] Next\n"},
+		{"replacing a subtask's details", "- [ ] Task\n  - [ ] A\n\n    Old.\n\n  - [ ] B\n", "New.", "- [ ] Task\n  - [ ] A\n\n    New.\n\n  - [ ] B\n"},
+		{"replacing the last subtask's details", "- [ ] Task\n  - [ ] A\n\n    Old.\n\n- [ ] Next\n", "New.", "- [ ] Task\n  - [ ] A\n\n    New.\n\n- [ ] Next\n"},
+		{"clearing compact details", "- [ ] Task\n  - [ ] A\n    Old.\n  - [ ] B\n", "", "- [ ] Task\n  - [ ] A\n  - [ ] B\n"},
+		{"clearing details with blank lines", "- [ ] Task\n  - [ ] A\n\n    Old.\n\n  - [ ] B\n", "", "- [ ] Task\n  - [ ] A\n  - [ ] B\n"},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			path, tasks := writeAndLoad(t, item.content)
+			if err := Edit(path, tasks[1], tasks[1].Text, item.details, tasks[1].Section); err != nil {
+				t.Fatal(err)
+			}
+			if got := readFile(t, path); got != item.want {
+				t.Fatalf("file = %q, want %q", got, item.want)
+			}
+			reloaded, _ := Load(path)
+			if len(reloaded) != len(tasks) || !reloaded[1].Subtask || reloaded[1].Details != item.details || reloaded[0].Details != "" {
+				t.Fatalf("reloaded tasks = %+v, want %q as the subtask's details only", reloaded, item.details)
+			}
+		})
+	}
+}
+
+func TestEditingATaskKeepsItsSubtasksDetails(t *testing.T) {
+	path, tasks := writeAndLoad(t, "- [ ] Task\n  - [ ] A\n\n    Notes.\n\n  - [ ] B\n- [ ] Next\n")
+	if err := Edit(path, tasks[0], "Task", "Parent notes.", tasks[0].Section); err != nil {
+		t.Fatal(err)
+	}
+	want := "- [ ] Task\n\n  Parent notes.\n\n  - [ ] A\n\n    Notes.\n\n  - [ ] B\n\n- [ ] Next\n"
+	if got := readFile(t, path); got != want {
+		t.Fatalf("file = %q, want %q", got, want)
 	}
 }
 

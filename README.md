@@ -198,7 +198,7 @@ To edit a task, press `e` or `enter`. The form has three fields: Task, Category 
 A subtask is a checkbox indented under a task in your task file. The dashboard shows subtasks indented under their task, in General, Branches and All tasks.
 
 - To add a subtask, open a task with `→` and press `a`. The new subtask goes after the task's other subtasks. If you've opened a subtask instead, `a` adds another subtask to the same task.
-- A subtask's form only has the Task field, because a subtask always stays in its task's category or branch. End the text with `!high`, `!medium` or `!low` to give it a priority.
+- A subtask's form has Task and Details but no Category, because a subtask always stays in its task's category or branch. End the text with `!high`, `!medium` or `!low` to give it a priority.
 - `d`, `p`, `e` and `backspace` work on a subtask just as on a task. `c` doesn't.
 - When you mark a task done, its subtasks are greyed out, but they aren't ticked. When the list is sorted, subtasks move with their task, open ones first.
 - The status bar of a task with subtasks shows how many of them are done.
@@ -254,6 +254,9 @@ The dashboard also watches the task file and `README.md`, so changes made outsid
   Expected: return to the page the user was viewing.
 
   - [ ] Reproduce it in a test
+
+    Sign in with a session that has just expired.
+
   - [x] Find the redirect handler
 
 # Branches
@@ -265,8 +268,8 @@ The dashboard also watches the task file and `README.md`, so changes made outsid
 
 - **Sections:** tasks before the first heading are general. `## branch-name` headings under `# Branches` are branch sections, and headings nested inside a branch stay part of it. Any other heading is a category.
 - **Categories** can contain spaces, and `Branches` is reserved. `auth`, `@auth` and `#auth` all mean the same category, and so do names that only differ in case or spacing, such as `Release  Notes` and `release notes`.
-- **Details** are everything under a task, up to the next task or heading, apart from its subtasks: paragraphs, lists and code. The app writes them indented by two spaces.
-- **Subtasks** are checkboxes indented under a task, such as `Reproduce it in a test`. They only go one level deep: anything indented under a subtask, even a checkbox, is that subtask's details. A checkbox you type into the form's Details becomes a subtask.
+- **Details** are everything under a task, up to the next task or heading, apart from its subtasks: paragraphs, lists and code. The app writes them indented two spaces further than their task.
+- **Subtasks** are checkboxes indented under a task, such as `Reproduce it in a test`. They only go one level deep: anything indented under a subtask, even a checkbox, is that subtask's details. A checkbox you type into a task's Details becomes a subtask, but in a subtask's Details it stays part of the details.
 - **Priority** is a trailing `!high`, `!medium` or `!low`. Only a last word that names a priority counts, so `Ship it!` and `Fix !important CSS` stay as they are.
 - **Plain list items** such as `- Buy milk` are tasks too, and become `- [ ] Buy milk` when you edit them.
 - **Formatting:** `**bold**`, `*italic*`, `~~strikethrough~~` and `` `code` `` show formatted in the dashboard, as do `__bold__`, `_italic_` and `~strikethrough~`. Struck-through text is greyed out as well, for terminals that don't draw strikethrough, such as macOS Terminal. Underscores inside words, as in `user_id`, stay as written, and `\*` writes a literal `*`. Code blocks in details show as written, and the edit form shows the Markdown itself.

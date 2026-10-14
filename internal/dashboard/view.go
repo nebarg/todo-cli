@@ -603,7 +603,7 @@ func (m *model) taskDetails(width int) []string {
 	}
 	result := []string{m.theme.Inline(t.Text, m.theme.TaskTitleStyle), ""}
 	if t.Details == "" {
-		result = append(result, m.theme.MutedStyle.Render("No details yet"))
+		result = append(result, m.theme.MutedStyle.Render("No details yet. Press ")+m.theme.KeyStyle.Render(ui.KeyText(keys.Edit))+m.theme.MutedStyle.Render(" to add some."))
 	} else {
 		result = append(result, m.theme.MarkdownLines(t.Details)...)
 	}

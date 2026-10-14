@@ -92,6 +92,23 @@ func TestInactiveTabsShareTheBarBackground(t *testing.T) {
 	}
 }
 
+func TestTaskWithoutDetailsSaysHowToAddThem(t *testing.T) {
+	m := &model{theme: ui.NewTheme(true), tasks: taskSet{general: []store.Task{
+		{Text: "Fix login redirect"},
+		{Text: "Write a regression test", Subtask: true},
+	}}}
+	if got := ansi.Strip(strings.Join(m.taskDetails(60), "\n")); !strings.Contains(got, "No details yet. Press e to add some.") {
+		t.Errorf("task without details doesn't say how to add them: %s", got)
+	}
+	if got := strings.Join(m.taskDetails(20), "\n"); !strings.Contains(ansi.Strip(got), "Press e to add") {
+		t.Errorf("hint was lost when wrapped to a narrow pane: %s", ansi.Strip(got))
+	}
+	m.general.cursor = 1
+	if got := ansi.Strip(strings.Join(m.taskDetails(60), "\n")); !strings.Contains(got, "No details yet. Press e to add some.") {
+		t.Errorf("subtask without details doesn't say how to add them: %s", got)
+	}
+}
+
 func TestTaskDetailsShownOnDetailPage(t *testing.T) {
 	theme := ui.NewTheme(true)
 	if theme.TaskTitleStyle.GetForeground() != theme.ColorStrong {

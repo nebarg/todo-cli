@@ -185,9 +185,9 @@ func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 		case completeCategory(&f.scope):
 			return f, nil, nil
 		}
-		return f, nil, f.focusField((f.field + 1) % (f.lastField() + 1))
+		return f, nil, f.focusField(f.stepField(1))
 	case key.Matches(msg, formKeys.ShiftTab):
-		return f, nil, f.focusField((f.field + f.lastField()) % (f.lastField() + 1))
+		return f, nil, f.focusField(f.stepField(-1))
 	case key.Matches(msg, formKeys.Down):
 		if f.branchScope() && f.field == scopeField {
 			if count := len(f.branchChoices()); count > 0 {
@@ -198,8 +198,8 @@ func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 		if f.field == titleField && f.title.Line() < strings.Count(f.title.Value(), "\n") {
 			break
 		}
-		if f.field < f.lastField() {
-			return f, nil, f.focusField(f.field + 1)
+		if f.field != detailsField {
+			return f, nil, f.focusField(f.stepField(1))
 		}
 	case key.Matches(msg, formKeys.Enter):
 		if f.field == scopeField {
@@ -222,7 +222,7 @@ func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 			return f, nil, f.focusField(0)
 		}
 		if f.field == detailsField && f.details.Line() == 0 {
-			return f, nil, f.focusField(f.field - 1)
+			return f, nil, f.focusField(f.stepField(-1))
 		}
 	}
 	return f, nil, f.typeKey(msg)
@@ -277,18 +277,20 @@ func (f *taskModal) branchScope() bool {
 	return !f.subtaskForm() && (f.mode == modalAddBranch || f.mode == modalEdit && f.selected.Branch != "")
 }
 
-// subtaskForm is true for a subtask's form, which has only the Task field: a
-// subtask keeps its task's category or branch, and has no details to edit.
+// subtaskForm is true for a subtask's form, which has no Category or Branch
+// field, as a subtask keeps its task's.
 func (f *taskModal) subtaskForm() bool {
 	return f.mode == modalAddSubtask || f.mode == modalEdit && f.selected.Subtask
 }
 
-// lastField is the form's last field: Details, or Task in a subtask's form.
-func (f *taskModal) lastField() int {
+// stepField is the field step places from the focused one in the form's
+// order, wrapping round at either end.
+func (f *taskModal) stepField(step int) int {
+	fields := []int{titleField, scopeField, detailsField}
 	if f.subtaskForm() {
-		return titleField
+		fields = []int{titleField, detailsField}
 	}
-	return detailsField
+	return fields[ui.Wrap(slices.Index(fields, f.field), step, len(fields))]
 }
 
 func (f *taskModal) focusField(field int) tea.Cmd {
@@ -311,9 +313,9 @@ func (f *taskModal) focusField(field int) tea.Cmd {
 func (f *taskModal) save() error {
 	switch {
 	case f.mode == modalAddSubtask:
-		return store.AddSubtask(f.file, f.parent, f.taskTitle())
+		return store.AddSubtask(f.file, f.parent, f.taskTitle(), f.details.Value())
 	case f.subtaskForm():
-		return store.Edit(f.file, f.selected, f.taskTitle(), f.selected.Details, f.selected.Section)
+		return store.Edit(f.file, f.selected, f.taskTitle(), f.details.Value(), f.selected.Section)
 	}
 	if f.branchScope() {
 		f.target.Branch = f.chosenBranch()
@@ -474,18 +476,15 @@ func (f *taskModal) branchSuggestions(theme ui.Theme, width int) []string {
 
 func (f *taskModal) dimensions(width, height int) (int, int) {
 	modalHeight := min(height-4, 20)
-	switch {
-	case f.subtaskForm():
-		modalHeight = min(height, subtaskFormHeight)
-	case f.branchScope():
+	if f.branchScope() {
 		modalHeight = min(height, max(modalHeight, 13))
 	}
 	return min(width-2, 76), modalHeight
 }
 
-// subtaskFormHeight fits a subtask's form, with its spacer lines, in its
-// border.
-const subtaskFormHeight = 8
+// subtaskFormHeight fits a subtask's form, with its spacer lines and two
+// lines of Details, in its border.
+const subtaskFormHeight = 12
 
 // isCompact drops spacer lines so add forms still fit short terminals.
 func (f *taskModal) isCompact(height int) bool {
@@ -541,23 +540,18 @@ func (f *taskModal) contentLines(theme ui.Theme, width, height int) []string {
 		gap()
 	}
 	add(f.field == titleField, ui.OnBackground(f.title.View(), theme.ColorField))
-	if f.subtaskForm() {
-		if !compact {
+	if !f.subtaskForm() {
+		if !f.branchScope() || !compact {
 			gap()
 		}
-		add(false, f.footer(theme, innerWidth))
-		return lines
-	}
-	if !f.branchScope() || !compact {
-		gap()
-	}
-	scopeName := "Category"
-	if f.branchScope() {
-		scopeName = "Branch"
-	}
-	add(f.field == scopeField, f.label(theme, scopeName, scopeField), ui.OnBackground(fieldStyle(theme).Width(innerWidth).Render(f.scope.View()), theme.ColorField))
-	if f.branchScope() {
-		add(f.field == scopeField, f.branchSuggestions(theme, innerWidth)...)
+		scopeName := "Category"
+		if f.branchScope() {
+			scopeName = "Branch"
+		}
+		add(f.field == scopeField, f.label(theme, scopeName, scopeField), ui.OnBackground(fieldStyle(theme).Width(innerWidth).Render(f.scope.View()), theme.ColorField))
+		if f.branchScope() {
+			add(f.field == scopeField, f.branchSuggestions(theme, innerWidth)...)
+		}
 	}
 	if !compact {
 		gap()
@@ -611,9 +605,6 @@ func (f *taskModal) footer(theme ui.Theme, width int) string {
 	}
 	save, cancel := ui.Hint(formKeys.Save, "save"), ui.Hint(formKeys.Cancel, "cancel")
 	hints := []ui.KeyHint{save, cancel, ui.Hint(formKeys.Tab, "next field")}
-	if f.subtaskForm() {
-		hints = hints[:2]
-	}
 	if f.field == scopeField && canCompleteCategory(f.scope) {
 		hints = []ui.KeyHint{completeHint, save, cancel}
 	}
