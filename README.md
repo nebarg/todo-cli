@@ -151,7 +151,7 @@ The dashboard has three tabs:
 - **2 Branches**: every branch with tasks. At startup it opens on the current branch, if that branch has any tasks.
 - **3 Files**: the [TODO comments](#todo-comments) in files under the working directory. Scanning runs in the background, and these are read only.
 
-Use `↑` and `↓` to move. Up from the first row goes to the last, and down from the last goes back to the first. `→` opens a category, branch or task, and `←` or `esc` goes back one level.
+Use `↑` and `↓`, or `k` and `j`, to move. Up from the first row goes to the last, and down from the last goes back to the first. `→` or `l` opens a category, branch or task, and `←`, `h` or `esc` goes back one level.
 
 Each tab remembers where you left it. Pressing `1` again goes back to the top of General, and `3` again goes back out of a TODO or category. Pressing `2` again switches between the branch list and the current branch.
 
@@ -221,8 +221,8 @@ Your README is read only, so neither works on its TODOs.
 | --- | --- |
 | `1` `2` `3`, `tab` / `shift+tab` | Switch tab |
 | `↑` `↓` / `k` `j` | Move up or down, wrapping round at either end |
-| `→` | Open a category, branch or task |
-| `←` / `esc` | Back |
+| `→` / `l` | Open a category, branch or task |
+| `←` / `h` / `esc` | Back |
 | `i` | All tasks (`s` to change the order) |
 | `a` | Add a task. On an opened task, add a subtask |
 | `b` | Add a task to a branch |

@@ -215,6 +215,53 @@ func TestArrowOpensDetailsAndEscapeReturnsToList(t *testing.T) {
 	}
 }
 
+func TestLOpensAndHGoesBack(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("# auth\n\n- [ ] Login task\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project.Repo{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = press(m, "l")
+	if m.general.open.name != "auth" {
+		t.Fatal("l did not open the category")
+	}
+	m = press(m, "l")
+	if m.focus != detailPane || m.detailFrom != generalPane {
+		t.Fatalf("l on a task page = %v from %v", m.focus, m.detailFrom)
+	}
+	m = press(m, "h")
+	if m.focus != generalPane || m.general.open.name != "auth" {
+		t.Fatal("h from details skipped the category's task list")
+	}
+	m = press(m, "h")
+	if m.general.open.name != "" {
+		t.Fatal("h did not return to General's categories")
+	}
+
+	m.files.Update(filesui.ScannedMsg{Matches: []scan.Match{{Path: "b.css", Line: 2, Note: "hide", Category: "Boundary"}}})
+	files := func() string { return ansi.Strip(m.View().Content) }
+	m = press(m, "3")
+	m = press(m, "l")
+	if !strings.Contains(files(), "Files › @Boundary") {
+		t.Fatalf("l did not open the Files category:\n%s", files())
+	}
+	m = press(m, "l")
+	if !m.files.Details() {
+		t.Fatal("l did not open the file TODO's details")
+	}
+	m = press(m, "h")
+	if m.files.Details() || !strings.Contains(files(), "Files › @Boundary") {
+		t.Fatalf("h did not return from details to the category:\n%s", files())
+	}
+	m = press(m, "h")
+	if m.focus != sourcePane || strings.Contains(files(), "@Boundary") {
+		t.Fatalf("h did not leave the Files category:\n%s", files())
+	}
+}
+
 func TestCompletedTasksFollowOpenTasksInEachScope(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "todo.md")
 	content := "- [x] General done !high\n\n- [ ] General open !low\n\n# auth\n\n- [x] Auth done !high\n\n- [ ] Auth open !low\n\n# Branches\n\n## feature/x\n\n- [x] Branch done !high\n\n- [ ] Branch open first !low\n\n- [ ] Branch open second !low\n"

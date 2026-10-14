@@ -18,10 +18,10 @@ type keyMap struct {
 var keys = keyMap{
 	Up:    key.NewBinding(key.WithKeys("up", "k")),
 	Down:  key.NewBinding(key.WithKeys("down", "j")),
-	Open:  key.NewBinding(key.WithKeys("right")),
+	Open:  key.NewBinding(key.WithKeys("right", "l")),
 	Enter: key.NewBinding(key.WithKeys("enter")),
 	Edit:  key.NewBinding(key.WithKeys("e")),
-	Back:  key.NewBinding(key.WithKeys("left", "esc")),
+	Back:  key.NewBinding(key.WithKeys("left", "h", "esc")),
 }
 
 // Handles reports whether the browser takes msg, in its list or on its

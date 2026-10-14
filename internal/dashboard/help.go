@@ -26,11 +26,11 @@ var (
 	helpNavigate = helpSection{"Navigate", []ui.KeyHint{
 		helpRow("jump to tab", keys.Tab1, keys.Tab2, keys.Tab3),
 		helpRow("cycle tabs", keys.NextTab, keys.PrevTab),
-		{Key: "↑↓ j k", Label: "move"},
-		helpRow("open", keys.Open, keys.Enter),
-		helpRow("back", keys.Back),
+		{Key: "↑↓", Label: "move"},
+		{Key: "→ enter", Label: "open"},
+		{Key: "← esc", Label: "back"},
+		{Key: "h j k l", Label: "vim keys"},
 		helpRow("all tasks", keys.AllTasks),
-		helpRow("sort tasks", keys.Sort),
 	}}
 	helpTasks = helpSection{"Tasks", []ui.KeyHint{
 		helpRow("toggle done", keys.Done),
@@ -39,9 +39,9 @@ var (
 		helpRow("set category", keys.Category),
 		helpRow("delete", keys.Delete),
 		helpRow("add task/branch", keys.Add, keys.AddBranch),
-		helpRow("add subtask", keys.Open, keys.Add),
+		{Key: "→ a", Label: "add subtask"},
 	}}
-	helpApp = []ui.KeyHint{{Key: "X / u", Label: "clear done / undo"}, helpRow("refresh", keys.Refresh), helpRow("help", keys.Help), helpRow("quit", keys.Quit)}
+	helpApp = []ui.KeyHint{{Key: "X / u", Label: "clear done / undo"}, helpRow("refresh", keys.Refresh), helpRow("quit", keys.Quit)}
 )
 
 // helpOverlay lists the keys until any key closes it.
