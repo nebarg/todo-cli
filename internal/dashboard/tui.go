@@ -261,13 +261,13 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 	case key.Matches(msg, keys.Up):
 		if m.focus == detailPane {
-			m.detailScroll = max(0, m.detailScroll-1)
+			m.scrollDetails(-1)
 		} else {
 			m.moveCursor(-1)
 		}
 	case key.Matches(msg, keys.Down):
 		if m.focus == detailPane {
-			m.detailScroll++
+			m.scrollDetails(1)
 		} else {
 			m.moveCursor(1)
 		}
@@ -298,6 +298,15 @@ func (m *model) moveCursor(delta int) {
 	} else if l := m.list(m.focus); l != nil {
 		l.cursor = ui.Wrap(l.cursor, delta, len(m.rows(m.focus)))
 	}
+}
+
+// scrollDetails moves the detail pane delta lines, stopping at its top and
+// bottom, so scrolling back the other way moves it straight away. The scroll
+// is brought within the bottom first, as resizing the terminal or editing
+// the task can move the bottom above it.
+func (m *model) scrollDetails(delta int) {
+	bottom := m.detailBottom()
+	m.detailScroll = max(0, min(min(m.detailScroll, bottom)+delta, bottom))
 }
 
 // selectedTask is the selected task of todo.md; a README task is not one.

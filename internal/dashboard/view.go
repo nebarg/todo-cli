@@ -15,13 +15,7 @@ import (
 const missingBranchStatus = "⚠ Branch not in Git"
 
 func (m *model) View() tea.View {
-	width, height := m.width, m.height
-	if width < 1 {
-		width = 100
-	}
-	if height < 1 {
-		height = 30
-	}
+	width, height := m.size()
 	if width < 56 || height < 16 {
 		v := tea.NewView("todo · enlarge your terminal\nq quit")
 		v.AltScreen = true
@@ -53,6 +47,18 @@ func (m *model) View() tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
 	return v
+}
+
+// size is the terminal's size, or a default until it is known.
+func (m *model) size() (width, height int) {
+	width, height = m.width, m.height
+	if width < 1 {
+		width = 100
+	}
+	if height < 1 {
+		height = 30
+	}
+	return width, height
 }
 
 // placeOver draws box over the middle of content.
@@ -551,12 +557,7 @@ func (r taskRow) Render(theme ui.Theme, width int, selected bool) string {
 
 func (m *model) renderDetailPane(width, height int) string {
 	innerWidth := max(1, width-4)
-	lines := []string{m.theme.Breadcrumb(m.breadcrumb(detailPane), "", innerWidth), ""}
-	if row, ok := m.selectedNavigationRow(); ok && !row.isTask() {
-		lines = append(lines, m.groupDetails(row, innerWidth)...)
-	} else {
-		lines = append(lines, m.taskDetails(innerWidth)...)
-	}
+	lines := m.detailLines(innerWidth)
 	maxLines := m.panelContentHeight(height)
 	start := min(m.detailScroll, max(0, len(lines)-maxLines))
 	lines = lines[start:min(len(lines), start+maxLines)]
@@ -567,6 +568,24 @@ func (m *model) renderDetailPane(width, height int) string {
 		lines[i] = ansi.Truncate(line, innerWidth, "…")
 	}
 	return m.renderPanel(width, height, lines)
+}
+
+// detailLines is everything the detail pane shows, wrapped to width, before
+// it is cut to the panel's height.
+func (m *model) detailLines(width int) []string {
+	lines := []string{m.theme.Breadcrumb(m.breadcrumb(detailPane), "", width), ""}
+	if row, ok := m.selectedNavigationRow(); ok && !row.isTask() {
+		return append(lines, m.groupDetails(row, width)...)
+	}
+	return append(lines, m.taskDetails(width)...)
+}
+
+// detailBottom is the furthest the detail pane scrolls at the terminal's
+// current size: its last line at the bottom of the panel.
+func (m *model) detailBottom() int {
+	width, height := m.size()
+	// The header and footer take a line each, as in View.
+	return max(0, len(m.detailLines(max(1, width-4)))-m.panelContentHeight(height-2))
 }
 
 func groupName(row navigationRow) string {

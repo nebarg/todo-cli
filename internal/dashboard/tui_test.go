@@ -701,3 +701,75 @@ func TestUpAndDownWrapPastTheEndsOfAList(t *testing.T) {
 		t.Fatalf("up on a task's details moved: focus %v, scroll %d, cursor %d", m.focus, m.detailScroll, m.general.cursor)
 	}
 }
+
+// longDetailsModel is a dashboard of width × height showing the details of
+// a task too long for it, followed by a task whose details fit.
+func longDetailsModel(t *testing.T, width, height int) *model {
+	t.Helper()
+	var content strings.Builder
+	content.WriteString("- [ ] Long\n")
+	for i := 1; i <= 30; i++ {
+		fmt.Fprintf(&content, "\n  Line %d.\n", i)
+	}
+	content.WriteString("- [ ] Short\n\n  Fits.\n")
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte(content.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project.Repo{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.width, m.height = width, height
+	pressKey(t, m, "right")
+	if selected, ok := m.selectedTask(); m.focus != detailPane || !ok || selected.Text != "Long" {
+		t.Fatalf("Long's details not open: focus %v, selected %+v", m.focus, selected)
+	}
+	return m
+}
+
+func TestDetailsStopScrollingAtTheirLastLine(t *testing.T) {
+	m := longDetailsModel(t, 80, 24)
+	bottom := m.detailBottom()
+	if bottom == 0 {
+		t.Fatal("Long's details fit, so can't scroll")
+	}
+	for range bottom + 20 {
+		m = press(m, "j")
+	}
+	if m.detailScroll != bottom {
+		t.Fatalf("holding down scrolled to %d, past the bottom at %d", m.detailScroll, bottom)
+	}
+	atBottom := ansi.Strip(m.View().Content)
+	if !strings.Contains(atBottom, "Line 30.") {
+		t.Fatalf("the last line isn't showing at the bottom:\n%s", atBottom)
+	}
+	if m = press(m, "k"); m.detailScroll != bottom-1 || ansi.Strip(m.View().Content) == atBottom {
+		t.Fatalf("one up from the bottom didn't scroll up: scroll %d, bottom %d", m.detailScroll, bottom)
+	}
+
+	// Details that fit don't scroll at all.
+	m = press(m, "esc")
+	m.general.cursor = 1
+	pressKey(t, m, "right")
+	if m = press(m, "j"); m.detailScroll != 0 {
+		t.Fatalf("down on details that fit scrolled to %d", m.detailScroll)
+	}
+}
+
+func TestDetailsScrollUpStraightAwayAfterTheTerminalGrows(t *testing.T) {
+	m := longDetailsModel(t, 80, 20)
+	for range m.detailBottom() {
+		m = press(m, "j")
+	}
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 40})
+	m = updated.(*model)
+	bottom := m.detailBottom()
+	if bottom == 0 || bottom >= m.detailScroll {
+		t.Fatalf("growing the terminal didn't move the bottom (%d) above the scroll (%d)", bottom, m.detailScroll)
+	}
+	before := ansi.Strip(m.View().Content)
+	if m = press(m, "k"); m.detailScroll != bottom-1 || ansi.Strip(m.View().Content) == before {
+		t.Fatalf("one up after growing didn't scroll up: scroll %d, bottom %d", m.detailScroll, bottom)
+	}
+}
