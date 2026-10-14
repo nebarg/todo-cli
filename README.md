@@ -161,7 +161,7 @@ A branch Git doesn't have locally, because it was deleted or isn't created yet, 
 
 - `●` in red, yellow or cyan is a high, medium or low priority task. `○` has no priority.
 - `✓` is a done task.
-- `⋯` at the end of a row means the task has details. Press `→` to read them.
+- `›` at the end of a row means the task has details. Press `→` to read them.
 - Indented rows are [subtasks](#subtasks).
 - Counts such as `1/2` are done/total, for tabs, categories and branches. They don't include subtasks. The Files tab shows how many TODOs it found, or `…` while it scans.
 - The status bar under the list describes the highlighted row, and the footer shows the main keys for it.

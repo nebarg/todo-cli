@@ -55,7 +55,7 @@ func TestTaskListShowsMarkdownFormatting(t *testing.T) {
 	if got := ansi.StringWidth(selected); got != 60 {
 		t.Errorf("selected row width = %d, want 60", got)
 	}
-	if cut := ansi.Strip(renderTaskRow(m.theme, navigationRow{todo: task}, 15, false)); cut != "● Fix login…  ⋯" {
+	if cut := ansi.Strip(renderTaskRow(m.theme, navigationRow{todo: task}, 15, false)); cut != "● Fix login…  ›" {
 		t.Errorf("narrow row = %q", cut)
 	}
 	done := task

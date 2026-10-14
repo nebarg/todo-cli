@@ -324,7 +324,7 @@ func TestReadmeTaskDetailsShowLikeATaskFilesDetails(t *testing.T) {
 	}
 	pressKey(t, m, "right")
 	view := ansi.Strip(m.renderNavigationPane(m.rows(generalPane), m.general.cursor, generalPane, 60, 20))
-	for _, want := range []string{`General › README\.md  0/2`, `\n│ ○ Slug stability\. Renaming changes its URLs\. +⋯ │`, `\n│ ○ No notes +│`} {
+	for _, want := range []string{`General › README\.md  0/2`, `\n│ ○ Slug stability\. Renaming changes its URLs\. +› │`, `\n│ ○ No notes +│`} {
 		if !regexp.MustCompile(want).MatchString(view) {
 			t.Fatalf("README list is missing %q:\n%s", want, view)
 		}

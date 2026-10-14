@@ -14,6 +14,10 @@ import (
 
 const missingBranchStatus = "⚠ Branch not in Git"
 
+// detailsMark ends the row of a task that has details. It differs from the
+// "…" of a cut-off title, and is in common monospace fonts.
+const detailsMark = "›"
+
 func (m *model) View() tea.View {
 	width, height := m.size()
 	if width < 56 || height < 16 {
@@ -464,7 +468,7 @@ func renderTaskRow(theme ui.Theme, row navigationRow, width int, selected bool) 
 	}
 	suffix := ""
 	if strings.TrimSpace(t.Details) != "" {
-		suffix = "⋯"
+		suffix = detailsMark
 	}
 	return taskRow{indent: rowIndent(t.Subtask), mark: mark, markStyle: markStyle, text: t.Text, suffix: suffix, done: t.Done, muted: row.parentDone}.Render(theme, width, selected)
 }
@@ -501,7 +505,7 @@ func renderReadmeTaskRow(theme ui.Theme, row navigationRow, width, levelWidth in
 	}
 	suffix := ""
 	if t.Details != "" {
-		suffix = "⋯"
+		suffix = detailsMark
 	}
 	return taskRow{indent: rowIndent(t.Subtask), mark: mark, markStyle: markStyle, markWidth: levelWidth, text: t.Text, suffix: suffix, done: t.Done, muted: row.parentDone}.Render(theme, width, selected)
 }
