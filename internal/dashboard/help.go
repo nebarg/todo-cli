@@ -27,6 +27,7 @@ var (
 		helpRow("jump to tab", keys.Tab1, keys.Tab2, keys.Tab3),
 		helpRow("cycle tabs", keys.NextTab, keys.PrevTab),
 		{Key: "↑↓", Label: "move"},
+		{Key: "⇧↑↓ K J", Label: "subtasks"},
 		{Key: "→ enter", Label: "open"},
 		{Key: "← esc", Label: "back"},
 		{Key: "h j k l", Label: "vim keys"},
@@ -64,10 +65,7 @@ func renderHelp(theme ui.Theme) string {
 		}
 	}
 	body := lipgloss.JoinHorizontal(lipgloss.Top, helpNavigate.render(theme, keyWidth), "    ", helpTasks.render(theme, keyWidth))
-	title := theme.TitleStyle.Render("Keys")
-	closeHint := theme.MutedStyle.Render("any key closes")
-	gap := strings.Repeat(" ", max(2, lipgloss.Width(body)-ansi.StringWidth(title)-ansi.StringWidth(closeHint)))
-	content := title + gap + closeHint + "\n\n" + body + "\n\n" + theme.RenderHints(helpApp) + "\n\n" + priorityLegend(theme)
+	content := body + "\n\n" + theme.RenderHints(helpApp) + "\n\n" + priorityLegend(theme)
 	return lipgloss.NewStyle().Padding(0, 2).
 		Border(lipgloss.RoundedBorder()).BorderForeground(theme.ColorFocus).BorderBackground(theme.ColorModal).
 		Background(theme.ColorModal).Render(ui.OnBackground(content, theme.ColorModal))

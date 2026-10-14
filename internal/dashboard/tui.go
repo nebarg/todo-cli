@@ -271,6 +271,14 @@ func (m *model) dashboardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		} else {
 			m.moveCursor(1)
 		}
+	case key.Matches(msg, keys.PrevTask):
+		if m.focus == detailPane {
+			m.stepTask(-1)
+		}
+	case key.Matches(msg, keys.NextTask):
+		if m.focus == detailPane {
+			m.stepTask(1)
+		}
 	case key.Matches(msg, keys.Enter):
 		if m.enterSelectedGroup() {
 			return nil, true
@@ -298,6 +306,19 @@ func (m *model) moveCursor(delta int) {
 	} else if l := m.list(m.focus); l != nil {
 		l.cursor = ui.Wrap(l.cursor, delta, len(m.rows(m.focus)))
 	}
+}
+
+// stepTask shows the details of the row up (-1) or down (1) from the selected
+// one while both are the same task or its subtasks, and otherwise stays put. A
+// subtask's row follows its task's or another subtask's, so a step stays
+// within one task's family exactly when the lower of the two rows is a subtask.
+func (m *model) stepTask(delta int) {
+	l, rows := m.list(m.activePane()), m.rows(m.activePane())
+	i := l.cursor + delta
+	if lower := max(l.cursor, i); i < 0 || lower >= len(rows) || !rows[lower].isTask() || !rows[lower].subtask() {
+		return
+	}
+	l.cursor, m.detailScroll = i, 0
 }
 
 // scrollDetails moves the detail pane delta lines, stopping at its top and

@@ -201,7 +201,8 @@ A subtask is a checkbox indented under a task in your task file. The dashboard s
 - A subtask's form has Task and Details but no Category, because a subtask always stays in its task's category or branch. End the text with `!high`, `!medium` or `!low` to give it a priority.
 - `d`, `p`, `e` and `backspace` work on a subtask just as on a task. `c` doesn't.
 - When you mark a task done, its subtasks are greyed out, but they aren't ticked. When the list is sorted, subtasks move with their task, open ones first.
-- The status bar of a task with subtasks shows how many of them are done.
+- The status bar of a task with subtasks shows how many of them are done, and its details list them under Subtasks.
+- On a task's details, `shift+↓` or `J` shows its first subtask, then the next, and `shift+↑` or `K` goes back up to the task. They stop at the task and at its last subtask.
 
 Deleting a task deletes its subtasks too. Clearing done tasks removes a done task with all of its subtasks, including open ones. A done subtask of an open task is cleared on its own.
 
@@ -221,6 +222,7 @@ Your README is read only, so neither works on its TODOs.
 | --- | --- |
 | `1` `2` `3`, `tab` / `shift+tab` | Switch tab |
 | `↑` `↓` / `k` `j` | Move up or down, wrapping round at either end |
+| `shift+↑` `shift+↓` / `K` `J` | On a task's details, move between the task and its subtasks |
 | `→` / `l` | Open a category, branch or task |
 | `←` / `h` / `esc` | Back |
 | `i` | All tasks (`s` to change the order) |

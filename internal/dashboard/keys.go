@@ -9,6 +9,8 @@ type keyMap struct {
 	Tab1, Tab2, Tab3 key.Binding
 	NextTab, PrevTab key.Binding
 	Up, Down         key.Binding
+	PrevTask         key.Binding // on a task's details, shows the task above it
+	NextTask         key.Binding
 	Open             key.Binding // opens a group, or a task's details
 	Enter            key.Binding // opens a group, or edits a task
 	Back             key.Binding
@@ -48,6 +50,8 @@ var keys = keyMap{
 	PrevTab:   key.NewBinding(key.WithKeys("shift+tab")),
 	Up:        key.NewBinding(key.WithKeys("up", "k")),
 	Down:      key.NewBinding(key.WithKeys("down", "j")),
+	PrevTask:  key.NewBinding(key.WithKeys("shift+up", "K")),
+	NextTask:  key.NewBinding(key.WithKeys("shift+down", "J")),
 	Open:      key.NewBinding(key.WithKeys("right", "l")),
 	Enter:     key.NewBinding(key.WithKeys("enter")),
 	Back:      key.NewBinding(key.WithKeys("left", "h", "esc")),

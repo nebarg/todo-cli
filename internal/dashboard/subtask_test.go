@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -301,4 +302,139 @@ func TestClearingDoneTasksTakesTheirSubtasks(t *testing.T) {
 	if got := readFile(t, path); got != original || m.status != "Restored 2 tasks" {
 		t.Fatalf("after undo: %q, status %q", got, m.status)
 	}
+}
+
+func TestDetailsStepBetweenATaskAndItsSubtasks(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte(subtaskTasks), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project.Repo{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	step := func(key string) {
+		msg := tea.KeyPressMsg{Code: []rune(key)[0], Text: key}
+		switch key {
+		case "shift+up":
+			msg = tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModShift}
+		case "shift+down":
+			msg = tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModShift}
+		}
+		updated, _ := m.Update(msg)
+		m = updated.(*model)
+	}
+	selected := func() string {
+		task, _ := m.selectedTask()
+		return task.Text
+	}
+
+	// In the list they do nothing; ↑ and ↓ move there.
+	m.general.cursor = 1
+	if step("shift+down"); m.focus != generalPane || selected() != "Ship login" {
+		t.Fatalf("shift+down in the list moved to %q", selected())
+	}
+
+	pressKey(t, m, "right")
+	if help := ansi.Strip(renderHelp(m.theme)); !strings.Contains(help, "⇧↑↓ K J   subtasks") {
+		t.Fatalf("help lacks the keys:\n%s", help)
+	}
+	for _, item := range []struct {
+		key, want string
+		scroll    int // 0 when the details changed, so they start at the top
+	}{
+		{"shift+up", "Ship login", 2}, // the task is the top of its family
+		{"shift+down", "Write the form", 0},
+		{"J", "Add the route", 0},
+		{"J", "Add the route", 2}, // the last subtask is the bottom; Other is another task
+		{"K", "Write the form", 0},
+		{"shift+up", "Ship login", 0},
+	} {
+		m.detailScroll = 2
+		if step(item.key); m.focus != detailPane || selected() != item.want || m.detailScroll != item.scroll {
+			t.Fatalf("after %s: focus %v, details of %q scrolled %d, want %q scrolled %d", item.key, m.focus, selected(), m.detailScroll, item.want, item.scroll)
+		}
+	}
+
+	// A task without subtasks stays put.
+	m.general.cursor = 4
+	for _, key := range []string{"J", "K"} {
+		if step(key); selected() != "Other" {
+			t.Fatalf("%s on a task without subtasks moved to %q", key, selected())
+		}
+	}
+
+	// A subtask at the end of the list stays put too.
+	m.general.cursor = len(m.rows(generalPane)) - 1
+	if step("J"); selected() != "Left open" {
+		t.Fatalf("J at the end moved to %q", selected())
+	}
+}
+
+func TestTaskDetailsListItsSubtasks(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "todo.md")
+	if err := os.WriteFile(path, []byte(subtaskTasks), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project.Repo{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	subtasks := func() []string {
+		lines := m.taskDetails(60)
+		for i, line := range lines {
+			if line == m.theme.MutedStyle.Render("┌ Subtasks") {
+				return plainLines(lines[i:])
+			}
+		}
+		return nil
+	}
+
+	// They show as the list shows them, but not indented.
+	m.general.cursor = 1
+	if got, want := subtasks(), []string{"┌ Subtasks", "│ ○ Write the form", "│ ✓ Add the route"}; !slices.Equal(got, want) {
+		t.Errorf("Ship login's subtasks = %q, want %q", got, want)
+	}
+	// A done task's subtasks are greyed out, as in the list.
+	m.general.cursor = 5
+	if got := m.taskDetails(60); !strings.Contains(strings.Join(got, "\n"), m.theme.Inline("Left open", m.theme.MutedStyle)) {
+		t.Errorf("Old task's open subtask isn't greyed out: %q", got)
+	}
+	// A task without any says how to add them; a subtask can't have any.
+	m.general.cursor = 4
+	if got, want := subtasks(), []string{"┌ Subtasks", "│ No subtasks yet. Press a to add some."}; !slices.Equal(got, want) {
+		t.Errorf("Other's subtasks = %q, want %q", got, want)
+	}
+	m.general.cursor = 2
+	if got := subtasks(); got != nil {
+		t.Errorf("a subtask lists subtasks: %q", got)
+	}
+
+	// A README task lists its subtasks too, but without any has no section,
+	// as subtasks are added to the README in an editor.
+	readmeDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(readmeDir, "README.md"), []byte("## TODOs\n\n- [ ] Parent\n  - [ ] Sub one\n  - [x] Sub two\n- [ ] Lone\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if m, err = newModel(filepath.Join(readmeDir, "todo.md"), project.Repo{}, testFiles()); err != nil {
+		t.Fatal(err)
+	}
+	pressKey(t, m, "right")
+	if got, want := subtasks(), []string{"┌ Subtasks", "│ ○ Sub one", "│ ✓ Sub two"}; !slices.Equal(got, want) {
+		t.Errorf("README task's subtasks = %q, want %q", got, want)
+	}
+	m.general.cursor = slices.IndexFunc(m.rows(generalPane), func(row navigationRow) bool { return row.readme.Text == "Lone" })
+	if got := subtasks(); m.general.cursor < 0 || got != nil {
+		t.Errorf("README task without subtasks lists %q (cursor %d)", got, m.general.cursor)
+	}
+}
+
+// plainLines is lines without their styles.
+func plainLines(lines []string) []string {
+	plain := make([]string, len(lines))
+	for i, line := range lines {
+		plain[i] = ansi.Strip(line)
+	}
+	return plain
 }

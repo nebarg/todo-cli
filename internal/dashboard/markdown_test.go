@@ -104,18 +104,12 @@ func TestDetailPageLaysOutTheTitleAndDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plain := func(lines []string) []string {
-		for i, line := range lines {
-			lines[i] = ansi.Strip(line)
-		}
-		return lines
-	}
 	// The title and details wrap beside bars that run down from their
 	// headings: yellow for the title, and grey for the details.
 	m.general.cursor = 1
 	lines := m.taskDetails(30)
-	want := []string{"┌ Task", "│ Described task with a title", "│ long enough to wrap", "", "┌ Details", "│ Some details long enough to", "│ wrap as well."}
-	if got := plain(slices.Clone(lines)); !slices.Equal(got, want) {
+	want := []string{"┌ Task", "│ Described task with a title", "│ long enough to wrap", "", "┌ Details", "│ Some details long enough to", "│ wrap as well.", "", "┌ Subtasks", "│ No subtasks yet. Press a to", "│ add some."}
+	if got := plainLines(lines); !slices.Equal(got, want) {
 		t.Errorf("details = %q, want %q", got, want)
 	}
 	yellow := lipgloss.NewStyle().Foreground(m.theme.ColorFocus)
@@ -126,7 +120,7 @@ func TestDetailPageLaysOutTheTitleAndDetails(t *testing.T) {
 
 	// A task without details shows how to add them in their place.
 	m.general.cursor = 2
-	if got, want := plain(m.taskDetails(60)), []string{"┌ Task", "│ Bare", "", "┌ Details", "│ No details yet. Press e to add some."}; !slices.Equal(got, want) {
+	if got, want := plainLines(m.taskDetails(60)), []string{"┌ Task", "│ Bare", "", "┌ Details", "│ No details yet. Press e to add some.", "", "┌ Subtasks", "│ No subtasks yet. Press a to add some."}; !slices.Equal(got, want) {
 		t.Errorf("details = %q, want %q", got, want)
 	}
 
@@ -136,7 +130,7 @@ func TestDetailPageLaysOutTheTitleAndDetails(t *testing.T) {
 	pressKey(t, m, "right")
 	for cursor, want := range [][]string{{"┌ Task", "│ Noted", "", "┌ Details", "│ - a note under it"}, {"┌ Task", "│ Unnoted"}} {
 		m.general.cursor = cursor
-		if got := plain(m.taskDetails(60)); !slices.Equal(got, want) {
+		if got := plainLines(m.taskDetails(60)); !slices.Equal(got, want) {
 			t.Errorf("README details = %q, want %q", got, want)
 		}
 	}

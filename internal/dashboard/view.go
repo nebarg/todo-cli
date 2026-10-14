@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -295,22 +296,29 @@ func (m *model) subtaskStatus() string {
 }
 
 // selectedSubtasks is how many of the selected task's subtasks are done, and
-// how many it has: the subtask rows that follow it. A subtask has none.
+// how many it has.
 func (m *model) selectedSubtasks() (done, total int) {
-	rows, cursor := m.taskList()
-	if cursor >= len(rows) || !rows[cursor].isTask() || rows[cursor].subtask() {
-		return 0, 0
-	}
-	for _, row := range rows[cursor+1:] {
-		if !row.isTask() || !row.subtask() {
-			break
-		}
-		total++
+	subtasks := m.selectedSubtaskRows()
+	for _, row := range subtasks {
 		if row.done() {
 			done++
 		}
 	}
-	return done, total
+	return done, len(subtasks)
+}
+
+// selectedSubtaskRows are the selected task's subtasks: the subtask rows that
+// follow it. A subtask has none.
+func (m *model) selectedSubtaskRows() []navigationRow {
+	rows, cursor := m.taskList()
+	if cursor >= len(rows) || !rows[cursor].isTask() || rows[cursor].subtask() {
+		return nil
+	}
+	end := cursor + 1
+	for end < len(rows) && rows[end].isTask() && rows[end].subtask() {
+		end++
+	}
+	return rows[cursor+1 : end]
 }
 
 // selectedParent is the selected todo.md task, or for a subtask, the task
@@ -399,12 +407,7 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 		visible = max(1, visible-1)
 	}
 	start, end := ui.VisibleRange(cursor, len(rows), visible)
-	levelWidth := 0
-	for _, row := range rows {
-		if row.kind == rowReadmeTask {
-			levelWidth = max(levelWidth, len(ui.LevelLabel(row.readme.Level)))
-		}
-	}
+	levelWidth := readmeLevelWidth(rows)
 	if len(rows) == 0 {
 		empty := "No tasks"
 		if kind == branchPane {
@@ -428,6 +431,18 @@ func (m *model) renderNavigationPane(rows []navigationRow, cursor int, kind pane
 		}
 	}
 	return m.renderPanel(width, height, lines)
+}
+
+// readmeLevelWidth is the width of the column of README task levels in rows,
+// or 0 when none has a level.
+func readmeLevelWidth(rows []navigationRow) int {
+	width := 0
+	for _, row := range rows {
+		if row.kind == rowReadmeTask {
+			width = max(width, len(ui.LevelLabel(row.readme.Level)))
+		}
+	}
+	return width
 }
 
 // firstTaskAfterGroups is the row where loose tasks follow categories or
@@ -459,9 +474,13 @@ func renderGroupRow(theme ui.Theme, item navigationRow, width int, selected, cur
 	return row.Render(theme, width, selected)
 }
 
-// renderTaskRow shows a todo.md task row with its priority. A subtask is
-// indented, and greyed out while its task is done.
 func renderTaskRow(theme ui.Theme, row navigationRow, width int, selected bool) string {
+	return todoRow(theme, row).Render(theme, width, selected)
+}
+
+// todoRow shows a todo.md task with its priority. A subtask is indented, and
+// greyed out while its task is done.
+func todoRow(theme ui.Theme, row navigationRow) taskRow {
 	t := row.todo
 	mark, markStyle := priorityMark(t.Priority), theme.MutedStyle
 	if t.Priority != store.PriorityNone {
@@ -471,7 +490,7 @@ func renderTaskRow(theme ui.Theme, row navigationRow, width int, selected bool) 
 	if strings.TrimSpace(t.Details) != "" {
 		suffix = detailsMark
 	}
-	return taskRow{indent: rowIndent(t.Subtask), mark: mark, markStyle: markStyle, text: t.Text, suffix: suffix, done: t.Done, muted: row.parentDone}.Render(theme, width, selected)
+	return taskRow{indent: rowIndent(t.Subtask), mark: mark, markStyle: markStyle, text: t.Text, suffix: suffix, done: t.Done, muted: row.parentDone}
 }
 
 // rowIndent is the indent of a subtask's row under its task's.
@@ -494,11 +513,14 @@ func countText(done, total int) string {
 	return fmt.Sprintf("%d/%d", done, total)
 }
 
-// renderReadmeTaskRow shows a README task row with its level in a column
-// levelWidth wide. A list without levels has a levelWidth of 0, and shows the
-// open bullet instead. A subtask is indented, and greyed out while its parent
-// is done.
 func renderReadmeTaskRow(theme ui.Theme, row navigationRow, width, levelWidth int, selected bool) string {
+	return readmeRow(theme, row, levelWidth).Render(theme, width, selected)
+}
+
+// readmeRow shows a README task with its level in a column levelWidth wide. A
+// list without levels has a levelWidth of 0, and shows the open bullet
+// instead. A subtask is indented, and greyed out while its parent is done.
+func readmeRow(theme ui.Theme, row navigationRow, levelWidth int) taskRow {
 	t := row.readme
 	mark, markStyle := priorityMark(store.PriorityNone), theme.MutedStyle
 	if levelWidth > 0 {
@@ -508,7 +530,7 @@ func renderReadmeTaskRow(theme ui.Theme, row navigationRow, width, levelWidth in
 	if t.Details != "" {
 		suffix = detailsMark
 	}
-	return taskRow{indent: rowIndent(t.Subtask), mark: mark, markStyle: markStyle, markWidth: levelWidth, text: t.Text, suffix: suffix, done: t.Done, muted: row.parentDone}.Render(theme, width, selected)
+	return taskRow{indent: rowIndent(t.Subtask), mark: mark, markStyle: markStyle, markWidth: levelWidth, text: t.Text, suffix: suffix, done: t.Done, muted: row.parentDone}
 }
 
 // subtaskIndent is how far a subtask's row is indented under its parent's.
@@ -614,9 +636,10 @@ func (m *model) groupDetails(row navigationRow, width int) []string {
 }
 
 // taskDetails is the selected task's title in a Task section, then its
-// Details section, or for a todo.md task without details, how to add them
-// there. The headings are labelled as in the task form. A README task without
-// details shows only its title, as the README is edited in an editor.
+// Details and Subtasks sections. A todo.md task without details or subtasks
+// says how to add them there; a subtask has no Subtasks section. The headings
+// are labelled as in the task form. A README task leaves out an empty section,
+// as the README is edited in an editor.
 func (m *model) taskDetails(width int) []string {
 	taskStyle := lipgloss.NewStyle().Foreground(m.theme.ColorFocus)
 	if readme, ok := m.selectedReadmeTask(); ok {
@@ -624,7 +647,7 @@ func (m *model) taskDetails(width int) []string {
 		if readme.Details != "" {
 			result = append(append(result, ""), section("Details", m.theme.MutedStyle, m.theme.MarkdownLines(readme.Details), width)...)
 		}
-		return result
+		return append(result, m.subtasksSection(width, "")...)
 	}
 	t, ok := m.selectedTask()
 	if !ok {
@@ -632,18 +655,56 @@ func (m *model) taskDetails(width int) []string {
 	}
 	details := m.theme.MarkdownLines(t.Details)
 	if t.Details == "" {
-		details = []string{m.theme.MutedStyle.Render("No details yet. Press ") + m.theme.KeyStyle.Render(ui.KeyText(keys.Edit)) + m.theme.MutedStyle.Render(" to add some.")}
+		details = []string{m.emptyHint("details", keys.Edit)}
+	}
+	noSubtasks := ""
+	if !t.Subtask {
+		noSubtasks = m.emptyHint("subtasks", keys.Add)
 	}
 	result := append(section("Task", taskStyle, []string{m.theme.Inline(t.Text, m.theme.TaskTitleStyle)}, width), "")
-	return append(result, section("Details", m.theme.MutedStyle, details, width)...)
+	result = append(result, section("Details", m.theme.MutedStyle, details, width)...)
+	return append(result, m.subtasksSection(width, noSubtasks)...)
 }
+
+// emptyHint says how to add what a section has none of, with the key b.
+func (m *model) emptyHint(what string, b key.Binding) string {
+	return m.theme.MutedStyle.Render("No "+what+" yet. Press ") + m.theme.KeyStyle.Render(ui.KeyText(b)) + m.theme.MutedStyle.Render(" to add some.")
+}
+
+// subtasksSection lists the selected task's subtasks as the list draws them,
+// but not indented, after a blank line. Without any, it shows empty instead,
+// or nothing when empty is "", as for a subtask or a README task.
+func (m *model) subtasksSection(width int, empty string) []string {
+	subtasks := m.selectedSubtaskRows()
+	if len(subtasks) == 0 {
+		if empty == "" {
+			return nil
+		}
+		return append([]string{""}, section("Subtasks", m.theme.MutedStyle, []string{empty}, width)...)
+	}
+	levelWidth := readmeLevelWidth(m.rows(m.activePane()))
+	lines := make([]string, len(subtasks))
+	for i, row := range subtasks {
+		r := todoRow(m.theme, row)
+		if row.kind == rowReadmeTask {
+			r = readmeRow(m.theme, row, levelWidth)
+		}
+		r.indent = 0
+		// Rows fit beside the bar, cut short as in the list rather than wrapped.
+		lines[i] = r.Render(m.theme, max(1, width-barWidth), false)
+	}
+	return append([]string{""}, section("Subtasks", m.theme.MutedStyle, lines, width)...)
+}
+
+// barWidth is how many cells a section's bar takes, with the space after it.
+const barWidth = 2
 
 // section is lines wrapped to fit width beside a bar that runs down from a
 // heading, both drawn in style, so the two read as one block.
 func section(heading string, style lipgloss.Style, lines []string, width int) []string {
 	bar := style.Render("│") + " "
 	result := []string{style.Render("┌ " + heading)}
-	for _, line := range ui.WrapLines(lines, max(1, width-2)) {
+	for _, line := range ui.WrapLines(lines, max(1, width-barWidth)) {
 		result = append(result, bar+line)
 	}
 	return result
