@@ -160,7 +160,7 @@ func (f *taskModal) update(msg tea.Msg) (overlay, tea.Msg, tea.Cmd) {
 	before := f.fieldStates()
 	switch msg := msg.(type) {
 	case tea.PasteMsg:
-		cmd := f.paste(msg)
+		cmd := f.updateField(msg, true)
 		f.recordEdits(before, true)
 		return f, nil, cmd
 	case tea.KeyPressMsg:
@@ -292,39 +292,20 @@ func (f *taskModal) key(msg tea.KeyPressMsg) (overlay, tea.Msg, tea.Cmd) {
 			return f, nil, f.focusField(f.stepField(-1))
 		}
 	}
-	return f, nil, f.typeKey(msg)
+	return f, nil, f.updateField(msg, msg.Text != "")
 }
 
-// typeKey passes a key the form doesn't use itself to the focused field.
-func (f *taskModal) typeKey(msg tea.KeyPressMsg) tea.Cmd {
+// updateField passes msg, a paste or a key the form doesn't use itself, to the
+// focused field. insertsText is whether msg puts text in, which replaces a
+// branch the form filled in rather than extending it; any other key edits it.
+func (f *taskModal) updateField(msg tea.Msg, insertsText bool) tea.Cmd {
 	f.err = nil
 	var cmd tea.Cmd
 	switch f.field {
 	case titleField:
 		f.title, cmd = f.title.Update(msg)
 	case scopeField:
-		if f.branchScope() && f.branchFresh && msg.Text != "" {
-			f.scope.SetValue("")
-		}
-		f.scope, cmd = f.scope.Update(msg)
-		if f.branchScope() {
-			f.branchFresh = false
-			f.resetBranchCursor()
-		}
-	default:
-		f.details, cmd = f.details.Update(msg)
-	}
-	return cmd
-}
-
-func (f *taskModal) paste(msg tea.PasteMsg) tea.Cmd {
-	f.err = nil
-	var cmd tea.Cmd
-	switch f.field {
-	case titleField:
-		f.title, cmd = f.title.Update(msg)
-	case scopeField:
-		if f.branchScope() && f.branchFresh {
+		if f.branchScope() && f.branchFresh && insertsText {
 			f.scope.SetValue("")
 		}
 		f.scope, cmd = f.scope.Update(msg)

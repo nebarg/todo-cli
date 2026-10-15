@@ -1009,3 +1009,34 @@ func TestEditingASubtaskKeepsItWithItsTaskInACategoryOrBranch(t *testing.T) {
 		})
 	}
 }
+
+func TestTextReplacesAPrefilledBranchButOtherKeysEditIt(t *testing.T) {
+	backspace, n := tea.KeyPressMsg{Code: tea.KeyBackspace}, tea.KeyPressMsg{Code: 'n', Text: "n"}
+	for _, c := range []struct {
+		name string
+		msgs []tea.Msg
+		want string
+	}{
+		{"typing", []tea.Msg{tea.KeyPressMsg{Code: 'x', Text: "x"}}, "x"},
+		{"pasting", []tea.Msg{tea.PasteMsg{Content: "x"}}, "x"},
+		{"backspace", []tea.Msg{backspace}, "mai"},
+		{"backspace, then typing", []tea.Msg{backspace, n}, "main"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), project.Repo{Branch: "main"}, testFiles())
+			if err != nil {
+				t.Fatal(err)
+			}
+			m = pressTab(press(m, "b"))
+			if got := form(t, m).scope.Value(); got != "main" {
+				t.Fatalf("the branch field opened with %q, want the current branch", got)
+			}
+			for _, msg := range c.msgs {
+				m.Update(msg)
+			}
+			if got := form(t, m).scope.Value(); got != c.want {
+				t.Fatalf("branch field = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
