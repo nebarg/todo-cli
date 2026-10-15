@@ -180,10 +180,10 @@ func (m *model) contextHints() []ui.KeyHint {
 	index := ui.Hint(keys.AllTasks, "all tasks")
 	remove := ui.Hint(keys.Delete, "delete")
 	addSubtask := ui.Hint(keys.Add, "add subtask")
-	// A subtask keeps its task's category.
-	category := []ui.KeyHint{ui.Hint(keys.Category, "category")}
-	if t, ok := m.selectedTask(); ok && t.Subtask {
-		category = nil
+	// A subtask keeps its task's category, and a branch task has none.
+	var category []ui.KeyHint
+	if t, ok := m.selectedTask(); ok && !t.Subtask && t.Branch == "" {
+		category = []ui.KeyHint{ui.Hint(keys.Category, "category")}
 	}
 	_, readmeTask := m.selectedReadmeTask()
 	switch {
@@ -197,8 +197,6 @@ func (m *model) contextHints() []ui.KeyHint {
 		return []ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "open file"), back, ui.Hint(keys.Open, "details"), index, refresh}
 	case m.readmeSelected():
 		return []ui.KeyHint{ui.Hint(keys.Open, "open"), back, index, refresh}
-	case m.focus == detailPane && m.activePane() == branchPane:
-		return []ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "edit"), ui.Hint(keys.Priority, "priority"), remove, addSubtask, back}
 	case m.focus == detailPane:
 		hints := append([]ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "edit"), ui.Hint(keys.Priority, "priority")}, category...)
 		return append(hints, remove, addSubtask, back)
@@ -218,10 +216,7 @@ func (m *model) contextHints() []ui.KeyHint {
 		}
 		return append(append(hints, m.clearHint()...), index, refresh)
 	}
-	hints := []ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "edit"), ui.Hint(keys.Priority, "priority")}
-	if m.focus == generalPane {
-		hints = append(hints, category...)
-	}
+	hints := append([]ui.KeyHint{ui.Hint(keys.Done, "done"), ui.Hint(keys.Edit, "edit"), ui.Hint(keys.Priority, "priority")}, category...)
 	hints = append(hints, remove, ui.Hint(keys.Add, "add"))
 	if m.focus == generalPane {
 		hints = append(hints, ui.Hint(keys.AddBranch, "branch task"))

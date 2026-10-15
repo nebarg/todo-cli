@@ -353,6 +353,39 @@ func TestFooterOmitsObviousMovementHints(t *testing.T) {
 	}
 }
 
+func TestCategoryIsOfferedOnlyWithAGeneralTaskSelected(t *testing.T) {
+	const tasks = "- [ ] General task\n\n# Branches\n\n## main\n\n- [ ] Branch task\n"
+	for _, c := range []struct {
+		name  string
+		file  string
+		reach func(m *model) *model // gets to the view whose hints are checked
+		offer bool
+	}{
+		{"General list", tasks, func(m *model) *model { return m }, true},
+		{"General task's details", tasks, func(m *model) *model { return press(m, "l") }, true},
+		{"empty General list", "", func(m *model) *model { return m }, false},
+		{"Branches list", tasks, func(m *model) *model { return press(m, "2") }, false},
+		{"branch task's details", tasks, func(m *model) *model { return press(press(m, "2"), "l") }, false},
+		{"All tasks on a general task", tasks, func(m *model) *model { return press(m, "i") }, true},
+		{"All tasks on a branch task", tasks, func(m *model) *model { m = press(m, "i"); m.all.cursor = 1; return m }, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "todo.md")
+			if err := os.WriteFile(path, []byte(c.file), 0644); err != nil {
+				t.Fatal(err)
+			}
+			m, err := newModel(path, project.Repo{Branch: "main"}, testFiles())
+			if err != nil {
+				t.Fatal(err)
+			}
+			hints := ansi.Strip(m.theme.RenderHints(c.reach(m).footerHints()))
+			if offered := strings.Contains(hints, "category"); offered != c.offer {
+				t.Fatalf("the hints offer category = %v, want %v: %q", offered, c.offer, hints)
+			}
+		})
+	}
+}
+
 func TestPriorityReadsFromShapeAsWellAsColour(t *testing.T) {
 	theme := ui.NewTheme(true)
 	marks := map[store.Priority]string{store.PriorityHigh: "●", store.PriorityMedium: "●", store.PriorityLow: "●", store.PriorityNone: "○"}
