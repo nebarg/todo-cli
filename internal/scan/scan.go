@@ -148,7 +148,7 @@ func noteAfterMarker(rest string) string {
 func commentStart(line string) (int, bool) {
 	var quote byte
 	escaped := false
-	for i := 0; i < len(line); i++ {
+	for i := range len(line) {
 		char := line[i]
 		if quote != 0 {
 			switch {

@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"cmp"
+	"maps"
 	"math"
 	"slices"
 	"strings"
@@ -450,14 +451,9 @@ func abs(n int) int {
 }
 
 func sortedNames(counts map[string]int) []string {
-	names := make([]string, 0, len(counts))
-	for name := range counts {
-		names = append(names, name)
-	}
-	slices.SortFunc(names, func(a, b string) int {
+	return slices.SortedFunc(maps.Keys(counts), func(a, b string) int {
 		return cmp.Or(strings.Compare(strings.ToLower(a), strings.ToLower(b)), strings.Compare(a, b))
 	})
-	return names
 }
 
 // sortedTasks is tasks as the dashboard shows them after loading: open

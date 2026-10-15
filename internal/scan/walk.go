@@ -139,7 +139,7 @@ func (w *walker) enclosingScope() ignoreScope {
 			continue
 		}
 		scope := w.repoScope(parent)
-		for depth := range len(segments) {
+		for depth := range segments {
 			gitignore := filepath.Join(parent, filepath.Join(segments[:depth]...), ".gitignore")
 			scope.rules = withIgnoreFile(scope.rules, gitignore, depth)
 		}
