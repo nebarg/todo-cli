@@ -29,7 +29,7 @@ func (m *model) View() tea.View {
 
 	header := m.renderHeader(width)
 	footer := m.renderFooter(width)
-	bodyHeight := height - 2
+	_, bodyHeight := m.bodySize()
 	var body string
 	if m.all != nil {
 		body = m.all.view(m.theme, m.tasks.all, m.branchMissing, width, bodyHeight)
@@ -64,6 +64,13 @@ func (m *model) size() (width, height int) {
 		height = 30
 	}
 	return width, height
+}
+
+// bodySize is the size of the pane between the header and the footer, which
+// take a line each.
+func (m *model) bodySize() (width, height int) {
+	width, height = m.size()
+	return width, height - 2
 }
 
 // placeOver draws box over the middle of content.
@@ -610,9 +617,8 @@ func (m *model) detailLines(width int) []string {
 // detailBottom is the furthest the detail pane scrolls at the terminal's
 // current size: its last line at the bottom of the panel.
 func (m *model) detailBottom() int {
-	width, height := m.size()
-	// The header and footer take a line each, as in View.
-	return max(0, len(m.detailLines(max(1, width-4)))-m.panelContentHeight(height-2))
+	width, height := m.bodySize()
+	return max(0, len(m.detailLines(max(1, width-4)))-m.panelContentHeight(height))
 }
 
 func groupName(row navigationRow) string {
