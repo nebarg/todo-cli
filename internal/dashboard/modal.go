@@ -723,6 +723,9 @@ func fieldAreaStyles(theme ui.Theme) textarea.Styles {
 	styles.Blurred.Text = fieldStyle(theme).Foreground(theme.ColorText)
 	styles.Blurred.CursorLine = styles.Blurred.Text
 	styles.Cursor.Color = theme.ColorFocus
+	// An open form is sent only key presses and pastes, so a blinking cursor
+	// would just start timers whose messages are dropped.
+	styles.Cursor.Blink = false
 	return styles
 }
 
@@ -738,5 +741,8 @@ func fieldInputStyles(theme ui.Theme) textinput.Styles {
 	styles.Blurred = state
 	styles.Blurred.Text = fieldStyle(theme).Foreground(theme.ColorText)
 	styles.Cursor.Color = theme.ColorFocus
+	// An open form is sent only key presses and pastes, so a blinking cursor
+	// would just start timers whose messages are dropped.
+	styles.Cursor.Blink = false
 	return styles
 }

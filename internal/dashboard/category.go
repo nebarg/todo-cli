@@ -51,6 +51,9 @@ func (m *model) startCategoryInput() tea.Cmd {
 	p.resize(m.theme, m.width)
 	styles := p.input.Styles()
 	styles.Focused.Suggestion = m.theme.MutedStyle
+	// An open prompt is sent only key presses and pastes, so a blinking cursor
+	// would just start timers whose messages are dropped.
+	styles.Cursor.Blink = false
 	p.input.SetStyles(styles)
 	p.input.SetValue(selected.Category)
 	suggestCategories(&p.input, m.categoryNames())

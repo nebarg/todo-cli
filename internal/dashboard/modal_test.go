@@ -1040,3 +1040,18 @@ func TestTextReplacesAPrefilledBranchButOtherKeysEditIt(t *testing.T) {
 		})
 	}
 }
+
+func TestTaskFormNeverStartsACursorBlink(t *testing.T) {
+	m, _ := categoriesModel(t)
+	if cmd := m.startTaskModal(modalAddGeneral); cmd != nil {
+		t.Error("opening the form started a command")
+	}
+	typed, tab := tea.KeyPressMsg{Code: 'x', Text: "x"}, tea.KeyPressMsg{Code: tea.KeyTab}
+	// Type in each field, then tab on to the next, and round to the title.
+	for _, msg := range []tea.KeyPressMsg{typed, tab, typed, tab, typed, tab} {
+		field := form(t, m).field
+		if _, cmd := m.Update(msg); cmd != nil {
+			t.Errorf("%s in field %d started a command, such as a cursor blink the form would drop", msg, field)
+		}
+	}
+}

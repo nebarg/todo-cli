@@ -269,3 +269,14 @@ func TestCategoryPromptFitsANarrowTerminal(t *testing.T) {
 		t.Fatalf("the prompt did not take the wider terminal: %q", footer)
 	}
 }
+
+func TestCategoryPromptNeverStartsACursorBlink(t *testing.T) {
+	m, _ := categoriesModel(t)
+	m.general.cursor = 3
+	if cmd := m.startCategoryInput(); cmd != nil {
+		t.Error("opening the prompt started a command")
+	}
+	if _, cmd := m.Update(tea.KeyPressMsg{Code: 'x', Text: "x"}); cmd != nil {
+		t.Error("typing in the prompt started a command, such as a cursor blink it would drop")
+	}
+}
