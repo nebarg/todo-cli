@@ -29,7 +29,7 @@ type taskModal struct {
 	mode          modalMode
 	saveKey       string // the save key the footer offers
 	selected      store.Task
-	parent        store.Task // the task a subtask's form adds under, or edits under
+	parent        store.Task // the task a new subtask goes under
 	file          string
 	target        store.Section
 	onCurrent     bool // target is the current Git branch, which Git's answer may update
@@ -79,7 +79,7 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 		modal.selected = selected
 		modal.target = selected.Section
 	}
-	if mode == modalAddSubtask || modal.selected.Subtask {
+	if mode == modalAddSubtask {
 		parent, ok := m.selectedParent()
 		if !ok {
 			m.status = "Open a Markdown task's details to add a subtask"

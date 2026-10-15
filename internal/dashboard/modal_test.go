@@ -976,3 +976,36 @@ func TestEditingOnlyTheTitleKeepsDetailsWithATab(t *testing.T) {
 		t.Fatalf("after renaming the task:\n%q\nwant\n%q", got, want)
 	}
 }
+
+func TestEditingASubtaskKeepsItWithItsTaskInACategoryOrBranch(t *testing.T) {
+	for _, c := range []struct {
+		name, tasks, crumbs string
+		section             store.Section
+		open                func(m *model)
+	}{
+		{"category", "# auth\n\n- [ ] Ship login\n  - [ ] Write the form\n", "General › @auth › Task › Edit subtask", store.Section{Category: "auth"},
+			func(m *model) { m.general.open, m.general.cursor = categoryGroup("auth"), 1 }},
+		{"branch", "# Branches\n\n## feature/a\n\n- [ ] Ship login\n  - [ ] Write the form\n", "Branches › " + branchIcon + " feature/a › Task › Edit subtask", store.Section{Branch: "feature/a"},
+			func(m *model) { m.focus, m.branch.open, m.branch.cursor = branchPane, branchGroup("feature/a"), 1 }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			m, path := modelWithTasks(t, c.tasks)
+			c.open(m)
+			m = press(m, "e")
+			if plain := ansi.Strip(form(t, m).render(m.theme, 70, 20)); !strings.Contains(plain, c.crumbs) {
+				t.Fatalf("subtask form:\n%s", plain)
+			}
+			m = pressCtrl(typeText(m, " again"), 's')
+			if isOpen[*taskModal](m) {
+				t.Fatalf("save failed: %v", form(t, m).err)
+			}
+			want := strings.Replace(c.tasks, "Write the form", "Write the form again", 1)
+			if got := readFile(t, path); got != want {
+				t.Fatalf("after renaming the subtask:\n%q\nwant\n%q", got, want)
+			}
+			if selected, ok := m.selectedTask(); !ok || selected.Text != "Write the form again" || !selected.Subtask || selected.Section != c.section {
+				t.Fatalf("view did not stay with the subtask: %+v", selected)
+			}
+		})
+	}
+}
