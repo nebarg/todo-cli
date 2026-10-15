@@ -185,6 +185,62 @@ func TestWritesFollowSymlinks(t *testing.T) {
 	}
 }
 
+func TestWritesKeepTheFilesPermissions(t *testing.T) {
+	for _, write := range []struct {
+		name string
+		run  func(path string, tasks []Task) error
+	}{
+		{"edit", func(path string, tasks []Task) error {
+			return Edit(path, tasks[0], "Renamed", "", tasks[0].Section)
+		}},
+		{"add", func(path string, _ []Task) error {
+			return Add(path, "New", "", PriorityNone, Section{})
+		}},
+		{"clear done", func(path string, tasks []Task) error {
+			r, err := PlanRemove(path, doneTasks(tasks))
+			if err != nil {
+				return err
+			}
+			return r.Apply()
+		}},
+	} {
+		t.Run(write.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "todo.md")
+			if err := os.WriteFile(path, []byte("- [x] Done\n- [ ] Open\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			tasks, err := Load(path)
+			if err != nil || len(tasks) != 2 {
+				t.Fatalf("tasks = %+v, %v", tasks, err)
+			}
+			if err := write.run(path, tasks); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode := info.Mode().Perm(); mode != 0600 {
+				t.Fatalf("mode after %s = %#o, want 0600", write.name, mode)
+			}
+		})
+	}
+}
+
+func TestAddCreatesAMissingFileWith0644(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := Add(path, "First", "", PriorityNone, Section{}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode := info.Mode().Perm(); mode != 0644 {
+		t.Fatalf("new file's mode = %#o, want 0644", mode)
+	}
+}
+
 func TestChangingCategoryToSymbolName(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
 	if err := Add(path, "Task", "", "", Section{Category: "auth"}); err != nil {

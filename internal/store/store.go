@@ -291,13 +291,11 @@ func Add(path, title, details string, p Priority, to Section) error {
 	if err != nil {
 		return err
 	}
-	data, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	data, mode, err := readFileAndMode(path)
+	if errors.Is(err, os.ErrNotExist) {
+		mode = os.FileMode(0644)
+	} else if err != nil {
 		return err
-	}
-	mode := os.FileMode(0644)
-	if info, err := os.Stat(path); err == nil {
-		mode = info.Mode().Perm()
 	}
 	block := []string{"- [ ] " + title + priorityToken(p)}
 	if body := formattedDetails(details, ""); len(body) > 0 {
@@ -464,11 +462,7 @@ func editedTaskLines(lines []string, selected Task, title, details string) []str
 // rewriteTask replaces the file with change(lines), refusing when selected no
 // longer matches the file so edits never land on the wrong task.
 func rewriteTask(path string, selected Task, change func(lines []string) []string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	info, err := os.Stat(path)
+	data, mode, err := readFileAndMode(path)
 	if err != nil {
 		return err
 	}
@@ -476,7 +470,7 @@ func rewriteTask(path string, selected Task, change func(lines []string) []strin
 	if !taskUnchanged(lines, selected) {
 		return ErrTaskChanged
 	}
-	return replaceFile(path, []byte(format.encode(change(lines))), info.Mode().Perm())
+	return replaceFile(path, []byte(format.encode(change(lines))), mode)
 }
 
 func taskUnchanged(lines []string, selected Task) bool {
@@ -766,6 +760,20 @@ func removeEmptyBranchHeading(lines []string, branch string) []string {
 		return lines
 	}
 	return slices.Concat(lines[:branchStart], lines[branchEnd:])
+}
+
+// readFileAndMode reads the file at path and its permissions, so a write can
+// keep them. A missing file's error matches os.ErrNotExist.
+func readFileAndMode(path string) ([]byte, os.FileMode, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	return data, info.Mode().Perm(), nil
 }
 
 func replaceFile(path string, data []byte, mode os.FileMode) error {

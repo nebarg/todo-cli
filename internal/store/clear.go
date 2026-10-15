@@ -72,15 +72,11 @@ type Removal struct {
 // PlanRemove works out the file without tasks, and which category and branch
 // headings they leave empty, without writing it.
 func PlanRemove(path string, tasks []Task) (Removal, error) {
-	data, err := os.ReadFile(path)
+	data, mode, err := readFileAndMode(path)
 	if err != nil {
 		return Removal{}, err
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return Removal{}, err
-	}
-	r := Removal{Tasks: withoutNested(tasks), path: path, before: string(data), mode: info.Mode().Perm()}
+	r := Removal{Tasks: withoutNested(tasks), path: path, before: string(data), mode: mode}
 	// Removing from the bottom up keeps the line numbers of the tasks and
 	// headings still to come valid.
 	slices.SortFunc(r.Tasks, func(a, b Task) int { return cmp.Compare(b.Line, a.Line) })
