@@ -21,7 +21,7 @@ const detailsMark = "›"
 
 func (m *model) View() tea.View {
 	width, height := m.size()
-	if width < 56 || height < 16 {
+	if ui.TooSmall(width, height) {
 		v := tea.NewView("todo · enlarge your terminal\nq quit")
 		v.AltScreen = true
 		return v

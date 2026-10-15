@@ -21,3 +21,17 @@ func Run(m tea.Model, out io.Writer) error {
 	_, err := tea.NewProgram(m, tea.WithOutput(out)).Run()
 	return err
 }
+
+// minWidth and minHeight are the smallest terminal, in cells, that the
+// dashboard and the file scanner can lay their screens out in.
+const (
+	minWidth  = 56
+	minHeight = 16
+)
+
+// TooSmall reports whether a terminal of width × height is smaller than the
+// dashboard and the file scanner can lay their screens out in, so they ask
+// for a larger one instead.
+func TooSmall(width, height int) bool {
+	return width < minWidth || height < minHeight
+}

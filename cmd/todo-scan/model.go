@@ -92,7 +92,7 @@ var pinnedHints = []ui.KeyHint{ui.Hint(keys.Quit, "quit")}
 
 func (m *model) View() tea.View {
 	width, height := m.width, m.height
-	if width < 56 || height < 16 {
+	if ui.TooSmall(width, height) {
 		v := tea.NewView("todo-scan · enlarge your terminal\nq quit")
 		v.AltScreen = true
 		return v

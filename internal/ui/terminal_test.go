@@ -37,3 +37,23 @@ func TestRunNeedsATerminal(t *testing.T) {
 		t.Fatalf("Run wrote to the file: %v, %v", info, err)
 	}
 }
+
+func TestATerminalIsTooSmallWhenEitherSideIsBelowTheMinimum(t *testing.T) {
+	for _, c := range []struct {
+		width, height int
+		want          bool
+	}{
+		{56, 16, false},
+		{120, 40, false},
+		{55, 16, true},
+		{56, 15, true},
+		{55, 15, true},
+		{200, 15, true},
+		{55, 60, true},
+		{0, 0, true},
+	} {
+		if got := TooSmall(c.width, c.height); got != c.want {
+			t.Errorf("TooSmall(%d, %d) = %v, want %v", c.width, c.height, got, c.want)
+		}
+	}
+}
