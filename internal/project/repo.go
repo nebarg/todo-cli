@@ -90,8 +90,8 @@ func (r Repo) branchExists(name string) (exists, verified bool) {
 	if err == nil {
 		return true, true
 	}
-	var exitErr *exec.ExitError
-	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+	exitErr, ok := errors.AsType[*exec.ExitError](err)
+	if !ok || exitErr.ExitCode() != 1 {
 		return false, false
 	}
 	// An unborn current branch has no ref yet, but is still the active branch.
