@@ -188,3 +188,16 @@ func TestIndexTaskActionsAndPriorityPalette(t *testing.T) {
 		})
 	}
 }
+
+func TestAddInAllTasksOpenedFromDetailsAddsATaskNotASubtask(t *testing.T) {
+	m, _ := modelWithTasks(t, "- [ ] Task\n")
+	pressKey(t, m, "right")
+	m = press(m, "i")
+	if m.focus != detailPane {
+		t.Fatalf("focus = %v, want the details to stay open under All tasks", m.focus)
+	}
+	m = press(m, "a")
+	if f := form(t, m); f.mode != modalAddGeneral {
+		t.Fatalf("a opened a form of mode %d, want %d to add a task", f.mode, modalAddGeneral)
+	}
+}

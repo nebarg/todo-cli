@@ -179,7 +179,7 @@ func (m *model) taskKey(msg tea.KeyPressMsg) tea.Cmd {
 		case m.readmeSelected():
 			m.status = readmeReadOnly
 			return nil
-		case m.focus == detailPane:
+		case m.all == nil && m.focus == detailPane:
 			return m.startTaskModal(modalAddSubtask)
 		case m.all == nil && m.activePane() == branchPane:
 			return m.startTaskModal(modalAddBranch)
