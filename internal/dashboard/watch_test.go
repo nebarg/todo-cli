@@ -140,6 +140,20 @@ func TestOutsideEditsReloadKeepingRowsInPlace(t *testing.T) {
 	}
 }
 
+func TestOutsideEditRemovingATaskClosesItsDetails(t *testing.T) {
+	m, path := modelWithTasks(t, "- [ ] Loose\n\n# docs\n\n- [ ] Doc\n")
+	selectTask(t, m, "Loose")
+	pressKey(t, m, "right")
+	if m.focus != detailPane {
+		t.Fatalf("focus = %v, want the details of Loose open", m.focus)
+	}
+	writeFile(t, path, "# docs\n\n- [ ] Doc\n")
+	m.filesChanged(filesChangedMsg{})
+	if m.focus != generalPane {
+		t.Fatalf("focus = %v after the task went, want the General list", m.focus)
+	}
+}
+
 func TestOwnWritesDontReloadOrLoseUndo(t *testing.T) {
 	m, path := clearModel(t)
 	selectTask(t, m, "Loose open")

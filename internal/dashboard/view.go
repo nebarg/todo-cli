@@ -608,9 +608,6 @@ func (m *model) renderDetailPane(width, height int) string {
 // it is cut to the panel's height.
 func (m *model) detailLines(width int) []string {
 	lines := []string{m.theme.Breadcrumb(m.breadcrumb(detailPane), "", width), ""}
-	if row, ok := m.selectedNavigationRow(); ok && !row.isTask() {
-		return append(lines, m.groupDetails(row, width)...)
-	}
 	return append(lines, m.taskDetails(width)...)
 }
 
@@ -619,26 +616,6 @@ func (m *model) detailLines(width int) []string {
 func (m *model) detailBottom() int {
 	width, height := m.bodySize()
 	return max(0, len(m.detailLines(max(1, width-4)))-m.panelContentHeight(height))
-}
-
-func groupName(row navigationRow) string {
-	if row.kind == rowCategory {
-		return "@" + row.name
-	}
-	return row.name
-}
-
-func (m *model) groupDetails(row navigationRow, width int) []string {
-	scope := "general tasks"
-	switch row.kind {
-	case rowBranch:
-		scope = "branch tasks"
-	case rowReadme:
-		scope = "tasks under TODO headings"
-	case rowReadmeHeading:
-		scope = "tasks under this heading"
-	}
-	return ui.WrapLines([]string{m.theme.TaskTitleStyle.Render(groupName(row)), "", fmt.Sprintf("%d/%d %s", row.completed, row.count, scope), "", m.theme.MutedStyle.Render("enter or → to open")}, width)
 }
 
 // taskDetails is the selected task's title in a Task section, then its

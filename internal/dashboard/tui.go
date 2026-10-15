@@ -623,6 +623,13 @@ func (m *model) readTasks(sort bool, changed []store.Task) error {
 	} else if selectionChanged {
 		m.selectNavigationTask(previous)
 	}
+	// The task whose details are open may have gone, leaving a group or
+	// nothing selected, and neither has details to show.
+	if m.focus == detailPane {
+		if row, ok := m.selectedNavigationRow(); !ok || !row.isTask() {
+			m.focus, m.detailScroll = m.detailFrom, 0
+		}
+	}
 	return nil
 }
 
