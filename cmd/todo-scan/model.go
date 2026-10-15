@@ -112,11 +112,7 @@ func (m *model) View() tea.View {
 func (m *model) renderHeader(width int) string {
 	bar := lipgloss.NewStyle().Background(m.theme.ColorBar)
 	title := m.theme.TitleStyle.Background(m.theme.ColorBar).Render(" todo-scan ")
-	one, many := "TODO", "TODOs"
-	if m.levelled {
-		one, many = "levelled TODO", "levelled TODOs"
-	}
-	count := ui.Plural(m.files.Total(), one, many)
+	count := countTodos(m.files.Total(), m.levelled)
 	if m.files.Loading() {
 		count = "scanning…"
 	}

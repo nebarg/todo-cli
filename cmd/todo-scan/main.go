@@ -124,19 +124,24 @@ func report(ctx context.Context, out, errOut io.Writer, o options) int {
 	if !o.check {
 		return exitClean
 	}
-	one, many := "TODO", "TODOs"
-	if o.levels || len(o.level) > 0 {
-		one, many = "levelled TODO", "levelled TODOs"
-	}
 	countOut := out
 	if o.list {
 		countOut = errOut
 	}
-	_, _ = fmt.Fprintln(countOut, ui.Plural(len(matches), one, many))
+	_, _ = fmt.Fprintln(countOut, countTodos(len(matches), o.levels || len(o.level) > 0))
 	if len(matches) > 0 {
 		return exitFound
 	}
 	return exitClean
+}
+
+// countTodos reads like "1 TODO" or "3 TODOs", or like "1 levelled TODO" or
+// "3 levelled TODOs" when only the TODOs with a level are counted.
+func countTodos(n int, levelled bool) string {
+	if levelled {
+		return ui.Plural(n, "levelled TODO", "levelled TODOs")
+	}
+	return ui.Plural(n, "TODO", "TODOs")
 }
 
 func main() {
