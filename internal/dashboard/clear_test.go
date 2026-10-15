@@ -98,6 +98,17 @@ func TestClearDoneFollowsWhereYouAre(t *testing.T) {
 	}
 }
 
+func TestClearingATaskKeepsAnotherTasksSubtasksInOrder(t *testing.T) {
+	m, path := modelWithTasks(t, "- [x] A\n  - [ ] docs\n- [ ] B\n  - [ ] tests\n  - [ ] docs\n")
+	m = press(press(m, "X"), "y")
+	if got, want := fileContent(t, path), "- [ ] B\n  - [ ] tests\n  - [ ] docs\n"; got != want {
+		t.Fatalf("file = %q, want %q", got, want)
+	}
+	if got := rowTitles(m); got != "B,tests,docs" {
+		t.Fatalf("rows after the clear = %q, want B,tests,docs", got)
+	}
+}
+
 func TestClearDoneNamesHeadingsItEmpties(t *testing.T) {
 	m, _ := clearModel(t)
 	m.openAllTasks()

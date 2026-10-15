@@ -319,3 +319,15 @@ func TestDeletingOneOfIdenticalTasksLeavesTheOtherInPlace(t *testing.T) {
 		})
 	}
 }
+
+func TestDeletingATaskKeepsAnotherTasksSubtasksInOrder(t *testing.T) {
+	m, path := modelWithTasks(t, "- [ ] A\n  - [ ] docs\n- [ ] B\n  - [ ] tests\n  - [ ] docs\n")
+	selectTask(t, m, "A")
+	m = press(press(m, "backspace"), "y")
+	if got, want := fileContent(t, path), "- [ ] B\n  - [ ] tests\n  - [ ] docs\n"; got != want {
+		t.Fatalf("file = %q, want %q", got, want)
+	}
+	if got := rowTitles(m); got != "B,tests,docs" {
+		t.Fatalf("rows after the delete = %q, want B,tests,docs", got)
+	}
+}

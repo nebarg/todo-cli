@@ -134,8 +134,8 @@ func (m *model) applyRemoval(msg removalConfirmedMsg) (tea.Model, tea.Cmd) {
 	}
 	order := m.tasks.all
 	// Rows keep their place by matching each task to one with the same text
-	// nearest its old line. Without the removed tasks, an identical task left
-	// can't take one's place.
+	// nearest its old line. Without the removed tasks and their subtasks, an
+	// identical task left can't take one's place.
 	if err := m.refreshFrom(withoutTasks(order, msg.removal.Tasks)); err != nil {
 		m.status = err.Error()
 		return m, nil
@@ -145,11 +145,12 @@ func (m *model) applyRemoval(msg removalConfirmedMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// withoutTasks is tasks less those in removed, both from the same read of
-// the file, where a line holds one task.
+// withoutTasks is tasks less those in removed and the subtasks they hold,
+// which go with them. Both are from the same read of the file, where a line
+// holds one task.
 func withoutTasks(tasks, removed []store.Task) []store.Task {
 	return slices.DeleteFunc(slices.Clone(tasks), func(t store.Task) bool {
-		return slices.ContainsFunc(removed, func(r store.Task) bool { return r.Line == t.Line })
+		return slices.ContainsFunc(removed, func(r store.Task) bool { return r.Line == t.Line || r.Holds(t) })
 	})
 }
 
