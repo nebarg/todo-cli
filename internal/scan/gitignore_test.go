@@ -31,6 +31,7 @@ func TestIgnoreRulesMatchGit(t *testing.T) {
 }
 
 func testIgnoreRulesMatchGit(t *testing.T, userIgnoreCase, repoIgnoreCase string) {
+	t.Helper()
 	config := t.TempDir()
 	gitconfig := "[user]\n\tname = Test\n[core]\n\texcludesFile = " + filepath.Join(config, "ignore") + " ; a comment\n"
 	if userIgnoreCase != "" {

@@ -463,6 +463,7 @@ func TestFilesTabKeysReachTheBrowser(t *testing.T) {
 
 func TestReloadFollowsASwitchedGitBranch(t *testing.T) {
 	setup := func(t *testing.T) (*model, string) {
+		t.Helper()
 		dir := t.TempDir()
 		repo := projecttest.Repo(t, dir, "main", "feature/x", "feature/empty")
 		path := filepath.Join(dir, "todo.md")

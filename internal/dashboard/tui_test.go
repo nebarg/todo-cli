@@ -95,9 +95,20 @@ func opened[T overlay](t *testing.T, m *model) T {
 	return o
 }
 
-func form(t *testing.T, m *model) *taskModal                 { return opened[*taskModal](t, m) }
-func confirmation(t *testing.T, m *model) *clearConfirmation { return opened[*clearConfirmation](t, m) }
-func prompt(t *testing.T, m *model) *categoryPrompt          { return opened[*categoryPrompt](t, m) }
+func form(t *testing.T, m *model) *taskModal {
+	t.Helper()
+	return opened[*taskModal](t, m)
+}
+
+func confirmation(t *testing.T, m *model) *clearConfirmation {
+	t.Helper()
+	return opened[*clearConfirmation](t, m)
+}
+
+func prompt(t *testing.T, m *model) *categoryPrompt {
+	t.Helper()
+	return opened[*categoryPrompt](t, m)
+}
 
 func TestChangingCategoryKeepsTaskSelected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")

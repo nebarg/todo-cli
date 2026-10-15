@@ -16,30 +16,30 @@ import (
 // Repo makes dir a Git repository on the branch current, with one commit and
 // a local branch for each of others, and returns it as a project.Repo. It
 // skips the test when Git is unavailable.
-func Repo(t testing.TB, dir, current string, others ...string) project.Repo {
-	t.Helper()
+func Repo(tb testing.TB, dir, current string, others ...string) project.Repo {
+	tb.Helper()
 	if _, err := git(dir, "init", "-q"); err != nil {
-		t.Skipf("Git is unavailable: %v", err)
+		tb.Skipf("Git is unavailable: %v", err)
 	}
-	Git(t, dir, "symbolic-ref", "HEAD", "refs/heads/"+current)
+	Git(tb, dir, "symbolic-ref", "HEAD", "refs/heads/"+current)
 	if err := os.WriteFile(filepath.Join(dir, ".test-anchor"), []byte("fixture\n"), 0644); err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
-	Git(t, dir, "add", ".test-anchor")
-	Git(t, dir, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "initial")
+	Git(tb, dir, "add", ".test-anchor")
+	Git(tb, dir, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "initial")
 	for _, branch := range others {
-		Git(t, dir, "branch", branch)
+		Git(tb, dir, "branch", branch)
 	}
 	return project.Repo{Root: dir, Branch: current}
 }
 
 // Git runs git -C dir with args, failing the test if Git does, and returns
 // its output without surrounding whitespace.
-func Git(t testing.TB, dir string, args ...string) string {
-	t.Helper()
+func Git(tb testing.TB, dir string, args ...string) string {
+	tb.Helper()
 	out, err := git(dir, args...)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	return out
 }

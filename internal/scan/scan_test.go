@@ -269,6 +269,7 @@ var setups = []struct {
 
 // keepGitConfigOut stops the user's global gitignore from hiding test files.
 func keepGitConfigOut(t *testing.T) {
+	t.Helper()
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())

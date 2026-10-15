@@ -126,10 +126,12 @@ func TestDeleteFromAllTasksAndDetails(t *testing.T) {
 		pick func(t *testing.T, m *model)
 	}{
 		{"all tasks", func(t *testing.T, m *model) {
+			t.Helper()
 			m.openAllTasks()
 			m.all.cursor = slices.IndexFunc(m.all.sorted(m.tasks.all), func(t store.Task) bool { return t.Text == "Auth open" })
 		}},
 		{"details", func(t *testing.T, m *model) {
+			t.Helper()
 			m.general.open = categoryGroup("auth")
 			selectTask(t, m, "Auth open")
 			m.detailFrom, m.focus = generalPane, detailPane
@@ -156,11 +158,13 @@ func TestDeleteRefusesWhatItCannotDelete(t *testing.T) {
 		status string
 	}{
 		{"file TODO", func(t *testing.T) *model {
+			t.Helper()
 			m, _ := clearModel(t)
 			m.focus = sourcePane
 			return m
 		}, "File TODOs are read only"},
 		{"README.md row", func(t *testing.T) *model {
+			t.Helper()
 			m, path := clearModel(t)
 			if err := os.WriteFile(filepath.Join(filepath.Dir(path), "README.md"), []byte("## TODOs\n\n- Write docs\n"), 0644); err != nil {
 				t.Fatal(err)
@@ -175,6 +179,7 @@ func TestDeleteRefusesWhatItCannotDelete(t *testing.T) {
 			return m
 		}, readmeReadOnly},
 		{"README task", func(t *testing.T) *model {
+			t.Helper()
 			m, path := clearModel(t)
 			if err := os.WriteFile(filepath.Join(filepath.Dir(path), "README.md"), []byte("## TODOs\n\n- Write docs\n"), 0644); err != nil {
 				t.Fatal(err)
