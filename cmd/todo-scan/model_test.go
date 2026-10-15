@@ -88,6 +88,16 @@ func TestHeaderShortensTheDirectory(t *testing.T) {
 	}
 }
 
+func TestDisplayDirWritesTheHomeDirectoryAsATilde(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip(err)
+	}
+	if got := displayDir(home); got != "~" {
+		t.Fatalf("displayDir(%q) = %q, want ~", home, got)
+	}
+}
+
 func TestKeys(t *testing.T) {
 	m := scannedModel(t)
 	for _, k := range []string{"q", "ctrl+c"} {

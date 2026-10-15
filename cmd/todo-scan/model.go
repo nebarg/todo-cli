@@ -140,8 +140,5 @@ func displayDir(dir string) string {
 	if rel, err := filepath.Rel(home, dir); err == nil && filepath.IsLocal(rel) {
 		return filepath.Join("~", rel)
 	}
-	if dir == home {
-		return "~"
-	}
 	return dir
 }
