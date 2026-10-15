@@ -355,26 +355,27 @@ func (m *model) taskList() ([]navigationRow, int) {
 	return nil, 0
 }
 
-func taskStatus(theme ui.Theme, t store.Task) string {
-	status := lipgloss.NewStyle().Foreground(theme.ColorText).Render("Open")
-	if t.Done {
-		status = lipgloss.NewStyle().Foreground(theme.ColorGreen).Render("Done")
+// completionStatus says whether a task is done, for the status bar: Done in
+// green, or Open.
+func completionStatus(theme ui.Theme, done bool) string {
+	if done {
+		return lipgloss.NewStyle().Foreground(theme.ColorGreen).Render("Done")
 	}
+	return lipgloss.NewStyle().Foreground(theme.ColorText).Render("Open")
+}
+
+func taskStatus(theme ui.Theme, t store.Task) string {
 	priority := theme.MutedStyle.Render("No priority")
 	if t.Priority != store.PriorityNone {
 		priority = priorityStyle(theme, t.Priority).UnsetBold().Render(t.Priority.Title() + " priority")
 	}
-	return status + theme.MutedStyle.Render("  ·  ") + priority
+	return completionStatus(theme, t.Done) + theme.MutedStyle.Render("  ·  ") + priority
 }
 
 // readmeTaskStatus names where a README task is, as the Files tab does,
 // since it has no priority.
 func readmeTaskStatus(theme ui.Theme, t store.ReadmeTask) string {
-	status := lipgloss.NewStyle().Foreground(theme.ColorText).Render("Open")
-	if t.Done {
-		status = lipgloss.NewStyle().Foreground(theme.ColorGreen).Render("Done")
-	}
-	return status + theme.MutedStyle.Render(fmt.Sprintf("  ·  %s:%d", readmeGroup, t.Line+1))
+	return completionStatus(theme, t.Done) + theme.MutedStyle.Render(fmt.Sprintf("  ·  %s:%d", readmeGroup, t.Line+1))
 }
 
 func (m *model) panelContentHeight(height int) int {
