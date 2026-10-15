@@ -1,8 +1,6 @@
 package store
 
 import (
-	"errors"
-	"os"
 	"regexp"
 	"strings"
 
@@ -11,7 +9,7 @@ import (
 
 var readmeLevel = regexp.MustCompile(`(?i)^todo([0-9]+):?$`)
 
-// ReadmeTask is a list item in a README's to-dos. LoadReadme reads it and
+// ReadmeTask is a list item in a README's to-dos. ParseReadme reads it and
 // ToggleReadme marks it done or reopens it; the task file's write functions
 // don't take it. The unexported field records the line as read, so a write
 // can refuse a line that changed on disk.
@@ -38,19 +36,6 @@ type ReadmeTask struct {
 // task is t in the shape rewriteTask checks: one line with no body.
 func (t ReadmeTask) task() Task {
 	return Task{Line: t.Line, Done: t.Done, raw: t.raw, bodyStart: t.Line + 1, bodyEnd: t.Line + 1}
-}
-
-// LoadReadme reads the README at path and returns its to-dos, as ParseReadme
-// reads them. A missing file has no tasks.
-func LoadReadme(path string) ([]ReadmeTask, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return ParseReadme(data), nil
 }
 
 // ParseReadme reads a README's to-dos from its contents as todo-system does:

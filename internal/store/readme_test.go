@@ -38,15 +38,19 @@ const readmeSample = "# Project\n\n" +
 	"### todo\n\n" +
 	"- [X] lower heading\r\n"
 
-func TestLoadReadmeFindsListItemsUnderTodoHeadings(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "README.md")
-	if err := os.WriteFile(path, []byte(readmeSample), 0644); err != nil {
-		t.Fatal(err)
-	}
-	tasks, err := LoadReadme(path)
+// parseReadmeFile parses the README at path, so a test can parse what it has
+// written to the file.
+func parseReadmeFile(t *testing.T, path string) []ReadmeTask {
+	t.Helper()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return ParseReadme(data)
+}
+
+func TestParseReadmeFindsListItemsUnderTodoHeadings(t *testing.T) {
+	tasks := ParseReadme([]byte(readmeSample))
 	type want struct {
 		line  int
 		text  string
@@ -77,8 +81,7 @@ func TestLoadReadmeFindsListItemsUnderTodoHeadings(t *testing.T) {
 	}
 }
 
-func TestLoadReadmeKeepsHeadingsInsideATodoSection(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "README.md")
+func TestParseReadmeKeepsHeadingsInsideATodoSection(t *testing.T) {
 	readme := "# Todo\n\n" +
 		"- loose\n\n" +
 		"## Backend\n\n" +
@@ -95,13 +98,7 @@ func TestLoadReadmeKeepsHeadingsInsideATodoSection(t *testing.T) {
 		"- under a nested todo heading\n" +
 		"## Usage\n" +
 		"- not a task either\n"
-	if err := os.WriteFile(path, []byte(readme), 0644); err != nil {
-		t.Fatal(err)
-	}
-	tasks, err := LoadReadme(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	tasks := ParseReadme([]byte(readme))
 	type want struct {
 		line    int
 		text    string
@@ -128,7 +125,7 @@ func TestLoadReadmeKeepsHeadingsInsideATodoSection(t *testing.T) {
 	}
 }
 
-func TestLoadReadmeReadsPlainItemsUnderACheckboxTaskAsDetails(t *testing.T) {
+func TestParseReadmeReadsPlainItemsUnderACheckboxTaskAsDetails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "README.md")
 	readme := "## TODOs\n\n" +
 		"- [ ] **Slug stability.** Renaming a workspace regenerates its slug.\n" +
@@ -148,10 +145,7 @@ func TestLoadReadmeReadsPlainItemsUnderACheckboxTaskAsDetails(t *testing.T) {
 	if err := os.WriteFile(path, []byte(readme), 0644); err != nil {
 		t.Fatal(err)
 	}
-	tasks, err := LoadReadme(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	tasks := parseReadmeFile(t, path)
 	type want struct {
 		line    int
 		text    string
@@ -186,17 +180,9 @@ func TestLoadReadmeReadsPlainItemsUnderACheckboxTaskAsDetails(t *testing.T) {
 	}
 }
 
-func TestLoadReadmeWithoutFileOrTodoSection(t *testing.T) {
-	dir := t.TempDir()
-	if tasks, err := LoadReadme(filepath.Join(dir, "README.md")); err != nil || tasks != nil {
-		t.Fatalf("missing README = %v, %v", tasks, err)
-	}
-	path := filepath.Join(dir, "README.md")
-	if err := os.WriteFile(path, []byte("# Project\n\n- feature\n\n## Todo list\n\n- not a todo section\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if tasks, err := LoadReadme(path); err != nil || len(tasks) != 0 {
-		t.Fatalf("README without a TODO heading = %+v, %v", tasks, err)
+func TestParseReadmeFindsNoTasksWithoutATodoSection(t *testing.T) {
+	if tasks := ParseReadme([]byte("# Project\n\n- feature\n\n## Todo list\n\n- not a todo section\n")); len(tasks) != 0 {
+		t.Fatalf("README without a TODO heading = %+v", tasks)
 	}
 }
 
@@ -218,10 +204,7 @@ func TestToggleReadmeOnlyChangesTheCheckbox(t *testing.T) {
 		{2, "# Todo\n\n- [ ] todo0 plain item !high\n  - [x] nested\n- [ ] done item\n\n## Next\n"},
 	}
 	for _, step := range steps {
-		tasks, err := LoadReadme(path)
-		if err != nil {
-			t.Fatal(err)
-		}
+		tasks := parseReadmeFile(t, path)
 		if err := ToggleReadme(path, tasks[step.task]); err != nil {
 			t.Fatal(err)
 		}
@@ -240,9 +223,9 @@ func TestReadmeByteOrderMarkDoesNotHideTheHeading(t *testing.T) {
 	if err := os.WriteFile(path, []byte(byteOrderMark+"## TODO\n\n- Write docs\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	tasks, err := LoadReadme(path)
-	if err != nil || len(tasks) != 1 || tasks[0].Text != "Write docs" {
-		t.Fatalf("tasks = %+v, %v", tasks, err)
+	tasks := parseReadmeFile(t, path)
+	if len(tasks) != 1 || tasks[0].Text != "Write docs" {
+		t.Fatalf("tasks = %+v", tasks)
 	}
 	if err := ToggleReadme(path, tasks[0]); err != nil {
 		t.Fatal(err)
@@ -257,10 +240,7 @@ func TestToggleReadmeRefusesAChangedLine(t *testing.T) {
 	if err := os.WriteFile(path, []byte("## TODO\n\n- first\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	tasks, err := LoadReadme(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	tasks := parseReadmeFile(t, path)
 	if err := os.WriteFile(path, []byte("## TODO\n\n- first, reworded\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -275,10 +255,7 @@ func TestReadmeTaskRoundTripsThroughToggle(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	read, err := LoadReadme(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	read := parseReadmeFile(t, path)
 	want := []ReadmeTask{
 		{Line: 4, Text: "Fix it", Level: "0", raw: "- todo0 Fix it"},
 		{Line: 5, Text: "Shipped", Done: true, raw: "- [x] Shipped"},
@@ -290,10 +267,7 @@ func TestReadmeTaskRoundTripsThroughToggle(t *testing.T) {
 	if err := ToggleReadme(path, read[0]); err != nil {
 		t.Fatal(err)
 	}
-	done, err := LoadReadme(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	done := parseReadmeFile(t, path)
 	want[0].Done, want[0].raw = true, "- [x] todo0 Fix it"
 	if !reflect.DeepEqual(done, want) {
 		t.Fatalf("after done %+v, want %+v", done, want)
@@ -305,10 +279,7 @@ func TestReadmeTaskRoundTripsThroughToggle(t *testing.T) {
 	if err := ToggleReadme(path, done[0]); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := LoadReadme(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	reopened := parseReadmeFile(t, path)
 	// Reopening leaves the checkbox that marking it done added.
 	want[0].Done, want[0].raw = false, "- [ ] todo0 Fix it"
 	if !reflect.DeepEqual(reopened, want) {
