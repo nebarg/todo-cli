@@ -84,7 +84,7 @@ func (d *deleteConfirmation) doneStatus() string {
 
 func (d *deleteConfirmation) view(theme ui.Theme, _, _ int) string { return d.render(theme) }
 
-func (d deleteConfirmation) render(theme ui.Theme) string {
+func (d *deleteConfirmation) render(theme ui.Theme) string {
 	if d.group != "" {
 		title := fmt.Sprintf("Delete %s and its %s?", d.group, taskCount(len(d.removal.Tasks)))
 		return renderConfirmation(theme, title, []string{openAndDone(d.removal.Tasks)}, "delete")
@@ -95,7 +95,7 @@ func (d deleteConfirmation) render(theme ui.Theme) string {
 
 // goesWithIt names what a task takes with it, as in "Its details and 2
 // subtasks go too.", or is "" for a task with neither.
-func (d deleteConfirmation) goesWithIt() string {
+func (d *deleteConfirmation) goesWithIt() string {
 	var parts []string
 	if strings.TrimSpace(d.removal.Tasks[0].Details) != "" {
 		parts = append(parts, "details")
@@ -122,4 +122,4 @@ func openAndDone(tasks []store.Task) string {
 	return strings.Join(counts, ", ")
 }
 
-func (d deleteConfirmation) text() string { return ui.CleanDisplay(d.removal.Tasks[0].Text) }
+func (d *deleteConfirmation) text() string { return ui.CleanDisplay(d.removal.Tasks[0].Text) }

@@ -179,7 +179,7 @@ func (m *model) undoRemoval() {
 
 func taskCount(n int) string { return ui.Plural(n, "task", "tasks") }
 
-func (c clearConfirmation) render(theme ui.Theme) string {
+func (c *clearConfirmation) render(theme ui.Theme) string {
 	title := fmt.Sprintf("Remove %s from %s?", ui.ClearSummary(c.targets), c.scope)
 	return renderConfirmation(theme, title, []string{ui.SubtaskNote(c.targets), emptiedGroups(c.removal)}, "remove")
 }
