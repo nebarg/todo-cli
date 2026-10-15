@@ -22,6 +22,20 @@ import (
 // than by scanning.
 func testFiles() filesui.Model { return filesui.New(".", scan.Exclude{}, nil) }
 
+// modelWithTasks is a dashboard on a todo.md that holds tasks, with its path.
+func modelWithTasks(t *testing.T, tasks string) (*model, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte(tasks), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := newModel(path, project.Repo{}, testFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m, path
+}
+
 // runCmd runs cmd as the program would: m gets each message it leads to,
 // and the commands m returns run in turn. A batch's commands run at once.
 func runCmd(t *testing.T, m *model, cmd tea.Cmd) {

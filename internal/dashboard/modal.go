@@ -26,22 +26,23 @@ const (
 )
 
 type taskModal struct {
-	mode         modalMode
-	saveKey      string // the save key the footer offers
-	selected     store.Task
-	parent       store.Task // the task a subtask's form adds under, or edits under
-	file         string
-	target       store.Section
-	onCurrent    bool // target is the current Git branch, which Git's answer may update
-	branches     []string
-	branchCursor int
-	branchFresh  bool
-	title        textarea.Model
-	scope        textinput.Model
-	details      textarea.Model
-	field        int // titleField, scopeField or detailsField
-	history      [fieldCount]undoHistory
-	err          error
+	mode          modalMode
+	saveKey       string // the save key the footer offers
+	selected      store.Task
+	parent        store.Task // the task a subtask's form adds under, or edits under
+	file          string
+	target        store.Section
+	onCurrent     bool // target is the current Git branch, which Git's answer may update
+	branches      []string
+	branchCursor  int
+	branchFresh   bool
+	title         textarea.Model
+	scope         textinput.Model
+	details       textarea.Model
+	openedDetails string // the Details field's value as loading the task's details left it
+	field         int    // titleField, scopeField or detailsField
+	history       [fieldCount]undoHistory
+	err           error
 }
 
 const (
@@ -110,6 +111,7 @@ func (m *model) startTaskModal(mode modalMode) tea.Cmd {
 	if mode == modalEdit {
 		modal.title.SetValue(modal.selected.Text)
 		modal.details.SetValue(modal.selected.Details)
+		modal.openedDetails = modal.details.Value()
 	}
 	modal.resize(m.theme, m.width, m.height)
 	m.overlay = modal
@@ -379,9 +381,9 @@ func (f *taskModal) focusField(field int) tea.Cmd {
 func (f *taskModal) save() error {
 	switch {
 	case f.mode == modalAddSubtask:
-		return store.AddSubtask(f.file, f.parent, f.taskTitle(), f.details.Value())
+		return store.AddSubtask(f.file, f.parent, f.taskTitle(), f.detailsText())
 	case f.subtaskForm():
-		return store.Edit(f.file, f.selected, f.taskTitle(), f.details.Value(), f.selected.Section)
+		return store.Edit(f.file, f.selected, f.taskTitle(), f.detailsText(), f.selected.Section)
 	}
 	if f.branchScope() {
 		f.target.Branch = f.chosenBranch()
@@ -392,9 +394,9 @@ func (f *taskModal) save() error {
 		f.target.Category = store.NormalizeCategory(f.scope.Value())
 	}
 	if f.mode == modalEdit {
-		return store.Edit(f.file, f.selected, f.taskTitle(), f.details.Value(), f.target)
+		return store.Edit(f.file, f.selected, f.taskTitle(), f.detailsText(), f.target)
 	}
-	return store.Add(f.file, f.taskTitle(), f.details.Value(), store.PriorityNone, f.target)
+	return store.Add(f.file, f.taskTitle(), f.detailsText(), store.PriorityNone, f.target)
 }
 
 // saved describes the task save wrote, for the model to follow.
@@ -410,6 +412,17 @@ func (f *taskModal) saved() taskSavedMsg {
 
 func (f *taskModal) taskTitle() string {
 	return strings.Join(strings.Fields(f.title.Value()), " ")
+}
+
+// detailsText is the details save writes: the task's own while the Details
+// field still holds what the form loaded into it, and the field's text once
+// it has changed. The textarea writes a tab as spaces, so an untouched field
+// can differ from the details it was given.
+func (f *taskModal) detailsText() string {
+	if f.details.Value() == f.openedDetails {
+		return f.selected.Details
+	}
+	return f.details.Value()
 }
 
 func (f *taskModal) matchingBranches() []string {

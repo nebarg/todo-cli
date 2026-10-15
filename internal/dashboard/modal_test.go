@@ -934,3 +934,45 @@ func TestEditFormKeepsBranchWithoutGit(t *testing.T) {
 		t.Fatalf("edit changed the task's branch: %+v", selected)
 	}
 }
+
+// tabbedTask is a task with a line of details indented by a tab, which the
+// form's Details field can't hold as it is, and tabbedSubtask is the same
+// under a subtask.
+const (
+	tabbedTask    = "- [ ] Task\n\n  Run:\n  \tmake build\n"
+	tabbedSubtask = "- [ ] Task\n  - [ ] Subtask\n\n    Run:\n    \tmake build\n"
+)
+
+func TestSavingAnUntouchedEditFormLeavesDetailsWithATabAlone(t *testing.T) {
+	for _, c := range []struct {
+		name, tasks string
+		row         int
+	}{
+		{"task", tabbedTask, 0},
+		{"subtask", tabbedSubtask, 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			m, path := modelWithTasks(t, c.tasks)
+			m.general.cursor = c.row
+			m = pressCtrl(press(m, "e"), 's')
+			if isOpen[*taskModal](m) {
+				t.Fatalf("save failed: %v", form(t, m).err)
+			}
+			if got := readFile(t, path); got != c.tasks {
+				t.Fatalf("saving without a change rewrote the file:\n%q\nwant\n%q", got, c.tasks)
+			}
+		})
+	}
+}
+
+func TestEditingOnlyTheTitleKeepsDetailsWithATab(t *testing.T) {
+	m, path := modelWithTasks(t, tabbedTask)
+	m = pressCtrl(typeText(press(m, "e"), " again"), 's')
+	if isOpen[*taskModal](m) {
+		t.Fatalf("save failed: %v", form(t, m).err)
+	}
+	want := "- [ ] Task again\n\n  Run:\n  \tmake build\n"
+	if got := readFile(t, path); got != want {
+		t.Fatalf("after renaming the task:\n%q\nwant\n%q", got, want)
+	}
+}
