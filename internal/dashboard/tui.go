@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -54,6 +55,8 @@ type model struct {
 	status           string
 	width            int
 	height           int
+	mac              bool // running on macOS, where the form offers cmd+enter when it can arrive
+	keyboardEnhanced bool // the terminal reported keyboard enhancements, so it can send ctrl+enter and cmd keys
 }
 
 // New makes the dashboard for the task file in repo, its Files tab showing
@@ -67,7 +70,7 @@ func New(file string, repo project.Repo, files filesui.Model) (tea.Model, error)
 }
 
 func newModel(file string, repo project.Repo, files filesui.Model) (*model, error) {
-	m := &model{file: file, project: repo, theme: ui.NewTheme(true), width: 100, height: 30, files: files}
+	m := &model{file: file, project: repo, theme: ui.NewTheme(true), width: 100, height: 30, files: files, mac: runtime.GOOS == "darwin"}
 	// Before the dashboard is drawn, Git is asked directly.
 	m.setBranches(branchState(repo))
 	if err := m.readTasks(true, nil); err != nil {
@@ -98,6 +101,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.BackgroundColorMsg:
 		m.setTheme(ui.NewTheme(msg.IsDark()))
+	case tea.KeyboardEnhancementsMsg:
+		m.keyboardEnhanced = msg.SupportsKeyDisambiguation()
 	case filesui.ScannedMsg:
 		cmd := m.files.Update(msg)
 		m.status = ""

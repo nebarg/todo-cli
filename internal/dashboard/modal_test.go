@@ -554,6 +554,57 @@ func TestBranchPickerFitsCompactAndRegularModals(t *testing.T) {
 	}
 }
 
+func TestFormSavesWithEachSaveKey(t *testing.T) {
+	for _, save := range []tea.KeyPressMsg{
+		{Code: 's', Mod: tea.ModCtrl},
+		{Code: 's', Mod: tea.ModSuper},
+		{Code: tea.KeyEnter, Mod: tea.ModCtrl},
+		{Code: tea.KeyEnter, Mod: tea.ModSuper},
+	} {
+		t.Run(save.String(), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "todo.md")
+			m, err := newModel(path, project.Repo{}, testFiles())
+			if err != nil {
+				t.Fatal(err)
+			}
+			m = press(m, "a")
+			form(t, m).title.SetValue("Fix the login redirect")
+			m.Update(save)
+			if isOpen[*taskModal](m) || !strings.Contains(readFile(t, path), "- [ ] Fix the login redirect") {
+				t.Fatalf("%s didn't save the task: %q", save, readFile(t, path))
+			}
+		})
+	}
+}
+
+func TestFormOffersTheSaveKeyTheTerminalCanSend(t *testing.T) {
+	for _, c := range []struct {
+		name          string
+		mac, enhanced bool
+		want          string
+	}{
+		{"on a Mac, in a terminal with keyboard enhancements", true, true, "cmd+enter save"},
+		{"elsewhere, in a terminal with keyboard enhancements", false, true, "ctrl+enter save"},
+		{"on a Mac, in a terminal without them", true, false, "ctrl+s save"},
+		{"elsewhere, in a terminal without them", false, false, "ctrl+s save"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			m, err := newModel(filepath.Join(t.TempDir(), "todo.md"), project.Repo{}, testFiles())
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.mac = c.mac
+			if c.enhanced {
+				m.Update(tea.KeyboardEnhancementsMsg{Flags: ansi.KittyDisambiguateEscapeCodes})
+			}
+			m = press(m, "a")
+			if footer := ansi.Strip(form(t, m).footer(m.theme, 80)); !strings.HasPrefix(footer, c.want) {
+				t.Errorf("footer = %q, want it to start with %q", footer, c.want)
+			}
+		})
+	}
+}
+
 func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "TODO.md")
 	m, err := newModel(path, project.Repo{}, testFiles())
@@ -565,7 +616,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if !isOpen[*taskModal](m) || form(t, m).field != 0 {
 		t.Fatal("add did not open the title field")
 	}
-	if help := ansi.Strip(form(t, m).render(m.theme, 76, 20)); !strings.Contains(help, "ctrl+enter save  esc cancel  tab next field") || !strings.Contains(help, "Category") {
+	if help := ansi.Strip(form(t, m).render(m.theme, 76, 20)); !strings.Contains(help, "ctrl+s save  esc cancel  tab next field") || !strings.Contains(help, "Category") {
 		t.Fatalf("add form has wrong labels or help: %s", help)
 	} else {
 		for line := range strings.SplitSeq(help, "\n") {
@@ -610,7 +661,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if form(t, m).field != 1 {
 		t.Fatal("down arrow did not focus category field")
 	}
-	if help := ansi.Strip(form(t, m).render(m.theme, 76, 20)); !strings.Contains(help, "ctrl+enter save  esc cancel  tab next field") {
+	if help := ansi.Strip(form(t, m).render(m.theme, 76, 20)); !strings.Contains(help, "ctrl+s save  esc cancel  tab next field") {
 		t.Fatalf("category help changed by focus: %s", help)
 	}
 	if rendered := form(t, m).render(m.theme, 76, 20); !strings.Contains(rendered, m.theme.TitleStyle.Render("Category")) {
@@ -631,7 +682,7 @@ func TestTaskModalAddsAndEditsDetails(t *testing.T) {
 	if form(t, m).field != 2 {
 		t.Fatal("down arrow did not focus details")
 	}
-	if help := ansi.Strip(form(t, m).render(m.theme, 76, 20)); !strings.Contains(help, "ctrl+enter save  esc cancel  tab next field") {
+	if help := ansi.Strip(form(t, m).render(m.theme, 76, 20)); !strings.Contains(help, "ctrl+s save  esc cancel  tab next field") {
 		t.Fatalf("details help changed by focus: %s", help)
 	}
 	opened, _ = m.Update(tea.KeyPressMsg{Code: 'X', Text: "X"})
@@ -714,7 +765,7 @@ func TestModalDetailsFillRemainingHeight(t *testing.T) {
 				if len(lines) != height {
 					t.Fatalf("modal is %d lines, want %d", len(lines), height)
 				}
-				if help := lines[len(lines)-2]; !strings.Contains(help, "ctrl+enter save") {
+				if help := lines[len(lines)-2]; !strings.Contains(help, "ctrl+s save") {
 					t.Fatalf("help is not on the last content row, so details left a gap or overflowed: %q", help)
 				}
 			})
@@ -770,7 +821,7 @@ func TestTaskModalFieldsAndFocus(t *testing.T) {
 	m = opened.(*model)
 	plain := ansi.Strip(form(t, m).render(m.theme, 76, 20))
 	lines := strings.Split(plain, "\n")
-	if form(t, m).err == nil || !strings.Contains(lines[1], "General › New task") || !strings.Contains(lines[len(lines)-2], form(t, m).err.Error()) || strings.Contains(plain, "ctrl+enter") {
+	if form(t, m).err == nil || !strings.Contains(lines[1], "General › New task") || !strings.Contains(lines[len(lines)-2], form(t, m).err.Error()) || strings.Contains(plain, "ctrl+s save") {
 		t.Fatalf("error should replace the key hints and keep the heading: %s", plain)
 	}
 }

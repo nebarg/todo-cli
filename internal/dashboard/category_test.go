@@ -140,7 +140,7 @@ func TestTaskFormSurvivesPreviousSuggestionWithNothingMatching(t *testing.T) {
 				t.Fatalf("tab did not reach the %s", c.name)
 			}
 			m = pressMsg(m, ctrlP)
-			if footer := ansi.Strip(form(t, m).footer(m.theme, 80)); !strings.Contains(footer, "ctrl+enter save") {
+			if footer := ansi.Strip(form(t, m).footer(m.theme, 80)); !strings.Contains(footer, "ctrl+s save") {
 				t.Fatalf("footer after ctrl+p = %q", footer)
 			}
 			_ = m.View()

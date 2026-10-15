@@ -27,6 +27,7 @@ const (
 
 type taskModal struct {
 	mode         modalMode
+	saveKey      string // the save key the footer offers
 	selected     store.Task
 	parent       store.Task // the task a subtask's form adds under, or edits under
 	file         string
@@ -53,7 +54,7 @@ const (
 // startTaskModal opens the task form. A branch form starts with the branches
 // Git last listed, and takes a fresh list when Git answers in the background.
 func (m *model) startTaskModal(mode modalMode) tea.Cmd {
-	modal := &taskModal{mode: mode, file: m.file}
+	modal := &taskModal{mode: mode, file: m.file, saveKey: m.saveKey()}
 	var check tea.Cmd
 	if mode == modalAddGeneral && m.all == nil && m.activePane() == generalPane && m.general.open.kind == rowCategory {
 		modal.target.Category = m.general.open.name
@@ -669,7 +670,7 @@ func (f *taskModal) footer(theme ui.Theme, width int) string {
 	if f.err != nil {
 		return errorText(theme, f.err, width)
 	}
-	save, cancel := ui.Hint(formKeys.Save, "save"), ui.Hint(formKeys.Cancel, "cancel")
+	save, cancel := ui.KeyHint{Key: f.saveKey, Label: "save"}, ui.Hint(formKeys.Cancel, "cancel")
 	hints := []ui.KeyHint{save, cancel, ui.Hint(formKeys.Tab, "next field")}
 	if f.field == scopeField && canCompleteCategory(f.scope) {
 		hints = []ui.KeyHint{completeHint, save, cancel}
@@ -678,6 +679,20 @@ func (f *taskModal) footer(theme ui.Theme, width int) string {
 		hints = []ui.KeyHint{save, cancel, {Key: "↑↓", Label: "choose"}, ui.Hint(formKeys.Tab, "accept")}
 	}
 	return theme.FitHints(hints, width)
+}
+
+// saveKey is the save key the form's footer offers: enter, with cmd on a Mac
+// and ctrl elsewhere, in a terminal that reported keyboard enhancements, as it
+// needs them to tell either from enter, and otherwise ctrl+s, which every
+// terminal can send.
+func (m *model) saveKey() string {
+	switch {
+	case !m.keyboardEnhanced:
+		return "ctrl+s"
+	case m.mac:
+		return "cmd+enter"
+	}
+	return "ctrl+enter"
 }
 
 // errorText shows a failed save's error where the key hints would be.

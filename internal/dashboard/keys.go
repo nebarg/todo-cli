@@ -74,7 +74,7 @@ var keys = keyMap{
 }
 
 var formKeys = formKeyMap{
-	Save:     key.NewBinding(key.WithKeys("ctrl+enter")),
+	Save:     key.NewBinding(key.WithKeys("ctrl+s", "super+s", "ctrl+enter", "super+enter")),
 	Cancel:   key.NewBinding(key.WithKeys("esc")),
 	Tab:      key.NewBinding(key.WithKeys("tab")),
 	ShiftTab: key.NewBinding(key.WithKeys("shift+tab")),
