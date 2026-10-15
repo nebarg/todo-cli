@@ -628,10 +628,8 @@ func (m *model) taskDetails(width int) []string {
 		}
 		return append(result, m.subtasksSection(width, "")...)
 	}
-	t, ok := m.selectedTask()
-	if !ok {
-		return []string{"", m.theme.MutedStyle.Render("Select a Markdown task.")}
-	}
+	// The details open only on a task, and readTasks closes them if it goes.
+	t, _ := m.selectedTask()
 	details := m.theme.MarkdownLines(t.Details)
 	if t.Details == "" {
 		details = []string{m.emptyHint("details", keys.Edit)}

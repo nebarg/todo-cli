@@ -458,8 +458,8 @@ func TestAChangedFileIsReloadedForTheNextTry(t *testing.T) {
 			if err := os.WriteFile(path, []byte("- [ ] One edited\n\n- [ ] Two\n"), 0644); err != nil {
 				t.Fatal(err)
 			}
-			if m = press(m, c.key); m.status != reloaded || c.worked(m, fileContent(t, path)) {
-				t.Fatalf("status %q, file %q", m.status, fileContent(t, path))
+			if m = press(m, c.key); m.status != reloaded || c.worked(m, readFile(t, path)) {
+				t.Fatalf("status %q, file %q", m.status, readFile(t, path))
 			}
 			if selected, ok := m.selectedTask(); !ok || selected.Text != "One edited" {
 				t.Fatalf("after the reload the selected task is %+v", selected)
@@ -467,8 +467,8 @@ func TestAChangedFileIsReloadedForTheNextTry(t *testing.T) {
 			if c.key == "y" {
 				m = press(m, "backspace")
 			}
-			if m = press(m, c.key); !c.worked(m, fileContent(t, path)) {
-				t.Fatalf("trying again: status %q, file %q", m.status, fileContent(t, path))
+			if m = press(m, c.key); !c.worked(m, readFile(t, path)) {
+				t.Fatalf("trying again: status %q, file %q", m.status, readFile(t, path))
 			}
 		})
 	}
@@ -551,7 +551,7 @@ func TestWritesKeepIdenticalTasksInPlace(t *testing.T) {
 			m.general.cursor = item.cursor
 			for _, s := range item.steps {
 				m = press(m, s.key)
-				if got := fileContent(t, path); got != s.file {
+				if got := readFile(t, path); got != s.file {
 					t.Fatalf("%s wrote %q, want %q", s.key, got, s.file)
 				}
 				if got := taskOrder(m); !slices.Equal(got, s.rows) || m.general.cursor != s.cursor {
@@ -646,7 +646,7 @@ func TestMarkingSeveralTasksDoneKeepsEachInPlace(t *testing.T) {
 				if selected, ok := m.selectedTask(); !ok || selected.Text != started[at].Text {
 					t.Fatalf("after %s the selected task is %+v, want %s", step, selected, started[at].Text)
 				}
-				if got, want := fileContent(t, path), wantFile(done); got != want {
+				if got, want := readFile(t, path), wantFile(done); got != want {
 					t.Fatalf("after %s the file is\n%q\nwant\n%q", step, got, want)
 				}
 			}

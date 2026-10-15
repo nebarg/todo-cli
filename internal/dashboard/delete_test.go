@@ -45,19 +45,19 @@ func TestDeleteRemovesTheSelectedTaskUntilUndone(t *testing.T) {
 	if dialog := deleteDialog(t, m); !strings.Contains(dialog, `Delete "Loose open"?`) || !strings.Contains(dialog, "y delete") || strings.Contains(dialog, "heading") {
 		t.Fatalf("dialog = %s", dialog)
 	}
-	if fileContent(t, path) != clearContent {
+	if readFile(t, path) != clearContent {
 		t.Fatal("asking for confirmation changed the file")
 	}
 	m = press(m, "y")
 	want := strings.Replace(clearContent, "- [ ] Loose open\n\n", "", 1)
-	if got := fileContent(t, path); got != want || m.status != `Deleted "Loose open"` {
+	if got := readFile(t, path); got != want || m.status != `Deleted "Loose open"` {
 		t.Fatalf("file = %q, status %q", got, m.status)
 	}
 	if hints := m.footerHints(); len(hints) == 0 || hints[0] != (ui.KeyHint{Key: "u", Label: "undo"}) {
 		t.Fatalf("footer does not offer undo first: %v", hints)
 	}
 	m = press(m, "u")
-	if got := fileContent(t, path); got != clearContent || m.status != "Restored 1 task" {
+	if got := readFile(t, path); got != clearContent || m.status != "Restored 1 task" {
 		t.Fatalf("undo left %q with status %q", got, m.status)
 	}
 }
@@ -97,7 +97,7 @@ func TestDeleteTakesDetailsAndEmptiedHeadings(t *testing.T) {
 				}
 			}
 			m = press(m, "y")
-			if got := fileContent(t, path); got != item.want {
+			if got := readFile(t, path); got != item.want {
 				t.Fatalf("file = %q, want %q", got, item.want)
 			}
 			if m.general.open != (group{}) || m.branch.open != (group{}) {
@@ -113,7 +113,7 @@ func TestDeleteOnlyOnY(t *testing.T) {
 			m, path := clearModel(t)
 			selectTask(t, m, "Loose open")
 			m = press(press(m, "backspace"), key)
-			if isOpen[*deleteConfirmation](m) || fileContent(t, path) != clearContent || m.lastRemoval != nil {
+			if isOpen[*deleteConfirmation](m) || readFile(t, path) != clearContent || m.lastRemoval != nil {
 				t.Fatalf("%s did not cancel cleanly", key)
 			}
 		})
@@ -141,8 +141,8 @@ func TestDeleteFromAllTasksAndDetails(t *testing.T) {
 			m, path := clearModel(t)
 			item.pick(t, m)
 			m = press(press(m, "backspace"), "y")
-			if strings.Contains(fileContent(t, path), "Auth open") || m.status != `Deleted "Auth open"` {
-				t.Fatalf("file = %q, status %q", fileContent(t, path), m.status)
+			if strings.Contains(readFile(t, path), "Auth open") || m.status != `Deleted "Auth open"` {
+				t.Fatalf("file = %q, status %q", readFile(t, path), m.status)
 			}
 			if m.focus == detailPane {
 				t.Fatal("the details of the deleted task stayed open")
@@ -206,7 +206,7 @@ func TestDeleteWorksInABranchNotInGit(t *testing.T) {
 	selectTask(t, m, "Gone open")
 	m = press(press(m, "backspace"), "y")
 	want := "- [x] Loose done\n\n# Branches\n\n## feature/gone\n\n- [x] Gone done\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n"
-	if got := fileContent(t, path); got != want || m.status != `Deleted "Gone open"` {
+	if got := readFile(t, path); got != want || m.status != `Deleted "Gone open"` {
 		t.Fatalf("file = %q, status %q", got, m.status)
 	}
 }
@@ -239,13 +239,13 @@ func TestDeleteRemovesACategoryAndAllItsTasks(t *testing.T) {
 	}
 	m = press(m, "y")
 	want := "- [x] Loose done\n\n- [ ] Loose open\n\n# docs\n\n- [x] Doc done\n\n# Branches\n\n## feature/x\n\n- [x] Branch done\n"
-	if got := fileContent(t, path); got != want || m.status != `Deleted the "auth" category and its 2 tasks` {
+	if got := readFile(t, path); got != want || m.status != `Deleted the "auth" category and its 2 tasks` {
 		t.Fatalf("file = %q, status %q", got, m.status)
 	}
 	if rows := m.rows(generalPane); slices.ContainsFunc(rows, func(r navigationRow) bool { return r.name == "auth" }) {
 		t.Fatalf("the deleted category is still listed: %+v", rows)
 	}
-	if press(m, "u"); fileContent(t, path) != clearContent {
+	if press(m, "u"); readFile(t, path) != clearContent {
 		t.Fatal("undo did not bring the category back")
 	}
 }
@@ -262,14 +262,14 @@ func TestDeleteRemovesABranchAndAllItsTasks(t *testing.T) {
 	}
 	m = press(m, "y")
 	want := "- [x] Loose done\n\n# Branches\n\n## feature/gone\n\n- [ ] Gone open\n\n- [x] Gone done\n"
-	if got := fileContent(t, path); got != want || m.status != `Deleted the "feature/live" branch and its 2 tasks` {
+	if got := readFile(t, path); got != want || m.status != `Deleted the "feature/live" branch and its 2 tasks` {
 		t.Fatalf("file = %q, status %q", got, m.status)
 	}
 	// A branch Git doesn't have goes the same way, and the last one takes
 	// the Branches heading with it.
 	selectGroup(t, m, rowBranch, "feature/gone")
 	m = press(press(m, "backspace"), "y")
-	if got := fileContent(t, path); got != "- [x] Loose done\n" || len(m.rows(branchPane)) != 0 {
+	if got := readFile(t, path); got != "- [x] Loose done\n" || len(m.rows(branchPane)) != 0 {
 		t.Fatalf("file = %q, rows %+v", got, m.rows(branchPane))
 	}
 }
@@ -283,7 +283,7 @@ func TestDeleteLeavesAFileChangedSinceAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	m = press(m, "y")
-	if got := fileContent(t, path); got != elsewhere || !strings.Contains(m.status, "changed") || m.lastRemoval != nil {
+	if got := readFile(t, path); got != elsewhere || !strings.Contains(m.status, "changed") || m.lastRemoval != nil {
 		t.Fatalf("file = %q, status %q", got, m.status)
 	}
 }
@@ -311,7 +311,7 @@ func TestDeletingOneOfIdenticalTasksLeavesTheOtherInPlace(t *testing.T) {
 			before := taskOrder(m)
 			m.general.cursor = item.row
 			m = press(press(m, "backspace"), "y")
-			if got := fileContent(t, path); got != item.file {
+			if got := readFile(t, path); got != item.file {
 				t.Fatalf("file = %q, want %q", got, item.file)
 			}
 			if got := taskOrder(m); !slices.Equal(got, item.rows) {
@@ -329,7 +329,7 @@ func TestDeletingATaskKeepsAnotherTasksSubtasksInOrder(t *testing.T) {
 	m, path := modelWithTasks(t, "- [ ] A\n  - [ ] docs\n- [ ] B\n  - [ ] tests\n  - [ ] docs\n")
 	selectTask(t, m, "A")
 	m = press(press(m, "backspace"), "y")
-	if got, want := fileContent(t, path), "- [ ] B\n  - [ ] tests\n  - [ ] docs\n"; got != want {
+	if got, want := readFile(t, path), "- [ ] B\n  - [ ] tests\n  - [ ] docs\n"; got != want {
 		t.Fatalf("file = %q, want %q", got, want)
 	}
 	if got := rowTitles(m); got != "B,tests,docs" {

@@ -44,15 +44,6 @@ func press(m *model, key string) *model {
 	return updated.(*model)
 }
 
-func fileContent(t *testing.T, path string) string {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(data)
-}
-
 func TestClearDoneFollowsWhereYouAre(t *testing.T) {
 	for _, item := range []struct {
 		name   string
@@ -76,11 +67,11 @@ func TestClearDoneFollowsWhereYouAre(t *testing.T) {
 			if dialog := ansi.Strip(m.View().Content); !strings.Contains(dialog, item.prompt) {
 				t.Fatalf("dialog lacks %q: %s", item.prompt, dialog)
 			}
-			if fileContent(t, path) != clearContent {
+			if readFile(t, path) != clearContent {
 				t.Fatal("asking for confirmation changed the file")
 			}
 			m = press(m, "y")
-			content := fileContent(t, path)
+			content := readFile(t, path)
 			for _, gone := range item.gone {
 				if strings.Contains(content, gone+"\n") {
 					t.Errorf("%q was not removed: %s", gone, content)
@@ -101,7 +92,7 @@ func TestClearDoneFollowsWhereYouAre(t *testing.T) {
 func TestClearingATaskKeepsAnotherTasksSubtasksInOrder(t *testing.T) {
 	m, path := modelWithTasks(t, "- [x] A\n  - [ ] docs\n- [ ] B\n  - [ ] tests\n  - [ ] docs\n")
 	m = press(press(m, "X"), "y")
-	if got, want := fileContent(t, path), "- [ ] B\n  - [ ] tests\n  - [ ] docs\n"; got != want {
+	if got, want := readFile(t, path), "- [ ] B\n  - [ ] tests\n  - [ ] docs\n"; got != want {
 		t.Fatalf("file = %q, want %q", got, want)
 	}
 	if got := rowTitles(m); got != "B,tests,docs" {
@@ -132,7 +123,7 @@ func TestClearDoneOnlyRemovesOnY(t *testing.T) {
 			m = press(m, "X")
 			updated, _ := m.Update(tea.KeyPressMsg{Code: map[string]rune{"esc": tea.KeyEsc, "n": 'n', "enter": tea.KeyEnter, "X": 'X'}[key], Text: map[string]string{"n": "n", "X": "X"}[key]})
 			m = updated.(*model)
-			if isOpen[*clearConfirmation](m) || fileContent(t, path) != clearContent {
+			if isOpen[*clearConfirmation](m) || readFile(t, path) != clearContent {
 				t.Fatalf("%s did not cancel cleanly", key)
 			}
 		})
@@ -149,8 +140,8 @@ func TestUndoClearRestoresTheFile(t *testing.T) {
 		t.Fatalf("help does not list undo: %s", help)
 	}
 	m = press(m, "u")
-	if fileContent(t, path) != clearContent || m.status != "Restored 3 tasks" {
-		t.Fatalf("undo left %q with status %q", fileContent(t, path), m.status)
+	if readFile(t, path) != clearContent || m.status != "Restored 3 tasks" {
+		t.Fatalf("undo left %q with status %q", readFile(t, path), m.status)
 	}
 	if m.lastRemoval != nil {
 		t.Fatal("undo can be repeated")
@@ -161,8 +152,8 @@ func TestUndoClearRestoresTheFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	m = press(m, "u")
-	if fileContent(t, path) != "- [ ] Written elsewhere\n" || !strings.Contains(m.status, "cannot be undone") {
-		t.Fatalf("undo over a changed file = %q, status %q", fileContent(t, path), m.status)
+	if readFile(t, path) != "- [ ] Written elsewhere\n" || !strings.Contains(m.status, "cannot be undone") {
+		t.Fatalf("undo over a changed file = %q, status %q", readFile(t, path), m.status)
 	}
 }
 
@@ -234,7 +225,7 @@ func TestClearInsideMissingBranchOnlyClearsDoneTasks(t *testing.T) {
 	}
 	m = press(m, "y")
 	want := "- [x] Loose done\n\n# Branches\n\n## feature/gone\n\n- [ ] Gone open\n\n## feature/live\n\n- [ ] Live open\n\n- [x] Live done\n"
-	if got := fileContent(t, path); got != want || m.status != "Removed 1 done task" || m.branch.open.name != "feature/gone" {
+	if got := readFile(t, path); got != want || m.status != "Removed 1 done task" || m.branch.open.name != "feature/gone" {
 		t.Fatalf("file = %q, status %q, open %q", got, m.status, m.branch.open.name)
 	}
 }
@@ -250,7 +241,7 @@ func TestClearingBranchesKeepsTasksOfBranchesNotInGit(t *testing.T) {
 	}
 	m = press(m, "y")
 	want := "- [x] Loose done\n\n# Branches\n\n## feature/gone\n\n- [ ] Gone open\n\n## feature/live\n\n- [ ] Live open\n"
-	if got := fileContent(t, path); got != want || m.status != "Removed 2 done tasks" {
+	if got := readFile(t, path); got != want || m.status != "Removed 2 done tasks" {
 		t.Fatalf("file = %q, status %q", got, m.status)
 	}
 }

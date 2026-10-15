@@ -163,7 +163,7 @@ func TestOwnWritesDontReloadOrLoseUndo(t *testing.T) {
 	if cmd == nil || m.lastRemoval == nil {
 		t.Fatalf("own delete: watching %v, undo %v", cmd != nil, m.lastRemoval != nil)
 	}
-	if m = press(m, "u"); fileContent(t, path) != clearContent {
+	if m = press(m, "u"); readFile(t, path) != clearContent {
 		t.Fatalf("undo failed: %q", m.status)
 	}
 }
