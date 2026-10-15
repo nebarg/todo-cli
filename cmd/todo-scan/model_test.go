@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/nebarg/todo-cli/internal/editor"
 	"github.com/nebarg/todo-cli/internal/filesui"
 	"github.com/nebarg/todo-cli/internal/scan"
+	"github.com/nebarg/todo-cli/internal/ui"
 )
 
 func scannedModel(t *testing.T) *model {
@@ -41,7 +43,7 @@ func keyPress(k string) tea.KeyPressMsg {
 func TestScreensFitTheTerminal(t *testing.T) {
 	m := scannedModel(t)
 	for _, size := range [][2]int{{120, 35}, {80, 24}, {56, 16}} {
-		m.width, m.height = size[0], size[1]
+		m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 		for _, page := range []string{"list", "details"} {
 			if page == "details" {
 				m.Update(keyPress("j"))
@@ -65,7 +67,7 @@ func TestScreensFitTheTerminal(t *testing.T) {
 			}
 		}
 	}
-	m.width, m.height = 50, 10
+	m.Update(tea.WindowSizeMsg{Width: 50, Height: 10})
 	if view := m.View().Content; !strings.Contains(view, "enlarge your terminal") {
 		t.Fatalf("a tiny terminal = %q", view)
 	}
@@ -125,5 +127,49 @@ func TestHeaderCountsLevelledTodos(t *testing.T) {
 	m.Update(m.files.Scan()())
 	if header := ansi.Strip(m.renderHeader(80)); !strings.HasSuffix(header, "1 levelled TODO ") {
 		t.Fatalf("header = %q", header)
+	}
+}
+
+func TestDetailsStopScrollingAtTheBottomOfTheTerminal(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		note   string
+		resize tea.Msg // nil leaves the terminal at the default size
+	}{
+		{"the default size", strings.Repeat("word ", 600), nil},
+		// The default size has room for this note, so only the smaller terminal needs scrolling.
+		{"a resized terminal", strings.Repeat("word ", 150), tea.WindowSizeMsg{Width: 56, Height: 16}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			m := newModel(t.TempDir(), scan.Exclude{}, nil)
+			m.Update(filesui.ScannedMsg{Matches: []scan.Match{{Path: "app.go", Line: 6, Note: c.note}}})
+			if c.resize != nil {
+				m.Update(c.resize)
+			}
+			m.Update(keyPress("right"))
+			for range 100 {
+				m.Update(keyPress("j"))
+			}
+			atBottom := ansi.Strip(m.View().Content)
+			m.Update(keyPress("k"))
+			if !strings.Contains(atBottom, "Loading preview…") || ansi.Strip(m.View().Content) == atBottom {
+				t.Fatalf("one up from the bottom of the details did not scroll them:\n%s", atBottom)
+			}
+		})
+	}
+}
+
+func TestTheBrowserFollowsTheTerminalsBackground(t *testing.T) {
+	m := scannedModel(t)
+	// The panel of the browser is the only thing drawn in the border colour.
+	border := func(dark bool) string {
+		return ansi.NewStyle().ForegroundColor(ui.NewTheme(dark).ColorBorder).String() + "╭"
+	}
+	if view := m.View().Content; !strings.Contains(view, border(true)) {
+		t.Fatalf("the browser is not drawn in the dark theme at first: %q", view)
+	}
+	m.Update(tea.BackgroundColorMsg{Color: color.White})
+	if view := m.View().Content; !strings.Contains(view, border(false)) || strings.Contains(view, border(true)) {
+		t.Fatalf("the browser did not take the light theme: %q", view)
 	}
 }

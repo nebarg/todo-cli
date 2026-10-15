@@ -71,6 +71,7 @@ func New(file string, repo project.Repo, files filesui.Model) (tea.Model, error)
 
 func newModel(file string, repo project.Repo, files filesui.Model) (*model, error) {
 	m := &model{file: file, project: repo, theme: ui.NewTheme(true), width: 100, height: 30, files: files, mac: runtime.GOOS == "darwin"}
+	m.layoutFiles()
 	// Before the dashboard is drawn, Git is asked directly.
 	m.setBranches(branchState(repo))
 	if err := m.readTasks(true, nil); err != nil {
@@ -90,6 +91,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.layoutFiles()
 		// Laying the task form or the category prompt out needs the theme,
 		// which only the model holds, so they are resized here rather than
 		// through their updates.
@@ -546,12 +548,21 @@ func (m *model) setProject(msg projectStateMsg) {
 }
 
 // setTheme takes the theme for the terminal's background, passing it on to
-// an open task form, whose fields keep the styles they were given.
+// the Files tab and to an open task form, whose fields keep the styles they
+// were given.
 func (m *model) setTheme(theme ui.Theme) {
 	m.theme = theme
+	m.layoutFiles()
 	if f, ok := m.overlay.(*taskModal); ok {
 		f.setTheme(theme)
 	}
+}
+
+// layoutFiles gives the Files tab the theme and the size of the body it is
+// drawn in.
+func (m *model) layoutFiles() {
+	m.files.SetTheme(m.theme)
+	m.files.SetSize(m.bodySize())
 }
 
 // refresh rereads the file after a write, keeping each task in the place it

@@ -22,11 +22,15 @@ import (
 const previewRadius = 40
 
 // Model is the browser's state. Its zero value is an empty list; New sets
-// what to scan.
+// what to scan, and the host gives it the theme and size to draw with by
+// SetTheme and SetSize.
 type Model struct {
 	dir     string
 	exclude scan.Exclude
 	keep    func(scan.Match) bool
+
+	theme         ui.Theme
+	width, height int // the size of the panel the browser draws in
 
 	scans      int // how many scans have started, to tell the latest apart
 	cancel     context.CancelFunc
@@ -51,6 +55,13 @@ type Model struct {
 func New(dir string, exclude scan.Exclude, keep func(scan.Match) bool) Model {
 	return Model{dir: dir, exclude: exclude, keep: keep, loading: true}
 }
+
+// SetTheme sets the theme the browser draws with.
+func (m *Model) SetTheme(theme ui.Theme) { m.theme = theme }
+
+// SetSize sets the size of the panel the browser draws in, which also decides
+// how far the detail page scrolls.
+func (m *Model) SetSize(width, height int) { m.width, m.height = width, height }
 
 // ScannedMsg carries a scan's results. Only the latest scan's are used, so
 // a scan replaced by a rescan can't overwrite newer results.
@@ -172,9 +183,9 @@ func (m *Model) listKey(msg tea.KeyPressMsg) tea.Cmd {
 func (m *Model) detailsKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, keys.Up):
-		m.scroll = max(0, m.scroll-1)
+		m.scrollDetails(-1)
 	case key.Matches(msg, keys.Down):
-		m.scroll++
+		m.scrollDetails(1)
 	case key.Matches(msg, keys.Enter, keys.Edit):
 		return m.openEditor()
 	case key.Matches(msg, keys.Back):
@@ -182,6 +193,15 @@ func (m *Model) detailsKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.PreviewCmd()
 	}
 	return nil
+}
+
+// scrollDetails moves the detail page delta lines, stopping at its top and
+// bottom, so scrolling back the other way moves it straight away. The scroll
+// is brought within the bottom first, as resizing the panel or a rescan can
+// move the bottom above it.
+func (m *Model) scrollDetails(delta int) {
+	bottom := m.detailsBottom()
+	m.scroll = max(0, min(min(m.scroll, bottom)+delta, bottom))
 }
 
 // Top goes up a level, as pressing the tab's key again does: from the

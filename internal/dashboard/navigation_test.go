@@ -422,7 +422,8 @@ func TestTwoTogglesBetweenBranchListAndCurrentBranch(t *testing.T) {
 }
 
 func TestFilesTabKeysReachTheBrowser(t *testing.T) {
-	m := &model{theme: ui.NewTheme(true), width: 100, height: 20}
+	m := &model{theme: ui.NewTheme(true)}
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
 	m.files.Update(filesui.ScannedMsg{Matches: []scan.Match{
 		{Path: "a.go", Line: 1, Note: "urgent", Level: "0"},
 		{Path: "b.css", Line: 2, Note: "hide", Category: "Boundary"},

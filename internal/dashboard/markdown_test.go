@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nebarg/todo-cli/internal/filesui"
@@ -182,7 +183,8 @@ func TestEditFormShowsTheMarkdownAsWritten(t *testing.T) {
 }
 
 func TestFileTodosShowTheirTextAsWritten(t *testing.T) {
-	m := &model{theme: ui.NewTheme(true), width: 100, height: 20, tasks: taskSet{general: []store.Task{}}}
+	m := &model{theme: ui.NewTheme(true), tasks: taskSet{general: []store.Task{}}}
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
 	m.files.Update(filesui.ScannedMsg{Matches: []scan.Match{{Path: "a.c", Line: 1, Note: "free `buf` and *ptr*"}}})
 	m = press(m, "3")
 	if plain := ansi.Strip(m.View().Content); !strings.Contains(plain, "free `buf` and *ptr*") {

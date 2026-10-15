@@ -30,7 +30,16 @@ type model struct {
 // newModel browses dir, listing only the TODOs keep accepts when it isn't
 // nil.
 func newModel(dir string, exclude scan.Exclude, keep func(scan.Match) bool) *model {
-	return &model{dir: dir, levelled: keep != nil, theme: ui.NewTheme(true), files: filesui.New(dir, exclude, keep), width: 100, height: 30}
+	m := &model{dir: dir, levelled: keep != nil, theme: ui.NewTheme(true), files: filesui.New(dir, exclude, keep), width: 100, height: 30}
+	m.layoutFiles()
+	return m
+}
+
+// layoutFiles gives the file browser the theme and the size of the body it is
+// drawn in: the terminal less a line each for the header and the footer.
+func (m *model) layoutFiles() {
+	m.files.SetTheme(m.theme)
+	m.files.SetSize(m.width, m.height-2)
 }
 
 func (m *model) Init() tea.Cmd { return tea.Batch(m.files.Scan(), tea.RequestBackgroundColor) }
@@ -39,8 +48,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.layoutFiles()
 	case tea.BackgroundColorMsg:
 		m.theme = ui.NewTheme(msg.IsDark())
+		m.layoutFiles()
 	case filesui.ScannedMsg:
 		cmd := m.files.Update(msg)
 		m.status = ""
@@ -90,7 +101,7 @@ func (m *model) View() tea.View {
 	if !m.files.Details() {
 		hints = append(hints, ui.Hint(keys.Rescan, "rescan"))
 	}
-	content := m.renderHeader(width) + "\n" + m.files.View(m.theme, width, height-2) + "\n" + m.theme.Footer(m.status, hints, pinnedHints, width)
+	content := m.renderHeader(width) + "\n" + m.files.View() + "\n" + m.theme.Footer(m.status, hints, pinnedHints, width)
 	v := tea.NewView(content)
 	v.AltScreen = true
 	return v

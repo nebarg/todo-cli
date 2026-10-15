@@ -11,13 +11,13 @@ import (
 	"github.com/nebarg/todo-cli/internal/ui"
 )
 
-// View draws the list, or the detail page, in a panel of width × height,
-// coloured by theme.
-func (m *Model) View(theme ui.Theme, width, height int) string {
+// View draws the list, or the detail page, in a panel of the size set by
+// SetSize, coloured by the theme set by SetTheme.
+func (m *Model) View() string {
 	if m.details {
-		return m.detailsView(theme, width, height)
+		return m.detailsView()
 	}
-	return m.listView(theme, width, height)
+	return m.listView()
 }
 
 // Hints are the browser's keys for the footer.
@@ -62,15 +62,15 @@ func (m *Model) status(theme ui.Theme) string {
 	return ""
 }
 
-func (m *Model) listView(theme ui.Theme, width, height int) string {
-	innerWidth := max(1, width-4)
+func (m *Model) listView() string {
+	innerWidth := max(1, m.width-4)
 	rows := m.rows()
-	status := m.status(theme)
+	status := m.status(m.theme)
 	var lines []string
 	if crumbs := m.breadcrumb(); len(crumbs) > 1 {
-		lines = append(lines, theme.Breadcrumb(crumbs, fmt.Sprint(len(rows)), innerWidth), "")
+		lines = append(lines, m.theme.Breadcrumb(crumbs, fmt.Sprint(len(rows)), innerWidth), "")
 	}
-	visible := max(1, ui.ContentHeight(height, status)-len(lines))
+	visible := max(1, ui.ContentHeight(m.height, status)-len(lines))
 	divider := firstTodoAfterGroups(rows)
 	if divider > 0 {
 		visible = max(1, visible-1)
@@ -84,7 +84,7 @@ func (m *Model) listView(theme ui.Theme, width, height int) string {
 		if m.err != nil {
 			empty = "Scan failed"
 		}
-		lines = append(lines, theme.MutedStyle.Render(empty))
+		lines = append(lines, m.theme.MutedStyle.Render(empty))
 	}
 	levelWidth := 0
 	for _, row := range rows {
@@ -96,12 +96,12 @@ func (m *Model) listView(theme ui.Theme, width, height int) string {
 			lines = append(lines, "")
 		}
 		if rows[i].isGroup() {
-			lines = append(lines, groupRow(theme, rows[i]).Render(theme, innerWidth, selected))
+			lines = append(lines, groupRow(m.theme, rows[i]).Render(m.theme, innerWidth, selected))
 		} else {
-			lines = append(lines, todoRow(theme, rows[i].match, innerWidth, levelWidth, selected))
+			lines = append(lines, todoRow(m.theme, rows[i].match, innerWidth, levelWidth, selected))
 		}
 	}
-	return theme.Panel(width, height, lines, status)
+	return m.theme.Panel(m.width, m.height, lines, status)
 }
 
 // firstTodoAfterGroups is the row where TODOs follow category groups, or -1
@@ -160,21 +160,36 @@ func truncatePath(value string, width int) string {
 	return value
 }
 
-func (m *Model) detailsView(theme ui.Theme, width, height int) string {
-	innerWidth := max(1, width-4)
-	status := m.status(theme)
-	maxLines := ui.ContentHeight(height, status)
-	lines := []string{theme.Breadcrumb(m.breadcrumb(), "", innerWidth), ""}
-	lines = append(lines, m.detailLines(theme, innerWidth, maxLines-len(lines))...)
+func (m *Model) detailsView() string {
+	lines, maxLines := m.detailsPage()
 	start := min(m.scroll, max(0, len(lines)-maxLines))
 	lines = lines[start:min(len(lines), start+maxLines)]
 	for len(lines) < maxLines {
 		lines = append(lines, "")
 	}
+	innerWidth := max(1, m.width-4)
 	for i, line := range lines {
 		lines[i] = ansi.Truncate(line, innerWidth, "…")
 	}
-	return theme.Panel(width, height, lines, status)
+	return m.theme.Panel(m.width, m.height, lines, m.status(m.theme))
+}
+
+// detailsPage is everything the detail page shows, wrapped to the panel's
+// width but not yet cut to its height, and how many lines the panel has room
+// for.
+func (m *Model) detailsPage() (lines []string, maxLines int) {
+	innerWidth := max(1, m.width-4)
+	maxLines = ui.ContentHeight(m.height, m.status(m.theme))
+	lines = []string{m.theme.Breadcrumb(m.breadcrumb(), "", innerWidth), ""}
+	lines = append(lines, m.detailLines(m.theme, innerWidth, maxLines-len(lines))...)
+	return lines, maxLines
+}
+
+// detailsBottom is the furthest the detail page scrolls at the panel's size:
+// its last line at the bottom of the panel.
+func (m *Model) detailsBottom() int {
+	lines, maxLines := m.detailsPage()
+	return max(0, len(lines)-maxLines)
 }
 
 // detailLines shows a TODO's text, then as much of the file around it as

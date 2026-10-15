@@ -113,7 +113,9 @@ func TestDetailPageOpensAndCloses(t *testing.T) {
 func TestEmptyListOpensNothing(t *testing.T) {
 	theme := ui.NewTheme(true)
 	m := New("/nowhere", scan.Exclude{}, nil)
-	if !m.Loading() || !strings.Contains(ansi.Strip(m.View(theme, 60, 10)), "Scanning…") {
+	m.SetTheme(theme)
+	m.SetSize(60, 10)
+	if !m.Loading() || !strings.Contains(ansi.Strip(m.View()), "Scanning…") {
 		t.Fatal("a list before its first scan should say it's scanning")
 	}
 	if m.Hints() != nil {
@@ -130,7 +132,7 @@ func TestEmptyListOpensNothing(t *testing.T) {
 		t.Fatal("e opened an editor without a TODO")
 	}
 	m.Update(ScannedMsg{Err: fmt.Errorf("permission denied")})
-	if m.Err() == nil || m.Err().Error() != "permission denied" || !strings.Contains(ansi.Strip(m.View(theme, 60, 10)), "Scan failed") {
+	if m.Err() == nil || m.Err().Error() != "permission denied" || !strings.Contains(ansi.Strip(m.View()), "Scan failed") {
 		t.Fatalf("scan error not shown: %q", m.Err())
 	}
 }
@@ -168,7 +170,9 @@ func TestScanErrorVisibleInDetails(t *testing.T) {
 func TestLongZeroLevelsAreShortened(t *testing.T) {
 	theme := ui.NewTheme(true)
 	m := scanned(scan.Match{Path: "a.go", Line: 1, Note: "urgent", Level: "000000"}, scan.Match{Path: "b.go", Line: 1, Note: "next", Level: "1"})
-	pane := ansi.Strip(m.View(theme, 80, 8))
+	m.SetTheme(theme)
+	m.SetSize(80, 8)
+	pane := ansi.Strip(m.View())
 	if !strings.Contains(pane, "0x6 urgent") || !strings.Contains(pane, "1   next") {
 		t.Fatalf("long level was not shortened:\n%s", pane)
 	}
@@ -183,7 +187,9 @@ func TestListShowsTheTodoBeforeItsFile(t *testing.T) {
 		scan.Match{Path: long, Line: 30, Note: "Remove these once the new layout ships"},
 		scan.Match{Path: "mobile.css", Line: 3, Note: "Hide on mobile", Category: "responsive"},
 	)
-	pane := ansi.Strip(m.View(theme, 100, 12))
+	m.SetTheme(theme)
+	m.SetSize(100, 12)
+	pane := ansi.Strip(m.View())
 	rows := strings.Split(pane, "\n")
 	for i, want := range []string{
 		"▸ responsive",
@@ -207,7 +213,7 @@ func TestListShowsTheTodoBeforeItsFile(t *testing.T) {
 	if status := ansi.Strip(m.status(theme)); status != "1 TODO" {
 		t.Fatalf("category status = %q", status)
 	}
-	styled := m.View(theme, 100, 12)
+	styled := m.View()
 	if !strings.Contains(styled, lipgloss.NewStyle().Foreground(theme.ColorHigh).Render("000 ")) || !strings.Contains(styled, lipgloss.NewStyle().Foreground(theme.ColorMedium).Render("1   ")) {
 		t.Error("zero levels are not red, or numbered levels not yellow")
 	}
@@ -216,7 +222,7 @@ func TestListShowsTheTodoBeforeItsFile(t *testing.T) {
 		t.Fatalf("status = %q", status)
 	}
 	m.category = "responsive"
-	if row := strings.Split(ansi.Strip(m.View(theme, 100, 12)), "\n")[3]; !strings.HasPrefix(strings.Trim(row, "│ "), "Hide on mobile") {
+	if row := strings.Split(ansi.Strip(m.View()), "\n")[3]; !strings.HasPrefix(strings.Trim(row, "│ "), "Hide on mobile") {
 		t.Fatalf("a list without levels kept the level column: %q", row)
 	}
 	for _, c := range []struct {
@@ -300,6 +306,117 @@ func TestUpAndDownWrapPastTheEnds(t *testing.T) {
 		press(&m, step.key)
 		if selected, ok := m.Selected(); !ok || selected.Note != step.want {
 			t.Fatalf("after %s, selected %q, want %q", step.key, selected.Note, step.want)
+		}
+	}
+}
+
+// detailsModel is a browser in a panel of width × height, showing the details
+// of a TODO with note and the code around it.
+func detailsModel(t *testing.T, note string, width, height int) Model {
+	t.Helper()
+	item := scan.Match{Path: "a.go", Line: 30, Note: note}
+	m := scanned(item)
+	m.SetTheme(ui.NewTheme(true))
+	m.SetSize(width, height)
+	var preview []scan.ContextLine
+	for n := 1; n <= 60; n++ {
+		preview = append(preview, scan.ContextLine{Number: n, Text: fmt.Sprintf("line %d", n)})
+	}
+	m.Update(previewMsg{path: item.Path, line: item.Line, lines: preview})
+	if press(&m, "right"); !m.Details() {
+		t.Fatal("right did not open the details")
+	}
+	return m
+}
+
+func TestDetailsStopScrollingAtTheirLastLine(t *testing.T) {
+	m := detailsModel(t, strings.Repeat("word ", 150), 40, 16)
+	bottom := m.detailsBottom()
+	if bottom == 0 {
+		t.Fatal("the details fit, so can't scroll")
+	}
+	for range bottom + 20 {
+		press(&m, "j")
+	}
+	if m.scroll != bottom {
+		t.Fatalf("holding down scrolled to %d, past the bottom at %d", m.scroll, bottom)
+	}
+	atBottom := ansi.Strip(m.View())
+	if !strings.Contains(atBottom, "30 │ line 30") {
+		t.Fatalf("the last line isn't showing at the bottom:\n%s", atBottom)
+	}
+	if press(&m, "k"); m.scroll != bottom-1 || ansi.Strip(m.View()) == atBottom {
+		t.Fatalf("one up from the bottom didn't scroll up: scroll %d, bottom %d", m.scroll, bottom)
+	}
+	for range bottom + 20 {
+		press(&m, "k")
+	}
+	if m.scroll != 0 {
+		t.Fatalf("holding up scrolled to %d, not the top", m.scroll)
+	}
+}
+
+func TestDetailsThatFitDoNotScroll(t *testing.T) {
+	m := detailsModel(t, "short", 40, 16)
+	if bottom := m.detailsBottom(); bottom != 0 {
+		t.Fatalf("the details don't fit: they scroll to %d", bottom)
+	}
+	if press(&m, "j"); m.scroll != 0 {
+		t.Fatalf("down on details that fit scrolled to %d", m.scroll)
+	}
+}
+
+func TestDetailsScrollUpStraightAwayAfterThePanelGrows(t *testing.T) {
+	m := detailsModel(t, strings.Repeat("word ", 150), 40, 14)
+	for range m.detailsBottom() {
+		press(&m, "j")
+	}
+	m.SetSize(40, 24)
+	bottom := m.detailsBottom()
+	if bottom == 0 || bottom >= m.scroll {
+		t.Fatalf("growing the panel didn't move the bottom (%d) above the scroll (%d)", bottom, m.scroll)
+	}
+	before := ansi.Strip(m.View())
+	if press(&m, "k"); m.scroll != bottom-1 || ansi.Strip(m.View()) == before {
+		t.Fatalf("one up after growing didn't scroll up: scroll %d, bottom %d", m.scroll, bottom)
+	}
+}
+
+func TestPagesFillThePanelSetBySetSize(t *testing.T) {
+	m := scanned(scan.Match{Path: "a.go", Line: 1, Note: "urgent", Level: "0"})
+	m.SetTheme(ui.NewTheme(true))
+	for _, size := range [][2]int{{80, 20}, {56, 12}, {100, 30}} {
+		m.SetSize(size[0], size[1])
+		for _, page := range []string{"list", "details"} {
+			if page == "details" {
+				press(&m, "right")
+			}
+			view := m.View()
+			if w, h := lipgloss.Width(view), lipgloss.Height(view); w != size[0] || h != size[1] {
+				t.Errorf("%s at %dx%d is %dx%d", page, size[0], size[1], w, h)
+			}
+		}
+		press(&m, "left")
+	}
+}
+
+func TestPagesAreDrawnInTheThemeSetBySetTheme(t *testing.T) {
+	m := scanned(scan.Match{Path: "a.go", Line: 1, Note: "urgent", Level: "0"})
+	m.SetSize(40, 8)
+	dark, light := ui.NewTheme(true), ui.NewTheme(false)
+	// Only the panel's border is drawn in the border colour.
+	border := func(theme ui.Theme) string {
+		return ansi.NewStyle().ForegroundColor(theme.ColorBorder).String() + "╭"
+	}
+	for _, page := range []string{"list", "details"} {
+		if page == "details" {
+			press(&m, "right")
+		}
+		for _, c := range []struct{ drawn, other ui.Theme }{{dark, light}, {light, dark}} {
+			m.SetTheme(c.drawn)
+			if view := m.View(); !strings.Contains(view, border(c.drawn)) || strings.Contains(view, border(c.other)) {
+				t.Errorf("the %s is not drawn only in the theme set: %q", page, strings.Split(view, "\n")[0])
+			}
 		}
 	}
 }

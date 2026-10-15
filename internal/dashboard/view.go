@@ -38,7 +38,7 @@ func (m *model) View() tea.View {
 		case branchPane:
 			body = m.renderNavigationPane(m.rows(branchPane), m.branch.cursor, branchPane, width, bodyHeight)
 		case sourcePane:
-			body = m.files.View(m.theme, width, bodyHeight)
+			body = m.files.View()
 		case detailPane:
 			body = m.renderDetailPane(width, bodyHeight)
 		default:

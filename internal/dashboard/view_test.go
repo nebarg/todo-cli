@@ -31,7 +31,7 @@ func TestDashboardFitsTerminal(t *testing.T) {
 	m.files.Update(filesui.ScannedMsg{Matches: []scan.Match{{Path: "main.go", Line: 12, Text: "// TODO: improve"}}})
 	for _, size := range [][2]int{{120, 35}, {80, 24}, {78, 16}, {60, 20}, {56, 19}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
-			m.width, m.height = size[0], size[1]
+			m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 			for _, page := range []struct {
 				name  string
 				focus pane
@@ -375,8 +375,8 @@ func TestStatusBarDescribesTheHighlightedRow(t *testing.T) {
 	m := &model{
 		theme: ui.NewTheme(true),
 		tasks: taskSet{general: []store.Task{{Text: "Loose", Priority: store.PriorityMedium}, {Text: "Open filed", Category: "Docs"}, {Text: "Filed", Category: "Docs", Done: true}}},
-		width: 80, height: 20,
 	}
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	m.files.Update(filesui.ScannedMsg{Matches: []scan.Match{{Path: "main.go", Line: 1, Text: "// TODO"}}})
 	bottom := func() string {
 		lines := strings.Split(ansi.Strip(m.View().Content), "\n")
